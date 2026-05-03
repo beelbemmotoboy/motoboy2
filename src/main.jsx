@@ -679,8 +679,8 @@ function LoginView() {
       </section>
       <section className="login-panel">
         <div className="logo dark">BEELBEM</div>
-        <h1>Acessar sistema</h1>
-        <p>O login e unico. O sistema identifica seu perfil e abre a area correta automaticamente.</p>
+        <h1>Seja bem vindo!</h1>
+        <p>Rapido, seguro e brasileiro.</p>
         <form onSubmit={handleLogin}>
           <label>
             E-mail
