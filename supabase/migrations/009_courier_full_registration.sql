@@ -1,0 +1,16 @@
+alter table public.couriers add column if not exists cpf text;
+alter table public.couriers add column if not exists email text;
+alter table public.couriers add column if not exists face_photo_path text;
+alter table public.couriers add column if not exists whatsapp_validated boolean not null default false;
+alter table public.couriers add column if not exists whatsapp_validated_at timestamptz;
+alter table public.couriers add column if not exists vehicle_type text;
+alter table public.couriers add column if not exists vehicle_plate text;
+alter table public.couriers add column if not exists pix_key text;
+alter table public.couriers add column if not exists pix_key_type text;
+alter table public.couriers add column if not exists pix_holder_name text;
+alter table public.couriers add column if not exists vehicle_notes text;
+alter table public.couriers add column if not exists cnh_file_path text;
+alter table public.couriers add column if not exists cnh_valid_until date;
+alter table public.couriers add column if not exists approval_status text not null default 'pending_approval';
+alter table public.couriers add column if not exists availability_status text not null default 'offline';
+alter table public.couriers add column if not exists internal_notes text;
