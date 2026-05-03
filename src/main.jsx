@@ -275,11 +275,22 @@ function initials(name) {
 function App() {
   const currentUserRole = 'city_admin';
   const [page, setPageState] = React.useState(() => window.location.hash.replace('#', '') || 'login');
-  const [cityList, setCityList] = React.useState(cities);
+  const emptyCity = {
+    id: '',
+    name: 'Nenhuma cidade',
+    state: '',
+    active: false,
+    availableCouriers: 0,
+    activeDeliveries: 0,
+    pausedCouriers: 0,
+    activeStores: 0,
+    metrics: ['0', '0', '0', '0%', '0.0'],
+  };
+  const [cityList, setCityList] = React.useState(supabase ? [] : cities);
   const [storeList, setStoreList] = React.useState(initialStores);
   const [courierList, setCourierList] = React.useState(initialCouriers);
-  const [cityId, setCityId] = React.useState(cities[0].id);
-  const selectedCity = cityList.find((city) => city.id === cityId) ?? cityList[0];
+  const [cityId, setCityId] = React.useState(supabase ? '' : cities[0].id);
+  const selectedCity = cityList.find((city) => city.id === cityId) ?? cityList[0] ?? emptyCity;
   const [cityLoading, setCityLoading] = React.useState(false);
   const [cityError, setCityError] = React.useState('');
   const setPage = (nextPage) => {
@@ -298,6 +309,7 @@ function App() {
       if (!supabase) return;
       setCityLoading(true);
       setCityError('');
+      setCityList([]);
       const { data, error } = await supabase
         .from('cities')
         .select('id, name, state, slug, active')
@@ -306,21 +318,24 @@ function App() {
       setCityLoading(false);
       if (error) {
         setCityError(error.message);
+        setCityList([]);
+        setCityId('');
         return;
       }
 
-      if (data?.length) {
-        const mapped = data.map((city) => ({
-          ...city,
-          availableCouriers: 0,
-          activeDeliveries: 0,
-          pausedCouriers: 0,
-          activeStores: 0,
-          metrics: ['0', '0', '0', '0%', '0.0'],
-        }));
-        setCityList(mapped);
-        setCityId((current) => mapped.some((city) => city.id === current) ? current : mapped[0].id);
-      }
+      const mapped = (data ?? []).map((city) => ({
+        ...city,
+        availableCouriers: 0,
+        activeDeliveries: 0,
+        pausedCouriers: 0,
+        activeStores: 0,
+        metrics: ['0', '0', '0', '0%', '0.0'],
+      }));
+      setCityList(mapped);
+      setCityId((current) => {
+        if (mapped.some((city) => city.id === current)) return current;
+        return mapped[0]?.id ?? '';
+      });
     }
 
     loadCities();
@@ -858,6 +873,9 @@ function CitiesView({ cities, selectedCityId, onSelectCity, onChangeCities, load
         </div>
         {loading && <p className="form-note">Carregando cidades do Supabase...</p>}
         <div className="city-list">
+          {!loading && cities.length === 0 && (
+            <p className="empty-state">Nenhuma cidade cadastrada no Supabase.</p>
+          )}
           {cities.map((city) => (
             <article className={`city-row ${city.id === selectedCityId ? 'selected' : ''}`} key={city.id}>
               <button type="button" onClick={() => onSelectCity(city.id)} disabled={city.active === false}>
