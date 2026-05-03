@@ -2220,7 +2220,7 @@ function CouriersView({ city, cities, couriers, onChangeCouriers }) {
       setErrors((current) => ({ ...current, phone: 'Informe o WhatsApp antes de enviar o codigo.' }));
       return;
     }
-    setWhatsappMessage('Voce recebera um numero no seu WhatsApp para confirmacao. Digite ou cole ele aqui.');
+    setWhatsappMessage('Voce receberá um número no seu WhatsApp para confirmação. Digite ou cole ele aqui.');
     whatsappCodeRef.current?.focus();
   }
 
