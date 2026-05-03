@@ -586,7 +586,7 @@ function App() {
         )}
         {page === 'access' && <AccessView city={selectedCity} stores={storeList} couriers={courierList} />}
         {page === 'stores' && <StoresView city={selectedCity} stores={storeList} onChangeStores={setStoreList} />}
-        {page === 'couriers' && <CouriersView city={selectedCity} couriers={courierList} onChangeCouriers={setCourierList} />}
+        {page === 'couriers' && <CouriersView city={selectedCity} cities={cityList} couriers={courierList} onChangeCouriers={setCourierList} />}
         {page === 'store-home' && <StoreHomeView city={selectedCity} />}
         {page === 'courier-home' && <CourierHomeView city={selectedCity} />}
         {page === 'overview' && <Overview city={selectedCity} />}
@@ -2007,9 +2007,10 @@ function StoresView({ city, stores, onChangeStores }) {
   );
 }
 
-function CouriersView({ city, couriers, onChangeCouriers }) {
+function CouriersView({ city, cities, couriers, onChangeCouriers }) {
   const whatsappCodeRef = React.useRef(null);
   const emptyCourierForm = {
+    cityId: city.id,
     fullName: '',
     birthDate: '',
     cpf: '',
@@ -2036,6 +2037,13 @@ function CouriersView({ city, couriers, onChangeCouriers }) {
   const [saving, setSaving] = React.useState(false);
   const [message, setMessage] = React.useState('');
   const [editingCourierId, setEditingCourierId] = React.useState('');
+  const activeCities = cities.filter((item) => item.active !== false);
+
+  React.useEffect(() => {
+    if (!editingCourierId) {
+      setForm((current) => ({ ...current, cityId: city.id }));
+    }
+  }, [city.id, editingCourierId]);
 
   function resetForm() {
     setForm(emptyCourierForm);
@@ -2077,6 +2085,7 @@ function CouriersView({ city, couriers, onChangeCouriers }) {
   function startEdit(courier) {
     setEditingCourierId(courier.id);
     setForm({
+      cityId: courier.cityId ?? city.id,
       fullName: courier.fullName ?? '',
       birthDate: courier.birthDate ?? '',
       cpf: courier.cpf ?? '',
@@ -2134,7 +2143,7 @@ function CouriersView({ city, couriers, onChangeCouriers }) {
     if (Object.keys(validationErrors).length) return;
 
     const payload = {
-      city_id: city.id,
+      city_id: form.cityId || city.id,
       name: form.fullName.trim(),
       birth_date: form.birthDate,
       cpf: onlyDigits(form.cpf),
@@ -2159,7 +2168,7 @@ function CouriersView({ city, couriers, onChangeCouriers }) {
 
     let newCourier = {
       id: slugifyCity(form.fullName, city.state),
-      cityId: city.id,
+      cityId: form.cityId || city.id,
       ...form,
       plate: form.plate.toUpperCase(),
       status: form.approvalStatus,
@@ -2193,11 +2202,15 @@ function CouriersView({ city, couriers, onChangeCouriers }) {
       newCourier = mapCourierFromDb(data);
     }
 
-    onChangeCouriers((current) => (
-      editingCourierId
-        ? current.map((courier) => courier.id === editingCourierId ? newCourier : courier)
-        : [newCourier, ...current]
-    ));
+    onChangeCouriers((current) => {
+      if (editingCourierId) {
+        if (newCourier.cityId !== city.id) {
+          return current.filter((courier) => courier.id !== editingCourierId);
+        }
+        return current.map((courier) => courier.id === editingCourierId ? newCourier : courier);
+      }
+      return newCourier.cityId === city.id ? [newCourier, ...current] : current;
+    });
     resetForm();
     setMessage(editingCourierId ? 'Dados do entregador atualizados.' : 'Entregador cadastrado no banco de dados.');
   }
@@ -2224,7 +2237,11 @@ function CouriersView({ city, couriers, onChangeCouriers }) {
         <div className="store-form-grid">
           <label>
             Cidade vinculada
-            <input value={`${city.name} - ${city.state}`} disabled />
+            <select value={form.cityId || city.id} onChange={(event) => setForm((current) => ({ ...current, cityId: event.target.value }))}>
+              {activeCities.map((item) => (
+                <option value={item.id} key={item.id}>{item.name} - {item.state}</option>
+              ))}
+            </select>
           </label>
           <label>
             Situacao inicial
