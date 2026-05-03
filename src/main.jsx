@@ -278,7 +278,7 @@ function App() {
   const [authReady, setAuthReady] = React.useState(!supabase);
   const [currentUser, setCurrentUser] = React.useState(null);
   const [currentProfile, setCurrentProfile] = React.useState(null);
-  const publicPages = ['login', 'create-password'];
+  const publicPages = ['login', 'create-password', 'forgot-password', 'create-account'];
   const currentUserRole = supabase ? currentProfile?.role : 'city_admin';
   const emptyCity = {
     id: '',
@@ -493,8 +493,20 @@ function App() {
     return <LoginView />;
   }
 
+  if (page === 'forgot-password') {
+    return <ForgotPasswordView />;
+  }
+
+  if (page === 'create-account') {
+    return <CreateAccountView />;
+  }
+
   if (page === 'create-password') {
     return <CreatePasswordView />;
+  }
+
+  if (!supabase) {
+    return <AuthUnavailableView />;
   }
 
   if (supabase && !currentProfile) {
@@ -605,7 +617,7 @@ function LoginView() {
     }
 
     if (!supabase) {
-      window.location.hash = '#overview';
+      setError('Supabase nao configurado. Login bloqueado por seguranca.');
       return;
     }
 
@@ -674,7 +686,199 @@ function LoginView() {
           <button className="primary-action" type="submit" disabled={loading}>
             {loading ? 'Entrando...' : 'Entrar'}
           </button>
+          <div className="auth-links">
+            <a href="#forgot-password">Esqueci minha senha</a>
+            <a href="#create-account">Criar conta</a>
+          </div>
         </form>
+      </section>
+    </main>
+  );
+}
+
+function ForgotPasswordView() {
+  const [email, setEmail] = React.useState('');
+  const [error, setError] = React.useState('');
+  const [status, setStatus] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setError('');
+    setStatus('');
+    if (!email.trim()) {
+      setError('Informe seu e-mail.');
+      return;
+    }
+    if (!supabase) {
+      setError('Supabase nao configurado. Redefinicao bloqueada.');
+      return;
+    }
+
+    setLoading(true);
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/#create-password`,
+    });
+    setLoading(false);
+
+    if (resetError) {
+      setError(resetError.message || 'Nao foi possivel enviar o link.');
+      return;
+    }
+    setStatus('Enviamos um link de redefinicao para o e-mail informado.');
+  }
+
+  return (
+    <main className="password-page">
+      <section className="password-panel">
+        <div className="logo dark">BEELBEM</div>
+        <h1>Redefinir senha</h1>
+        <p>Informe o e-mail cadastrado. O Supabase enviara um link seguro para criar uma nova senha.</p>
+        <form onSubmit={handleSubmit}>
+          <label>
+            E-mail
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="voce@empresa.com"
+            />
+          </label>
+          {error && <p className="field-error">{error}</p>}
+          {status && <p className="success-message">{status}</p>}
+          <button className="primary-action" type="submit" disabled={loading}>
+            {loading ? 'Enviando...' : 'Enviar link'}
+          </button>
+          <div className="auth-links single">
+            <a href="#login">Voltar para login</a>
+          </div>
+        </form>
+      </section>
+    </main>
+  );
+}
+
+function CreateAccountView() {
+  const [form, setForm] = React.useState({ name: '', email: '', password: '', confirmPassword: '' });
+  const [error, setError] = React.useState('');
+  const [status, setStatus] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const strength = passwordStrength(form.password);
+  const passwordsMatch = form.password && form.password === form.confirmPassword;
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setError('');
+    setStatus('');
+    if (!form.name.trim() || !form.email.trim()) {
+      setError('Informe nome e e-mail.');
+      return;
+    }
+    if (!strength.valid) {
+      setError('A senha ainda nao atende aos requisitos de seguranca.');
+      return;
+    }
+    if (!passwordsMatch) {
+      setError('A confirmacao da senha nao confere.');
+      return;
+    }
+    if (!supabase) {
+      setError('Supabase nao configurado. Criacao de conta bloqueada.');
+      return;
+    }
+
+    setLoading(true);
+    const { error: signUpError } = await supabase.auth.signUp({
+      email: form.email.trim(),
+      password: form.password,
+      options: {
+        data: { name: form.name.trim() },
+        emailRedirectTo: `${window.location.origin}/#login`,
+      },
+    });
+    setLoading(false);
+
+    if (signUpError) {
+      setError(signUpError.message || 'Nao foi possivel criar a conta.');
+      return;
+    }
+
+    setStatus('Conta criada no Auth. Agora o administrador precisa liberar seu perfil de acesso.');
+    setForm({ name: '', email: '', password: '', confirmPassword: '' });
+  }
+
+  return (
+    <main className="password-page">
+      <section className="password-panel">
+        <div className="logo dark">BEELBEM</div>
+        <h1>Criar conta</h1>
+        <p>Crie o acesso inicial. A entrada no sistema so sera liberada depois que um administrador vincular seu perfil.</p>
+        <form onSubmit={handleSubmit}>
+          <label>
+            Nome
+            <input
+              value={form.name}
+              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+              placeholder="Seu nome"
+            />
+          </label>
+          <label>
+            E-mail
+            <input
+              type="email"
+              value={form.email}
+              onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+              placeholder="voce@empresa.com"
+            />
+          </label>
+          <label>
+            Senha
+            <input
+              type="password"
+              value={form.password}
+              onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+              placeholder="Digite uma senha forte"
+            />
+          </label>
+          <label>
+            Confirmar senha
+            <input
+              type="password"
+              value={form.confirmPassword}
+              onChange={(event) => setForm((current) => ({ ...current, confirmPassword: event.target.value }))}
+              placeholder="Repita a senha"
+            />
+          </label>
+          <div className="password-rules">
+            <span className={strength.checks.length ? 'ok' : ''}>10 caracteres ou mais</span>
+            <span className={strength.checks.upper ? 'ok' : ''}>Letra maiuscula</span>
+            <span className={strength.checks.lower ? 'ok' : ''}>Letra minuscula</span>
+            <span className={strength.checks.number ? 'ok' : ''}>Numero</span>
+            <span className={strength.checks.symbol ? 'ok' : ''}>Simbolo</span>
+            <span className={passwordsMatch ? 'ok' : ''}>Confirmacao igual</span>
+          </div>
+          {error && <p className="field-error">{error}</p>}
+          {status && <p className="success-message">{status}</p>}
+          <button className="primary-action" type="submit" disabled={loading}>
+            {loading ? 'Criando...' : 'Criar conta'}
+          </button>
+          <div className="auth-links single">
+            <a href="#login">Voltar para login</a>
+          </div>
+        </form>
+      </section>
+    </main>
+  );
+}
+
+function AuthUnavailableView() {
+  return (
+    <main className="password-page">
+      <section className="password-panel">
+        <div className="logo dark">BEELBEM</div>
+        <h1>Acesso bloqueado</h1>
+        <p>O Supabase nao esta configurado nesta instalacao. Por seguranca, nenhuma area interna sera aberta sem autenticacao real.</p>
+        <a className="primary-link" href="#login">Voltar para login</a>
       </section>
     </main>
   );

@@ -103,6 +103,41 @@ button, a {
   font: inherit;
 }
 
+.auth-links {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 2px;
+}
+
+.auth-links.single {
+  justify-content: center;
+}
+
+.auth-links a,
+.primary-link {
+  color: #081f52;
+  font-size: 14px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.auth-links a:hover,
+.primary-link:hover {
+  text-decoration: underline;
+}
+
+.primary-link {
+  display: inline-grid;
+  place-items: center;
+  min-height: 46px;
+  margin-top: 22px;
+  padding: 0 18px;
+  border-radius: 8px;
+  background: #ffd200;
+  color: #050505;
+}
+
 .role-home {
   display: grid;
   gap: 22px;
