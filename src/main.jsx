@@ -421,7 +421,7 @@ function App() {
           .order('created_at', { ascending: false }),
         supabase
           .from('couriers')
-          .select('id, city_id, name, cpf, phone, email, vehicle_type, vehicle_plate, pix_key, pix_key_type, pix_holder_name, approval_status, availability_status, rating, active')
+          .select('id, city_id, name, birth_date, cpf, phone, email, face_photo_path, whatsapp_validated, vehicle_type, vehicle_plate, pix_key, pix_key_type, pix_holder_name, vehicle_notes, cnh_file_path, cnh_valid_until, internal_notes, approval_status, availability_status, rating, active')
           .eq('city_id', cityId)
           .order('created_at', { ascending: false }),
       ]);
@@ -449,14 +449,22 @@ function App() {
           id: courier.id,
           cityId: courier.city_id,
           fullName: courier.name,
-          cpf: courier.cpf,
-          phone: courier.phone,
+          birthDate: courier.birth_date ?? '',
+          cpf: maskCpf(courier.cpf ?? ''),
+          phone: maskPhone(courier.phone ?? ''),
           email: courier.email,
+          facePhoto: courier.face_photo_path ?? '',
+          whatsappCode: courier.whatsapp_validated ? '000000' : '',
+          whatsappValidated: courier.whatsapp_validated,
           vehicle: courier.vehicle_type,
           plate: courier.vehicle_plate,
           pix: courier.pix_key,
           pixType: courier.pix_key_type,
           pixHolder: courier.pix_holder_name,
+          vehicleNotes: courier.vehicle_notes ?? '',
+          cnhFile: courier.cnh_file_path ?? '',
+          cnhValidUntil: courier.cnh_valid_until ?? '',
+          notes: courier.internal_notes ?? '',
           status: courier.approval_status,
           availability: courier.availability_status,
           rating: courier.rating,
@@ -2001,7 +2009,7 @@ function StoresView({ city, stores, onChangeStores }) {
 
 function CouriersView({ city, couriers, onChangeCouriers }) {
   const whatsappCodeRef = React.useRef(null);
-  const [form, setForm] = React.useState({
+  const emptyCourierForm = {
     fullName: '',
     birthDate: '',
     cpf: '',
@@ -2018,11 +2026,105 @@ function CouriersView({ city, couriers, onChangeCouriers }) {
     cnhFile: '',
     cnhValidUntil: '',
     notes: '',
-  });
+    approvalStatus: 'pending_approval',
+    availabilityStatus: 'offline',
+    active: true,
+  };
+  const [form, setForm] = React.useState(emptyCourierForm);
   const [errors, setErrors] = React.useState({});
   const [whatsappMessage, setWhatsappMessage] = React.useState('WhatsApp ainda nao validado.');
   const [saving, setSaving] = React.useState(false);
   const [message, setMessage] = React.useState('');
+  const [editingCourierId, setEditingCourierId] = React.useState('');
+
+  function resetForm() {
+    setForm(emptyCourierForm);
+    setEditingCourierId('');
+    setErrors({});
+    setWhatsappMessage('WhatsApp ainda nao validado.');
+  }
+
+  function mapCourierFromDb(data) {
+    return {
+      id: data.id,
+      cityId: data.city_id,
+      fullName: data.name,
+      birthDate: data.birth_date ?? '',
+      cpf: maskCpf(data.cpf ?? ''),
+      phone: maskPhone(data.phone ?? ''),
+      email: data.email,
+      facePhoto: data.face_photo_path ?? '',
+      whatsappCode: data.whatsapp_validated ? '000000' : '',
+      whatsappValidated: data.whatsapp_validated,
+      vehicle: data.vehicle_type,
+      plate: data.vehicle_plate,
+      pix: data.pix_key,
+      pixType: data.pix_key_type,
+      pixHolder: data.pix_holder_name,
+      vehicleNotes: data.vehicle_notes ?? '',
+      cnhFile: data.cnh_file_path ?? '',
+      cnhValidUntil: data.cnh_valid_until ?? '',
+      notes: data.internal_notes ?? '',
+      status: data.approval_status,
+      availability: data.availability_status,
+      rating: data.rating,
+      active: data.active,
+      approvalStatus: data.approval_status,
+      availabilityStatus: data.availability_status,
+    };
+  }
+
+  function startEdit(courier) {
+    setEditingCourierId(courier.id);
+    setForm({
+      fullName: courier.fullName ?? '',
+      birthDate: courier.birthDate ?? '',
+      cpf: courier.cpf ?? '',
+      phone: courier.phone ?? '',
+      email: courier.email ?? '',
+      facePhoto: courier.facePhoto ?? '',
+      whatsappCode: courier.whatsappCode || (courier.whatsappValidated ? '000000' : ''),
+      vehicle: 'Moto',
+      plate: courier.plate ?? '',
+      pix: courier.pix ?? '',
+      pixType: courier.pixType ?? 'CPF',
+      pixHolder: courier.pixHolder ?? '',
+      vehicleNotes: courier.vehicleNotes ?? '',
+      cnhFile: courier.cnhFile ?? '',
+      cnhValidUntil: courier.cnhValidUntil ?? '',
+      notes: courier.notes ?? '',
+      approvalStatus: courier.approvalStatus ?? courier.status ?? 'pending_approval',
+      availabilityStatus: courier.availabilityStatus ?? courier.availability ?? 'offline',
+      active: courier.active !== false,
+    });
+    setErrors({});
+    setMessage('');
+    setWhatsappMessage(courier.whatsappValidated ? 'WhatsApp ja validado.' : 'WhatsApp ainda nao validado.');
+    window.location.hash = '#couriers';
+  }
+
+  async function toggleCourierActive(courier) {
+    setMessage('');
+    setErrors({});
+    const nextActive = courier.active === false;
+
+    if (supabase) {
+      const { error } = await supabase
+        .from('couriers')
+        .update({ active: nextActive })
+        .eq('id', courier.id);
+
+      if (error) {
+        setErrors({ form: error.message });
+        return;
+      }
+    }
+
+    onChangeCouriers((current) =>
+      current.map((item) => item.id === courier.id ? { ...item, active: nextActive } : item),
+    );
+    setMessage(nextActive ? 'Entregador ativado.' : 'Entregador desativado.');
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -2048,11 +2150,11 @@ function CouriersView({ city, couriers, onChangeCouriers }) {
       vehicle_notes: form.vehicleNotes.trim(),
       cnh_file_path: form.cnhFile,
       cnh_valid_until: form.cnhValidUntil,
-      approval_status: 'pending_approval',
-      availability_status: 'offline',
+      approval_status: form.approvalStatus,
+      availability_status: form.availabilityStatus,
       internal_notes: form.notes.trim(),
-      active: true,
-      available: false,
+      active: form.active,
+      available: form.availabilityStatus === 'available',
     };
 
     let newCourier = {
@@ -2060,19 +2162,27 @@ function CouriersView({ city, couriers, onChangeCouriers }) {
       cityId: city.id,
       ...form,
       plate: form.plate.toUpperCase(),
-      status: 'Pendente de aprovacao',
-      availability: 'Offline',
+      status: form.approvalStatus,
+      availability: form.availabilityStatus,
       rating: '0',
       totalDeliveries: '0',
     };
 
     if (supabase) {
       setSaving(true);
-      const { data, error } = await supabase
-        .from('couriers')
-        .insert(payload)
-        .select('id, city_id, name, cpf, phone, email, vehicle_type, vehicle_plate, pix_key, pix_key_type, pix_holder_name, approval_status, availability_status, rating, active')
-        .single();
+      const { data, error } = editingCourierId
+        ? await supabase
+            .from('couriers')
+            .update(payload)
+            .eq('id', editingCourierId)
+            .select('id, city_id, name, birth_date, cpf, phone, email, face_photo_path, whatsapp_validated, vehicle_type, vehicle_plate, pix_key, pix_key_type, pix_holder_name, vehicle_notes, cnh_file_path, cnh_valid_until, internal_notes, approval_status, availability_status, rating, active')
+            .single()
+        : await supabase
+            .from('couriers')
+            .insert(payload)
+            .select('id, city_id, name, birth_date, cpf, phone, email, face_photo_path, whatsapp_validated, vehicle_type, vehicle_plate, pix_key, pix_key_type, pix_holder_name, vehicle_notes, cnh_file_path, cnh_valid_until, internal_notes, approval_status, availability_status, rating, active')
+            .single();
+
       setSaving(false);
 
       if (error) {
@@ -2080,46 +2190,16 @@ function CouriersView({ city, couriers, onChangeCouriers }) {
         return;
       }
 
-      newCourier = {
-        id: data.id,
-        cityId: data.city_id,
-        fullName: data.name,
-        cpf: data.cpf,
-        phone: data.phone,
-        email: data.email,
-        vehicle: data.vehicle_type,
-        plate: data.vehicle_plate,
-        pix: data.pix_key,
-        pixType: data.pix_key_type,
-        pixHolder: data.pix_holder_name,
-        status: data.approval_status,
-        availability: data.availability_status,
-        rating: data.rating,
-        active: data.active,
-      };
+      newCourier = mapCourierFromDb(data);
     }
 
-    onChangeCouriers((current) => [newCourier, ...current]);
-    setForm({
-      fullName: '',
-      birthDate: '',
-      cpf: '',
-      phone: '',
-      email: '',
-      facePhoto: '',
-      whatsappCode: '',
-      vehicle: 'Moto',
-      plate: '',
-      pix: '',
-      pixType: 'CPF',
-      pixHolder: '',
-      vehicleNotes: '',
-      cnhFile: '',
-      cnhValidUntil: '',
-      notes: '',
-    });
-    setWhatsappMessage('WhatsApp ainda nao validado.');
-    setMessage('Entregador cadastrado no banco de dados.');
+    onChangeCouriers((current) => (
+      editingCourierId
+        ? current.map((courier) => courier.id === editingCourierId ? newCourier : courier)
+        : [newCourier, ...current]
+    ));
+    resetForm();
+    setMessage(editingCourierId ? 'Dados do entregador atualizados.' : 'Entregador cadastrado no banco de dados.');
   }
 
   function sendWhatsappCode() {
@@ -2135,8 +2215,8 @@ function CouriersView({ city, couriers, onChangeCouriers }) {
     <section className="courier-layout">
       <form className="panel courier-form" onSubmit={handleSubmit}>
         <div className="panel-header">
-          <h2>Novo entregador em {city.name}</h2>
-          <span className="count-pill">city_id</span>
+          <h2>{editingCourierId ? 'Editar entregador' : `Novo entregador em ${city.name}`}</h2>
+          <span className="count-pill">{editingCourierId ? 'edicao' : 'city_id'}</span>
         </div>
         <p className="form-note">O entregador fica vinculado a cidade selecionada e entra como pendente ate aprovacao.</p>
 
@@ -2148,7 +2228,28 @@ function CouriersView({ city, couriers, onChangeCouriers }) {
           </label>
           <label>
             Situacao inicial
-            <input value="Pendente de aprovacao" disabled />
+            <select value={form.approvalStatus} onChange={(event) => setForm((current) => ({ ...current, approvalStatus: event.target.value }))}>
+              <option value="pending_approval">Pendente de aprovacao</option>
+              <option value="approved">Aprovado</option>
+              <option value="rejected">Rejeitado</option>
+              <option value="blocked">Bloqueado</option>
+            </select>
+          </label>
+          <label>
+            Disponibilidade
+            <select value={form.availabilityStatus} onChange={(event) => setForm((current) => ({ ...current, availabilityStatus: event.target.value }))}>
+              <option value="offline">Offline</option>
+              <option value="available">Disponivel</option>
+              <option value="on_delivery">Em entrega</option>
+              <option value="paused">Pausado</option>
+            </select>
+          </label>
+          <label>
+            Cadastro ativo
+            <select value={form.active ? 'Sim' : 'Nao'} onChange={(event) => setForm((current) => ({ ...current, active: event.target.value === 'Sim' }))}>
+              <option>Sim</option>
+              <option>Nao</option>
+            </select>
           </label>
           <label>
             Nome completo
@@ -2243,11 +2344,44 @@ function CouriersView({ city, couriers, onChangeCouriers }) {
           <textarea value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Documentos pendentes, historico, restricoes etc." />
         </label>
 
-        <button className="primary-action" type="submit"><Plus size={18} />Salvar entregador</button>
+        <div className="form-actions">
+          <button className="primary-action" type="submit"><Plus size={18} />{editingCourierId ? 'Atualizar entregador' : 'Salvar entregador'}</button>
+          {editingCourierId && (
+            <button className="secondary-action" type="button" onClick={resetForm}>Cancelar edicao</button>
+          )}
+        </div>
         {saving && <p className="form-note">Salvando entregador...</p>}
         {errors.form && <p className="field-error">{errors.form}</p>}
         {message && <p className="success-message">{message}</p>}
       </form>
+
+      <div className="panel courier-list-panel">
+        <div className="panel-header">
+          <h2>Entregadores de {city.name}</h2>
+          <span className="count-pill">{couriers.length} cadastros</span>
+        </div>
+        <div className="courier-list">
+          {couriers.length === 0 && (
+            <p className="empty-state">Nenhum entregador cadastrado nesta cidade.</p>
+          )}
+          {couriers.map((courier) => (
+            <article className="courier-row" key={courier.id}>
+              <div className="avatar small">{initials(courier.fullName || 'Motoboy')}</div>
+              <div>
+                <strong>{courier.fullName}</strong>
+                <span>{courier.phone || 'Sem WhatsApp'} · {courier.email || 'Sem e-mail'}</span>
+                <span>{courier.plate || 'Sem placa'} · {courier.active === false ? 'Inativo' : 'Ativo'} · {courier.status || 'pending_approval'}</span>
+              </div>
+              <div className="row-actions">
+                <button className="toggle-button" type="button" onClick={() => startEdit(courier)}>Editar</button>
+                <button className="toggle-button" type="button" onClick={() => toggleCourierActive(courier)}>
+                  {courier.active === false ? 'Ativar' : 'Desativar'}
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
     </section>
   );
 }

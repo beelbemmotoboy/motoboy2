@@ -885,6 +885,29 @@ mark.amber {
   cursor: pointer;
 }
 
+.form-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.form-actions .primary-action {
+  margin-top: 18px;
+}
+
+.secondary-action {
+  min-height: 46px;
+  margin-top: 18px;
+  padding: 0 18px;
+  border: 1px solid #d7d7d7;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #111;
+  font-weight: 900;
+  cursor: pointer;
+}
+
 .store-form-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(180px, 1fr));
@@ -971,6 +994,44 @@ mark.amber {
   height: auto;
   min-height: 120px;
   padding: 10px 12px;
+}
+
+.courier-list-panel {
+  margin-top: 22px;
+}
+
+.courier-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.courier-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid #e4e4e4;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.courier-row strong,
+.courier-row span {
+  display: block;
+}
+
+.courier-row span {
+  margin-top: 4px;
+  color: #666;
+  font-size: 13px;
+}
+
+.row-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .schedule-grid {
@@ -1414,6 +1475,15 @@ th {
 
   .city-row {
     grid-template-columns: 1fr;
+  }
+
+  .courier-row,
+  .form-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .row-actions {
+    flex-wrap: wrap;
   }
 
   .store-row {
