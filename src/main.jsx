@@ -274,7 +274,7 @@ function initials(name) {
 
 function App() {
   const currentUserRole = 'city_admin';
-  const [page, setPageState] = React.useState(() => window.location.hash.replace('#', '') || 'overview');
+  const [page, setPageState] = React.useState(() => window.location.hash.replace('#', '') || 'login');
   const [cityList, setCityList] = React.useState(cities);
   const [storeList, setStoreList] = React.useState(initialStores);
   const [courierList, setCourierList] = React.useState(initialCouriers);
@@ -282,11 +282,11 @@ function App() {
   const selectedCity = cityList.find((city) => city.id === cityId) ?? cityList[0];
   const setPage = (nextPage) => {
     setPageState(nextPage);
-    window.location.hash = nextPage === 'overview' ? '' : nextPage;
+    window.location.hash = nextPage;
   };
 
   React.useEffect(() => {
-    const onHashChange = () => setPageState(window.location.hash.replace('#', '') || 'overview');
+    const onHashChange = () => setPageState(window.location.hash.replace('#', '') || 'login');
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
