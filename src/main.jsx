@@ -22,7 +22,7 @@ import {
   UsersRound,
   WalletCards,
 } from 'lucide-react';
-import { supabase } from './supabaseClient';
+import { supabase, supabaseConfigStatus } from './supabaseClient';
 import { maskCep, maskCnpj, maskCpf, maskPhone, onlyDigits, passwordStrength, validateAccessUserForm, validateCourierForm, validateStoreForm } from './utils/validators';
 import loginLogo from '../imagem/logo.png';
 import './styles.css';
@@ -618,7 +618,11 @@ function LoginView() {
     }
 
     if (!supabase) {
-      setError('Supabase nao configurado. Login bloqueado por seguranca.');
+      const missing = [
+        !supabaseConfigStatus.hasUrl ? 'VITE_SUPABASE_URL' : '',
+        !supabaseConfigStatus.hasAnonKey ? 'VITE_SUPABASE_ANON_KEY' : '',
+      ].filter(Boolean).join(' e ');
+      setError(`Supabase nao configurado. Falta ${missing} no Vercel.`);
       return;
     }
 
