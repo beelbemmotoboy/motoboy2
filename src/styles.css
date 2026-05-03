@@ -33,6 +33,15 @@ button, a {
   background: #f7f7f5;
 }
 
+.loading-page {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  gap: 12px;
+  text-align: center;
+  background: #f7f7f5;
+}
+
 .login-page {
   min-height: 100vh;
   display: grid;
@@ -360,6 +369,37 @@ h2 {
   display: flex;
   align-items: center;
   gap: 14px;
+}
+
+.user-chip {
+  min-height: 40px;
+  display: inline-grid;
+  grid-template-columns: 32px minmax(90px, 160px);
+  align-items: center;
+  gap: 9px;
+  padding: 4px 10px 4px 4px;
+  border: 1px solid #e0e0e0;
+  border-radius: 999px;
+  background: #ffffff;
+}
+
+.user-chip span {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #ffd200;
+  color: #050505;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.user-chip strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
 }
 
 .connection-pill {

@@ -14,6 +14,8 @@ create table if not exists public.cities (
   state text not null,
   slug text not null unique,
   active boolean not null default true,
+  created_by uuid references auth.users(id),
+  updated_by uuid references auth.users(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -43,6 +45,8 @@ create table if not exists public.stores (
   rate_courier_after_delivery boolean not null default true,
   internal_notes text,
   active boolean not null default true,
+  created_by uuid references auth.users(id),
+  updated_by uuid references auth.users(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -72,6 +76,8 @@ create table if not exists public.couriers (
   available boolean not null default true,
   availability_status text not null default 'offline',
   internal_notes text,
+  created_by uuid references auth.users(id),
+  updated_by uuid references auth.users(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint couriers_vehicle_type_check check (vehicle_type = 'Moto'),
@@ -95,6 +101,8 @@ create table if not exists public.profiles (
   role text not null default 'city_admin',
   active boolean not null default true,
   password_set_at timestamptz,
+  created_by uuid references auth.users(id),
+  updated_by uuid references auth.users(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint profiles_role_check check (
@@ -126,6 +134,8 @@ create table if not exists public.access_invites (
   password_setup_token text,
   invited_by uuid references auth.users(id),
   accepted_at timestamptz,
+  created_by uuid references auth.users(id),
+  updated_by uuid references auth.users(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint access_invites_role_check check (
@@ -148,6 +158,8 @@ create table if not exists public.customers (
   name text not null,
   phone text,
   address text,
+  created_by uuid references auth.users(id),
+  updated_by uuid references auth.users(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -166,6 +178,8 @@ create table if not exists public.deliveries (
   estimated_minutes integer,
   delivery_fee numeric(10,2) not null default 0,
   delivered_at timestamptz,
+  created_by uuid references auth.users(id),
+  updated_by uuid references auth.users(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (city_id, order_code),
@@ -184,6 +198,33 @@ create table if not exists public.delivery_events (
   created_at timestamptz not null default now()
 );
 
+alter table public.cities add column if not exists created_by uuid references auth.users(id);
+alter table public.cities add column if not exists updated_by uuid references auth.users(id);
+alter table public.stores add column if not exists created_by uuid references auth.users(id);
+alter table public.stores add column if not exists updated_by uuid references auth.users(id);
+alter table public.couriers add column if not exists created_by uuid references auth.users(id);
+alter table public.couriers add column if not exists updated_by uuid references auth.users(id);
+alter table public.profiles add column if not exists created_by uuid references auth.users(id);
+alter table public.profiles add column if not exists updated_by uuid references auth.users(id);
+alter table public.access_invites add column if not exists created_by uuid references auth.users(id);
+alter table public.access_invites add column if not exists updated_by uuid references auth.users(id);
+alter table public.customers add column if not exists created_by uuid references auth.users(id);
+alter table public.customers add column if not exists updated_by uuid references auth.users(id);
+alter table public.deliveries add column if not exists created_by uuid references auth.users(id);
+alter table public.deliveries add column if not exists updated_by uuid references auth.users(id);
+alter table public.delivery_events add column if not exists created_by uuid references auth.users(id);
+
+create table if not exists public.audit_logs (
+  id uuid primary key default gen_random_uuid(),
+  table_name text not null,
+  record_id uuid,
+  action text not null,
+  actor_id uuid references auth.users(id),
+  old_data jsonb,
+  new_data jsonb,
+  created_at timestamptz not null default now()
+);
+
 create index if not exists cities_slug_idx on public.cities(slug);
 create index if not exists stores_city_id_idx on public.stores(city_id);
 create index if not exists couriers_city_id_idx on public.couriers(city_id);
@@ -198,6 +239,8 @@ create index if not exists deliveries_store_id_idx on public.deliveries(store_id
 create index if not exists deliveries_courier_id_idx on public.deliveries(courier_id);
 create index if not exists delivery_events_city_id_idx on public.delivery_events(city_id);
 create index if not exists delivery_events_delivery_id_idx on public.delivery_events(delivery_id);
+create index if not exists audit_logs_table_record_idx on public.audit_logs(table_name, record_id);
+create index if not exists audit_logs_actor_id_idx on public.audit_logs(actor_id);
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -205,37 +248,116 @@ language plpgsql
 as $$
 begin
   new.updated_at = now();
+  if tg_op = 'INSERT' then
+    new.created_by = coalesce(new.created_by, auth.uid());
+  end if;
+  new.updated_by = auth.uid();
   return new;
 end;
 $$;
 
+create or replace function public.set_created_by()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.created_by = coalesce(new.created_by, auth.uid());
+  return new;
+end;
+$$;
+
+create or replace function public.write_audit_log()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  record_uuid uuid;
+begin
+  if tg_op = 'INSERT' then
+    record_uuid = new.id;
+    insert into public.audit_logs(table_name, record_id, action, actor_id, old_data, new_data)
+    values (tg_table_name, record_uuid, tg_op, auth.uid(), null, to_jsonb(new));
+    return new;
+  elsif tg_op = 'UPDATE' then
+    record_uuid = new.id;
+    insert into public.audit_logs(table_name, record_id, action, actor_id, old_data, new_data)
+    values (tg_table_name, record_uuid, tg_op, auth.uid(), to_jsonb(old), to_jsonb(new));
+    return new;
+  elsif tg_op = 'DELETE' then
+    record_uuid = old.id;
+    insert into public.audit_logs(table_name, record_id, action, actor_id, old_data, new_data)
+    values (tg_table_name, record_uuid, tg_op, auth.uid(), to_jsonb(old), null);
+    return old;
+  end if;
+  return null;
+end;
+$$;
+
 drop trigger if exists set_cities_updated_at on public.cities;
-create trigger set_cities_updated_at before update on public.cities
+create trigger set_cities_updated_at before insert or update on public.cities
 for each row execute function public.set_updated_at();
 
 drop trigger if exists set_stores_updated_at on public.stores;
-create trigger set_stores_updated_at before update on public.stores
+create trigger set_stores_updated_at before insert or update on public.stores
 for each row execute function public.set_updated_at();
 
 drop trigger if exists set_couriers_updated_at on public.couriers;
-create trigger set_couriers_updated_at before update on public.couriers
+create trigger set_couriers_updated_at before insert or update on public.couriers
 for each row execute function public.set_updated_at();
 
 drop trigger if exists set_profiles_updated_at on public.profiles;
-create trigger set_profiles_updated_at before update on public.profiles
+create trigger set_profiles_updated_at before insert or update on public.profiles
 for each row execute function public.set_updated_at();
 
 drop trigger if exists set_access_invites_updated_at on public.access_invites;
-create trigger set_access_invites_updated_at before update on public.access_invites
+create trigger set_access_invites_updated_at before insert or update on public.access_invites
 for each row execute function public.set_updated_at();
 
 drop trigger if exists set_customers_updated_at on public.customers;
-create trigger set_customers_updated_at before update on public.customers
+create trigger set_customers_updated_at before insert or update on public.customers
 for each row execute function public.set_updated_at();
 
 drop trigger if exists set_deliveries_updated_at on public.deliveries;
-create trigger set_deliveries_updated_at before update on public.deliveries
+create trigger set_deliveries_updated_at before insert or update on public.deliveries
 for each row execute function public.set_updated_at();
+
+drop trigger if exists set_delivery_events_created_by on public.delivery_events;
+create trigger set_delivery_events_created_by before insert on public.delivery_events
+for each row execute function public.set_created_by();
+
+drop trigger if exists audit_cities on public.cities;
+create trigger audit_cities after insert or update or delete on public.cities
+for each row execute function public.write_audit_log();
+
+drop trigger if exists audit_stores on public.stores;
+create trigger audit_stores after insert or update or delete on public.stores
+for each row execute function public.write_audit_log();
+
+drop trigger if exists audit_couriers on public.couriers;
+create trigger audit_couriers after insert or update or delete on public.couriers
+for each row execute function public.write_audit_log();
+
+drop trigger if exists audit_profiles on public.profiles;
+create trigger audit_profiles after insert or update or delete on public.profiles
+for each row execute function public.write_audit_log();
+
+drop trigger if exists audit_access_invites on public.access_invites;
+create trigger audit_access_invites after insert or update or delete on public.access_invites
+for each row execute function public.write_audit_log();
+
+drop trigger if exists audit_customers on public.customers;
+create trigger audit_customers after insert or update or delete on public.customers
+for each row execute function public.write_audit_log();
+
+drop trigger if exists audit_deliveries on public.deliveries;
+create trigger audit_deliveries after insert or update or delete on public.deliveries
+for each row execute function public.write_audit_log();
+
+drop trigger if exists audit_delivery_events on public.delivery_events;
+create trigger audit_delivery_events after insert or update or delete on public.delivery_events
+for each row execute function public.write_audit_log();
 
 create or replace function public.current_profile_role()
 returns text
@@ -316,6 +438,7 @@ alter table public.access_invites enable row level security;
 alter table public.customers enable row level security;
 alter table public.deliveries enable row level security;
 alter table public.delivery_events enable row level security;
+alter table public.audit_logs enable row level security;
 
 drop policy if exists "cities_read_by_authenticated" on public.cities;
 drop policy if exists "cities_manage_by_system_admin" on public.cities;
@@ -334,6 +457,7 @@ drop policy if exists "deliveries_insert_by_scope" on public.deliveries;
 drop policy if exists "deliveries_update_by_scope" on public.deliveries;
 drop policy if exists "delivery_events_read_by_scope" on public.delivery_events;
 drop policy if exists "delivery_events_insert_by_scope" on public.delivery_events;
+drop policy if exists "audit_logs_read_by_system_or_city_admin" on public.audit_logs;
 
 create policy "cities_read_by_authenticated" on public.cities
   for select to authenticated using (
@@ -498,12 +622,18 @@ create policy "delivery_events_insert_by_scope" on public.delivery_events
     )
   );
 
-insert into public.cities (name, state, slug)
-values
-  ('Goiania', 'GO', 'goiania-go'),
-  ('Aparecida de Goiania', 'GO', 'aparecida-de-goiania-go'),
-  ('Anapolis', 'GO', 'anapolis-go')
-on conflict (slug) do nothing;
+create policy "audit_logs_read_by_system_or_city_admin" on public.audit_logs
+  for select to authenticated using (
+    public.is_system_admin()
+    or (
+      public.current_profile_role() = 'city_admin'
+      and coalesce(
+        new_data ->> 'city_id',
+        old_data ->> 'city_id',
+        case when table_name = 'cities' then record_id::text end
+      ) = public.current_profile_city_id()::text
+    )
+  );
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values

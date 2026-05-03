@@ -8,6 +8,7 @@ import {
   CircleHelp,
   Clock3,
   Home,
+  LogOut,
   MapPin,
   Menu,
   Minus,
@@ -273,8 +274,12 @@ function initials(name) {
 }
 
 function App() {
-  const currentUserRole = 'city_admin';
   const [page, setPageState] = React.useState(() => window.location.hash.replace('#', '') || 'login');
+  const [authReady, setAuthReady] = React.useState(!supabase);
+  const [currentUser, setCurrentUser] = React.useState(null);
+  const [currentProfile, setCurrentProfile] = React.useState(null);
+  const publicPages = ['login', 'create-password'];
+  const currentUserRole = supabase ? currentProfile?.role : 'city_admin';
   const emptyCity = {
     id: '',
     name: 'Nenhuma cidade',
@@ -298,6 +303,42 @@ function App() {
     window.location.hash = nextPage;
   };
 
+  async function loadCurrentProfile(session) {
+    const user = session?.user ?? null;
+    setCurrentUser(user);
+    if (!user || !supabase) {
+      setCurrentProfile(null);
+      setAuthReady(true);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, name, role, city_id, store_id, courier_id, active')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (error || !data || data.active === false) {
+      setCurrentProfile(null);
+      setAuthReady(true);
+      if (data?.active === false) await supabase.auth.signOut();
+      return;
+    }
+
+    setCurrentProfile({ ...data, email: user.email });
+    if (data.role !== 'system_admin' && data.city_id) {
+      setCityId(data.city_id);
+    }
+    setAuthReady(true);
+  }
+
+  async function handleLogout() {
+    if (supabase) await supabase.auth.signOut();
+    setCurrentUser(null);
+    setCurrentProfile(null);
+    setPage('login');
+  }
+
   React.useEffect(() => {
     const onHashChange = () => setPageState(window.location.hash.replace('#', '') || 'login');
     window.addEventListener('hashchange', onHashChange);
@@ -305,8 +346,33 @@ function App() {
   }, []);
 
   React.useEffect(() => {
+    if (!supabase) return undefined;
+    let mounted = true;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (mounted) loadCurrentProfile(data.session);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (mounted) loadCurrentProfile(session);
+    });
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!supabase || !authReady) return;
+    if (!currentProfile && !publicPages.includes(page)) {
+      setPage('login');
+    }
+  }, [authReady, currentProfile, page]);
+
+  React.useEffect(() => {
     async function loadCities() {
-      if (!supabase) return;
+      if (!supabase || !authReady || !currentProfile) return;
       setCityLoading(true);
       setCityError('');
       setCityList([]);
@@ -333,13 +399,23 @@ function App() {
       }));
       setCityList(mapped);
       setCityId((current) => {
+        if (currentProfile.role !== 'system_admin' && currentProfile.city_id) return currentProfile.city_id;
         if (mapped.some((city) => city.id === current)) return current;
         return mapped[0]?.id ?? '';
       });
     }
 
     loadCities();
-  }, []);
+  }, [authReady, currentProfile]);
+
+  if (supabase && !authReady) {
+    return (
+      <main className="loading-page">
+        <div className="logo dark">BEELBEM</div>
+        <p>Carregando acesso...</p>
+      </main>
+    );
+  }
 
   if (page === 'login') {
     return <LoginView />;
@@ -347,6 +423,10 @@ function App() {
 
   if (page === 'create-password') {
     return <CreatePasswordView />;
+  }
+
+  if (supabase && !currentProfile) {
+    return <LoginView />;
   }
 
   return (
@@ -388,8 +468,15 @@ function App() {
             )}
           </div>
           <div className="top-actions">
+            {currentProfile && (
+              <div className="user-chip" title={currentProfile.email}>
+                <span>{initials(currentProfile.name || currentProfile.email || 'Usuario')}</span>
+                <strong>{currentProfile.name}</strong>
+              </div>
+            )}
             <button className="icon-button notification" aria-label="Notificacoes"><Bell size={21} /><span>3</span></button>
             <button className="create-button" aria-label="Nova entrega"><Plus size={22} /></button>
+            <button className="icon-button" type="button" onClick={handleLogout} aria-label="Sair"><LogOut size={20} /></button>
           </div>
         </header>
 
@@ -466,9 +553,16 @@ function LoginView() {
       .from('profiles')
       .select('role, city_id, store_id, courier_id, active')
       .eq('id', data.user.id)
-      .single();
+      .maybeSingle();
+
+    if (!profile) {
+      await supabase.auth.signOut();
+      setError('Usuario sem perfil de acesso. Peça ao administrador para revisar o cadastro.');
+      return;
+    }
 
     if (profile?.active === false) {
+      await supabase.auth.signOut();
       setError('Usuario inativo. Entre em contato com o administrador.');
       return;
     }
