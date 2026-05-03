@@ -291,10 +291,10 @@ function App() {
     activeStores: 0,
     metrics: ['0', '0', '0', '0%', '0.0'],
   };
-  const [cityList, setCityList] = React.useState(supabase ? [] : cities);
-  const [storeList, setStoreList] = React.useState(initialStores);
-  const [courierList, setCourierList] = React.useState(initialCouriers);
-  const [cityId, setCityId] = React.useState(supabase ? '' : cities[0].id);
+  const [cityList, setCityList] = React.useState([]);
+  const [storeList, setStoreList] = React.useState([]);
+  const [courierList, setCourierList] = React.useState([]);
+  const [cityId, setCityId] = React.useState('');
   const selectedCity = cityList.find((city) => city.id === cityId) ?? cityList[0] ?? emptyCity;
   const [cityLoading, setCityLoading] = React.useState(false);
   const [cityError, setCityError] = React.useState('');
@@ -408,6 +408,78 @@ function App() {
     loadCities();
   }, [authReady, currentProfile]);
 
+  React.useEffect(() => {
+    async function loadCityRecords() {
+      if (!supabase || !authReady || !currentProfile || !cityId) return;
+
+      const [{ data: storesData, error: storesError }, { data: couriersData, error: couriersError }] = await Promise.all([
+        supabase
+          .from('stores')
+          .select('id, city_id, name, fantasy_name, document, responsible_name, email, whatsapp, store_type, address, address_number, district, active')
+          .eq('city_id', cityId)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('couriers')
+          .select('id, city_id, name, cpf, phone, email, vehicle_type, vehicle_plate, pix_key, pix_key_type, pix_holder_name, approval_status, availability_status, rating, active')
+          .eq('city_id', cityId)
+          .order('created_at', { ascending: false }),
+      ]);
+
+      if (!storesError) {
+        setStoreList((storesData ?? []).map((store) => ({
+          id: store.id,
+          cityId: store.city_id,
+          name: store.name,
+          fantasyName: store.fantasy_name,
+          document: store.document,
+          responsible: store.responsible_name,
+          email: store.email,
+          whatsapp: store.whatsapp,
+          type: store.store_type,
+          address: store.address,
+          number: store.address_number,
+          district: store.district,
+          active: store.active,
+        })));
+      }
+
+      if (!couriersError) {
+        setCourierList((couriersData ?? []).map((courier) => ({
+          id: courier.id,
+          cityId: courier.city_id,
+          fullName: courier.name,
+          cpf: courier.cpf,
+          phone: courier.phone,
+          email: courier.email,
+          vehicle: courier.vehicle_type,
+          plate: courier.vehicle_plate,
+          pix: courier.pix_key,
+          pixType: courier.pix_key_type,
+          pixHolder: courier.pix_holder_name,
+          status: courier.approval_status,
+          availability: courier.availability_status,
+          rating: courier.rating,
+          active: courier.active,
+        })));
+      }
+
+      if (!storesError || !couriersError) {
+        setCityList((current) => current.map((city) => (
+          city.id === cityId
+            ? {
+                ...city,
+                activeStores: storesError ? city.activeStores : (storesData ?? []).filter((store) => store.active !== false).length,
+                availableCouriers: couriersError ? city.availableCouriers : (couriersData ?? []).filter((courier) => courier.active !== false && courier.availability_status === 'available').length,
+                pausedCouriers: couriersError ? city.pausedCouriers : (couriersData ?? []).filter((courier) => courier.availability_status === 'paused').length,
+              }
+            : city
+        )));
+      }
+    }
+
+    loadCityRecords();
+  }, [authReady, currentProfile, cityId]);
+
   if (supabase && !authReady) {
     return (
       <main className="loading-page">
@@ -480,7 +552,7 @@ function App() {
           </div>
         </header>
 
-        {page === 'map' && <MapOnlyView city={selectedCity} />}
+        {page === 'map' && <MapOnlyView city={selectedCity} couriers={courierList} />}
         {page === 'cities' && (
           <CitiesView
             cities={cityList}
@@ -491,7 +563,7 @@ function App() {
             error={cityError}
           />
         )}
-        {page === 'access' && <AccessView city={selectedCity} />}
+        {page === 'access' && <AccessView city={selectedCity} stores={storeList} couriers={courierList} />}
         {page === 'stores' && <StoresView city={selectedCity} stores={storeList} onChangeStores={setStoreList} />}
         {page === 'couriers' && <CouriersView city={selectedCity} couriers={courierList} onChangeCouriers={setCourierList} />}
         {page === 'store-home' && <StoreHomeView city={selectedCity} />}
@@ -638,7 +710,7 @@ function CourierHomeView({ city }) {
         <article className="availability-card"><p>Status</p><strong>Disponivel</strong></article>
         <article className="availability-card"><p>Entregas hoje</p><strong>7</strong></article>
         <article className="availability-card"><p>Repasses</p><strong>R$ 92</strong></article>
-        <article className="availability-card"><p>Lojas da cidade</p><strong>{storesByCity[city.id]?.length ?? 0}</strong></article>
+        <article className="availability-card"><p>Lojas da cidade</p><strong>{city.activeStores ?? 0}</strong></article>
       </div>
     </section>
   );
@@ -733,9 +805,9 @@ function CreatePasswordView() {
 
 function Overview({ city }) {
   const cityMetrics = metrics.map((metric, index) => ({ ...metric, value: city.metrics[index] }));
-  const cityDeliveries = deliveries.filter((delivery) => delivery.cityId === city.id);
-  const cityCompleted = completed.filter(([cityId]) => cityId === city.id);
-  const cityActivity = activity.filter(([cityId]) => cityId === city.id);
+  const cityDeliveries = [];
+  const cityCompleted = [];
+  const cityActivity = [];
 
   return (
     <>
@@ -992,13 +1064,8 @@ function CitiesView({ cities, selectedCityId, onSelectCity, onChangeCities, load
   );
 }
 
-function AccessView({ city }) {
-  const [users, setUsers] = React.useState([
-    ['Sistema', 'BeelBem Operacoes', 'admin@beelbem.com', 'Admin do sistema', 'Todas', '', '', ''],
-    ['Cidade', `Gestor ${city.name}`, `admin.${city.id}@beelbem.com`, 'Admin da cidade', city.name, '', '', ''],
-    ['Loja', 'Pizzaria Italia', 'loja@pizzariaitalia.com', 'Admin lojista', city.name, '', '', ''],
-    ['Motoboy', 'Carlos Silva', 'carlos.moto@beelbem.com', 'Admin motoboy', city.name, '', '', ''],
-  ]);
+function AccessView({ city, stores, couriers }) {
+  const [users, setUsers] = React.useState([]);
   const [typeFilter, setTypeFilter] = React.useState('Todos');
   const [accessErrors, setAccessErrors] = React.useState({});
   const [inviteMessage, setInviteMessage] = React.useState('');
@@ -1010,16 +1077,42 @@ function AccessView({ city }) {
     addressProof: '',
     active: true,
     role: 'city_admin',
-    store: storesByCity[city.id]?.[0] ?? '',
-    courier: couriersByCity[city.id]?.[0] ?? '',
+    store: stores[0]?.id ?? '',
+    courier: couriers[0]?.id ?? '',
   });
 
   React.useEffect(() => {
     setForm((current) => ({
       ...current,
-      store: storesByCity[city.id]?.[0] ?? '',
-      courier: couriersByCity[city.id]?.[0] ?? '',
+      store: stores[0]?.id ?? '',
+      courier: couriers[0]?.id ?? '',
     }));
+  }, [city.id, stores, couriers]);
+
+  React.useEffect(() => {
+    async function loadUsers() {
+      if (!supabase) return;
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, name, role, city_id, store_id, courier_id, active')
+        .order('created_at', { ascending: false });
+
+      if (error) return;
+
+      setUsers((data ?? []).map((profile) => [
+        typeLabel(profile.role),
+        profile.name,
+        profile.id,
+        accessLabel(profile.role),
+        profile.role === 'system_admin' ? 'Todas' : city.name,
+        '',
+        '',
+        '',
+        profile.active ? 'Ativo' : 'Inativo',
+      ]));
+    }
+
+    loadUsers();
   }, [city.id]);
 
   function accessLabel(role) {
@@ -1038,17 +1131,37 @@ function AccessView({ city }) {
 
   function scopeLabel() {
     if (form.role === 'system_admin') return 'Todas';
-    if (form.role === 'store_admin') return `${city.name} / ${form.store}`;
-    if (form.role === 'courier_admin') return `${city.name} / ${form.courier}`;
+    if (form.role === 'store_admin') return `${city.name} / ${stores.find((store) => store.id === form.store)?.name ?? 'Loja'}`;
+    if (form.role === 'courier_admin') return `${city.name} / ${couriers.find((courier) => courier.id === form.courier)?.fullName ?? 'Motoboy'}`;
     return city.name;
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
     const validationErrors = validateAccessUserForm(form);
     setAccessErrors(validationErrors);
     setInviteMessage('');
     if (Object.keys(validationErrors).length) return;
+
+    if (supabase) {
+      const payload = {
+        name: form.name.trim(),
+        email: form.email.trim(),
+        cpf: onlyDigits(form.cpf),
+        whatsapp: onlyDigits(form.whatsapp),
+        role: form.role,
+        city_id: form.role === 'system_admin' ? null : city.id,
+        store_id: form.role === 'store_admin' ? form.store : null,
+        courier_id: form.role === 'courier_admin' ? form.courier : null,
+        user_active: form.active,
+        status: 'pending',
+      };
+      const { error } = await supabase.from('access_invites').insert(payload);
+      if (error) {
+        setAccessErrors({ form: error.message });
+        return;
+      }
+    }
 
     setUsers((current) => [
       [
@@ -1132,7 +1245,7 @@ function AccessView({ city }) {
             <label>
               Loja
               <select value={form.store} onChange={(event) => setForm((current) => ({ ...current, store: event.target.value }))}>
-              {(storesByCity[city.id] ?? []).map((store) => <option key={store} value={store}>{store}</option>)}
+              {stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
               </select>
               {accessErrors.store && <span className="field-error">{accessErrors.store}</span>}
             </label>
@@ -1141,7 +1254,7 @@ function AccessView({ city }) {
             <label>
               Motoboy
               <select value={form.courier} onChange={(event) => setForm((current) => ({ ...current, courier: event.target.value }))}>
-              {(couriersByCity[city.id] ?? []).map((courier) => <option key={courier} value={courier}>{courier}</option>)}
+              {couriers.map((courier) => <option key={courier.id} value={courier.id}>{courier.fullName}</option>)}
               </select>
               {accessErrors.courier && <span className="field-error">{accessErrors.courier}</span>}
             </label>
@@ -1167,6 +1280,7 @@ function AccessView({ city }) {
           </label>
         </div>
         <button className="primary-action" type="submit"><Plus size={18} />Cadastrar convite</button>
+        {accessErrors.form && <p className="field-error">{accessErrors.form}</p>}
         {inviteMessage && <p className="success-message">{inviteMessage}</p>}
         <p className="form-note">No Supabase este cadastro gravara em `access_invites` e, ao aceitar, criara o `profile` com o mesmo escopo.</p>
       </form>
@@ -1268,39 +1382,99 @@ function StoresView({ city, stores, onChangeStores }) {
   });
   const [errors, setErrors] = React.useState({});
   const [cnpjMessage, setCnpjMessage] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+  const [message, setMessage] = React.useState('');
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
+    setMessage('');
     const validationErrors = validateStoreForm(form);
     setErrors(validationErrors);
     if (Object.keys(validationErrors).length) return;
 
-    const newStore = {
-      id: slugifyCity(form.name, city.state),
-      cityId: city.id,
+    const payload = {
+      city_id: city.id,
       name: form.name.trim(),
-      fantasyName: form.fantasyName.trim(),
-      document: form.document.trim(),
-      responsible: form.responsible.trim(),
+      fantasy_name: form.fantasyName.trim(),
+      document: onlyDigits(form.document),
+      responsible_name: form.responsible.trim(),
       email: form.email.trim(),
-      whatsapp: form.whatsapp.trim(),
-      landline: form.landline.trim(),
-      type: form.type.trim(),
+      whatsapp: onlyDigits(form.whatsapp),
+      landline: onlyDigits(form.landline),
+      store_type: form.type.trim(),
       address: form.address.trim(),
-      number: form.number.trim(),
+      address_number: form.number.trim(),
       complement: form.complement.trim(),
       district: form.district.trim(),
+      zip_code: onlyDigits(form.zipCode),
+      latitude: form.latitude ? Number(form.latitude.replace(',', '.')) : null,
+      longitude: form.longitude ? Number(form.longitude.replace(',', '.')) : null,
+      location_received: form.locationReceived.trim(),
+      opening_hours: form.schedule,
+      allow_manual_order: form.allowManualOrder === 'Sim',
+      require_pickup_confirmation: form.requirePickupConfirmation === 'Sim',
+      rate_courier_after_delivery: form.rateCourierAfterDelivery === 'Sim',
+      internal_notes: form.notes.trim(),
+      active: form.status === 'Ativa',
+    };
+
+    let newStore = {
+      id: slugifyCity(form.name, city.state),
+      cityId: city.id,
+      name: payload.name,
+      fantasyName: payload.fantasy_name,
+      document: form.document.trim(),
+      responsible: payload.responsible_name,
+      email: payload.email,
+      whatsapp: form.whatsapp.trim(),
+      landline: form.landline.trim(),
+      type: payload.store_type,
+      address: payload.address,
+      number: payload.address_number,
+      complement: payload.complement,
+      district: payload.district,
       zipCode: form.zipCode.trim(),
       latitude: form.latitude.trim(),
       longitude: form.longitude.trim(),
-      locationReceived: form.locationReceived.trim(),
+      locationReceived: payload.location_received,
       schedule: form.schedule,
       allowManualOrder: form.allowManualOrder,
       requirePickupConfirmation: form.requirePickupConfirmation,
       rateCourierAfterDelivery: form.rateCourierAfterDelivery,
-      notes: form.notes.trim(),
-      active: form.status === 'Ativa',
+      notes: payload.internal_notes,
+      active: payload.active,
     };
+
+    if (supabase) {
+      setSaving(true);
+      const { data, error } = await supabase
+        .from('stores')
+        .insert(payload)
+        .select('id, city_id, name, fantasy_name, document, responsible_name, email, whatsapp, store_type, address, address_number, district, active')
+        .single();
+      setSaving(false);
+
+      if (error) {
+        setErrors({ form: error.message });
+        return;
+      }
+
+      newStore = {
+        id: data.id,
+        cityId: data.city_id,
+        name: data.name,
+        fantasyName: data.fantasy_name,
+        document: data.document,
+        responsible: data.responsible_name,
+        email: data.email,
+        whatsapp: data.whatsapp,
+        type: data.store_type,
+        address: data.address,
+        number: data.address_number,
+        district: data.district,
+        active: data.active,
+      };
+    }
 
     onChangeStores((current) => [newStore, ...current]);
     setForm((current) => ({
@@ -1323,6 +1497,7 @@ function StoresView({ city, stores, onChangeStores }) {
       schedule: emptySchedule,
       notes: '',
     }));
+    setMessage('Loja cadastrada no banco de dados.');
   }
 
   async function consultCnpj() {
@@ -1593,6 +1768,9 @@ function StoresView({ city, stores, onChangeStores }) {
           />
         </label>
         <button className="primary-action" type="submit"><Plus size={18} />Cadastrar loja</button>
+        {saving && <p className="form-note">Salvando loja...</p>}
+        {errors.form && <p className="field-error">{errors.form}</p>}
+        {message && <p className="success-message">{message}</p>}
         <p className="form-note">Toda loja cadastrada aqui fica vinculada a cidade selecionada no topo e sera gravada com `city_id`.</p>
       </form>
     </section>
@@ -1621,14 +1799,41 @@ function CouriersView({ city, couriers, onChangeCouriers }) {
   });
   const [errors, setErrors] = React.useState({});
   const [whatsappMessage, setWhatsappMessage] = React.useState('WhatsApp ainda nao validado.');
+  const [saving, setSaving] = React.useState(false);
+  const [message, setMessage] = React.useState('');
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
+    setMessage('');
     const validationErrors = validateCourierForm(form);
     setErrors(validationErrors);
     if (Object.keys(validationErrors).length) return;
 
-    const newCourier = {
+    const payload = {
+      city_id: city.id,
+      name: form.fullName.trim(),
+      birth_date: form.birthDate,
+      cpf: onlyDigits(form.cpf),
+      phone: onlyDigits(form.phone),
+      email: form.email.trim(),
+      face_photo_path: form.facePhoto,
+      whatsapp_validated: false,
+      vehicle_type: 'Moto',
+      vehicle_plate: form.plate.toUpperCase(),
+      pix_key: form.pix.trim(),
+      pix_key_type: form.pixType,
+      pix_holder_name: form.pixHolder.trim(),
+      vehicle_notes: form.vehicleNotes.trim(),
+      cnh_file_path: form.cnhFile,
+      cnh_valid_until: form.cnhValidUntil,
+      approval_status: 'pending_approval',
+      availability_status: 'offline',
+      internal_notes: form.notes.trim(),
+      active: true,
+      available: false,
+    };
+
+    let newCourier = {
       id: slugifyCity(form.fullName, city.state),
       cityId: city.id,
       ...form,
@@ -1638,6 +1843,39 @@ function CouriersView({ city, couriers, onChangeCouriers }) {
       rating: '0',
       totalDeliveries: '0',
     };
+
+    if (supabase) {
+      setSaving(true);
+      const { data, error } = await supabase
+        .from('couriers')
+        .insert(payload)
+        .select('id, city_id, name, cpf, phone, email, vehicle_type, vehicle_plate, pix_key, pix_key_type, pix_holder_name, approval_status, availability_status, rating, active')
+        .single();
+      setSaving(false);
+
+      if (error) {
+        setErrors({ form: error.message });
+        return;
+      }
+
+      newCourier = {
+        id: data.id,
+        cityId: data.city_id,
+        fullName: data.name,
+        cpf: data.cpf,
+        phone: data.phone,
+        email: data.email,
+        vehicle: data.vehicle_type,
+        plate: data.vehicle_plate,
+        pix: data.pix_key,
+        pixType: data.pix_key_type,
+        pixHolder: data.pix_holder_name,
+        status: data.approval_status,
+        availability: data.availability_status,
+        rating: data.rating,
+        active: data.active,
+      };
+    }
 
     onChangeCouriers((current) => [newCourier, ...current]);
     setForm({
@@ -1659,6 +1897,7 @@ function CouriersView({ city, couriers, onChangeCouriers }) {
       notes: '',
     });
     setWhatsappMessage('WhatsApp ainda nao validado.');
+    setMessage('Entregador cadastrado no banco de dados.');
   }
 
   function sendWhatsappCode() {
@@ -1783,6 +2022,9 @@ function CouriersView({ city, couriers, onChangeCouriers }) {
         </label>
 
         <button className="primary-action" type="submit"><Plus size={18} />Salvar entregador</button>
+        {saving && <p className="form-note">Salvando entregador...</p>}
+        {errors.form && <p className="field-error">{errors.form}</p>}
+        {message && <p className="success-message">{message}</p>}
       </form>
     </section>
   );
@@ -1810,18 +2052,16 @@ function DeliveryMap({ large = false }) {
   );
 }
 
-function MapOnlyView({ city }) {
+function MapOnlyView({ city, couriers }) {
   const availability = [
     ['Motoboys disponiveis', String(city.availableCouriers)],
     ['Em entrega', String(city.activeDeliveries)],
     ['Pausados', String(city.pausedCouriers)],
     ['Lojas ativas', String(city.activeStores)],
   ];
-  const availableByCity = {
-    goiania: ['Carlos Silva', 'Juliana Santos', 'Mariana Costa', 'Lucas Lima', 'Renato Alves'],
-    aparecida: ['Paulo Oliveira', 'Bianca Freitas'],
-    anapolis: [],
-  };
+  const availableCouriers = couriers.filter((courier) => (
+    courier.active !== false && ['available', 'Disponivel'].includes(courier.availability)
+  ));
 
   return (
     <>
@@ -1837,14 +2077,14 @@ function MapOnlyView({ city }) {
         <DeliveryMap large />
         <aside className="panel map-list">
           <h2>Motoboys disponiveis em {city.name}</h2>
-          {availableByCity[city.id].map((name) => (
-            <div className="ranking-row" key={name}>
-              <div className="avatar small">{initials(name)}</div>
-              <strong>{name}</strong>
+          {availableCouriers.map((courier) => (
+            <div className="ranking-row" key={courier.id}>
+              <div className="avatar small">{initials(courier.fullName)}</div>
+              <strong>{courier.fullName}</strong>
               <span>Disponivel</span>
             </div>
           ))}
-          {availableByCity[city.id].length === 0 && (
+          {availableCouriers.length === 0 && (
             <p className="empty-state">Nenhum motoboy disponivel nesta cidade.</p>
           )}
         </aside>
