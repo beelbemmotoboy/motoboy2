@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { maskCep, maskCnpj, maskCpf, maskPhone, onlyDigits, passwordStrength, validateAccessUserForm, validateCourierForm, validateStoreForm } from './utils/validators';
+import loginLogo from '../imagem/logo.png';
 import './styles.css';
 
 const metrics = [
@@ -629,19 +630,32 @@ function LoginView() {
     setLoading(false);
 
     if (signInError) {
-      setError(signInError.message || 'Login invalido.');
+      const message = (signInError.message || '').toLowerCase();
+      if (message.includes('invalid login credentials')) {
+        setError('E-mail ou senha incorretos. Verifique os dados e tente novamente.');
+      } else if (message.includes('email not confirmed')) {
+        setError('Este e-mail ainda nao foi confirmado. Verifique sua caixa de entrada.');
+      } else {
+        setError('Nao foi possivel fazer login agora. Tente novamente em alguns instantes.');
+      }
       return;
     }
 
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('role, city_id, store_id, courier_id, active')
       .eq('id', data.user.id)
       .maybeSingle();
 
+    if (profileError) {
+      await supabase.auth.signOut();
+      setError('Login validado, mas nao foi possivel consultar seu perfil de acesso.');
+      return;
+    }
+
     if (!profile) {
       await supabase.auth.signOut();
-      setError('Usuario sem perfil de acesso. Peça ao administrador para revisar o cadastro.');
+      setError('Usuario autenticado, mas sem perfil cadastrado no sistema. Peça ao administrador para liberar seu acesso.');
       return;
     }
 
@@ -657,7 +671,7 @@ function LoginView() {
   return (
     <main className="login-page">
       <section className="login-hero" aria-label="Beelbem Delivery">
-        <img src="/login-hero.png" alt="Beelbem Delivery em construcao" />
+        <img src={loginLogo} alt="Beelbem Delivery" />
       </section>
       <section className="login-panel">
         <div className="logo dark">BEELBEM</div>
