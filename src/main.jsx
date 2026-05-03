@@ -280,6 +280,8 @@ function App() {
   const [courierList, setCourierList] = React.useState(initialCouriers);
   const [cityId, setCityId] = React.useState(cities[0].id);
   const selectedCity = cityList.find((city) => city.id === cityId) ?? cityList[0];
+  const [cityLoading, setCityLoading] = React.useState(false);
+  const [cityError, setCityError] = React.useState('');
   const setPage = (nextPage) => {
     setPageState(nextPage);
     window.location.hash = nextPage;
@@ -289,6 +291,39 @@ function App() {
     const onHashChange = () => setPageState(window.location.hash.replace('#', '') || 'login');
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
+  React.useEffect(() => {
+    async function loadCities() {
+      if (!supabase) return;
+      setCityLoading(true);
+      setCityError('');
+      const { data, error } = await supabase
+        .from('cities')
+        .select('id, name, state, slug, active')
+        .order('name', { ascending: true });
+
+      setCityLoading(false);
+      if (error) {
+        setCityError(error.message);
+        return;
+      }
+
+      if (data?.length) {
+        const mapped = data.map((city) => ({
+          ...city,
+          availableCouriers: 0,
+          activeDeliveries: 0,
+          pausedCouriers: 0,
+          activeStores: 0,
+          metrics: ['0', '0', '0', '0%', '0.0'],
+        }));
+        setCityList(mapped);
+        setCityId((current) => mapped.some((city) => city.id === current) ? current : mapped[0].id);
+      }
+    }
+
+    loadCities();
   }, []);
 
   if (page === 'login') {
@@ -344,7 +379,16 @@ function App() {
         </header>
 
         {page === 'map' && <MapOnlyView city={selectedCity} />}
-        {page === 'cities' && <CitiesView cities={cityList} selectedCityId={cityId} onSelectCity={setCityId} onChangeCities={setCityList} />}
+        {page === 'cities' && (
+          <CitiesView
+            cities={cityList}
+            selectedCityId={cityId}
+            onSelectCity={setCityId}
+            onChangeCities={setCityList}
+            loading={cityLoading}
+            error={cityError}
+          />
+        )}
         {page === 'access' && <AccessView city={selectedCity} />}
         {page === 'stores' && <StoresView city={selectedCity} stores={storeList} onChangeStores={setStoreList} />}
         {page === 'couriers' && <CouriersView city={selectedCity} couriers={courierList} onChangeCouriers={setCourierList} />}
@@ -681,11 +725,16 @@ function Overview({ city }) {
   );
 }
 
-function CitiesView({ cities, selectedCityId, onSelectCity, onChangeCities }) {
+function CitiesView({ cities, selectedCityId, onSelectCity, onChangeCities, loading, error }) {
   const [form, setForm] = React.useState({ name: '', state: 'GO' });
+  const [saving, setSaving] = React.useState(false);
+  const [message, setMessage] = React.useState('');
+  const [localError, setLocalError] = React.useState('');
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
+    setMessage('');
+    setLocalError('');
     const name = form.name.trim();
     const state = form.state.trim().toUpperCase();
     if (!name || !state) return;
@@ -702,6 +751,35 @@ function CitiesView({ cities, selectedCityId, onSelectCity, onChangeCities }) {
       metrics: ['0', '0', '0', '0%', '0.0'],
     };
 
+    if (supabase) {
+      setSaving(true);
+      const { data, error: insertError } = await supabase
+        .from('cities')
+        .insert({ name, state, slug: newCity.id, active: true })
+        .select('id, name, state, slug, active')
+        .single();
+      setSaving(false);
+
+      if (insertError) {
+        setLocalError(insertError.message);
+        return;
+      }
+
+      const cityFromDb = {
+        ...data,
+        availableCouriers: 0,
+        activeDeliveries: 0,
+        pausedCouriers: 0,
+        activeStores: 0,
+        metrics: ['0', '0', '0', '0%', '0.0'],
+      };
+      onChangeCities((current) => [...current, cityFromDb]);
+      onSelectCity(cityFromDb.id);
+      setForm({ name: '', state });
+      setMessage('Cidade cadastrada no Supabase.');
+      return;
+    }
+
     onChangeCities((current) => {
       if (current.some((city) => city.id === newCity.id)) return current;
       return [...current, newCity];
@@ -710,17 +788,37 @@ function CitiesView({ cities, selectedCityId, onSelectCity, onChangeCities }) {
     setForm({ name: '', state });
   }
 
-  function toggleCity(cityId) {
+  async function toggleCity(cityId) {
+    setMessage('');
+    setLocalError('');
+    const city = cities.find((item) => item.id === cityId);
+    if (!city) return;
+    const nextActive = city.active === false;
+
+    if (supabase) {
+      setSaving(true);
+      const { error: updateError } = await supabase
+        .from('cities')
+        .update({ active: nextActive })
+        .eq('id', cityId);
+      setSaving(false);
+
+      if (updateError) {
+        setLocalError(updateError.message);
+        return;
+      }
+    }
+
     onChangeCities((current) =>
       current.map((city) =>
         city.id === cityId ? { ...city, active: city.active === false } : city,
       ),
     );
-    const city = cities.find((item) => item.id === cityId);
     if (city?.active !== false && cityId === selectedCityId) {
       const fallback = cities.find((item) => item.id !== cityId && item.active !== false);
       if (fallback) onSelectCity(fallback.id);
     }
+    setMessage(nextActive ? 'Cidade ativada.' : 'Cidade desativada.');
   }
 
   return (
@@ -747,6 +845,9 @@ function CitiesView({ cities, selectedCityId, onSelectCity, onChangeCities }) {
           </label>
         </div>
         <button className="primary-action" type="submit"><Plus size={18} />Cadastrar cidade</button>
+        {saving && <p className="form-note">Salvando...</p>}
+        {(error || localError) && <p className="field-error">{error || localError}</p>}
+        {message && <p className="success-message">{message}</p>}
         <p className="form-note">Todos os proximos cadastros usam a cidade selecionada como chave estrangeira.</p>
       </form>
 
@@ -755,6 +856,7 @@ function CitiesView({ cities, selectedCityId, onSelectCity, onChangeCities }) {
           <h2>Cidades cadastradas</h2>
           <span className="count-pill">{cities.length} cidades</span>
         </div>
+        {loading && <p className="form-note">Carregando cidades do Supabase...</p>}
         <div className="city-list">
           {cities.map((city) => (
             <article className={`city-row ${city.id === selectedCityId ? 'selected' : ''}`} key={city.id}>
