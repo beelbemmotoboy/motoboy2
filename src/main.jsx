@@ -2209,20 +2209,24 @@ function CouriersView({ city, cities, couriers, onChangeCouriers }) {
             .eq('id', editingCourierId)
             .select('id, city_id, name, birth_date, cpf, phone, email, face_photo_path, whatsapp_validated, vehicle_type, vehicle_plate, pix_key, pix_key_type, pix_holder_name, vehicle_notes, cnh_file_path, cnh_valid_until, internal_notes, approval_status, availability_status, rating, active')
             .single()
-        : await supabase
-            .from('couriers')
-            .insert(payload)
-            .select('id, city_id, name, birth_date, cpf, phone, email, face_photo_path, whatsapp_validated, vehicle_type, vehicle_plate, pix_key, pix_key_type, pix_holder_name, vehicle_notes, cnh_file_path, cnh_valid_until, internal_notes, approval_status, availability_status, rating, active')
-            .single();
+        : await supabase.functions.invoke('create-courier-invite', {
+            body: { courier: payload },
+          });
 
       setSaving(false);
 
       if (error) {
-        setErrors({ form: error.message });
+        setErrors({ form: error.message || error.context?.error || 'Nao foi possivel salvar o entregador.' });
         return;
       }
 
-      newCourier = mapCourierFromDb(data);
+      const courierData = editingCourierId ? data : data?.courier;
+      if (!courierData) {
+        setErrors({ form: 'Cadastro enviado, mas nao foi possivel carregar o entregador retornado.' });
+        return;
+      }
+
+      newCourier = mapCourierFromDb(courierData);
     }
 
     onChangeCouriers((current) => {
@@ -2235,7 +2239,7 @@ function CouriersView({ city, cities, couriers, onChangeCouriers }) {
       return newCourier.cityId === city.id ? [newCourier, ...current] : current;
     });
     resetForm();
-    setMessage(editingCourierId ? 'Dados do entregador atualizados.' : 'Entregador cadastrado no banco de dados.');
+    setMessage(editingCourierId ? 'Dados do entregador atualizados.' : 'Entregador cadastrado e convite de senha enviado por e-mail.');
   }
 
   function sendWhatsappCode() {
