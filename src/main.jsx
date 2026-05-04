@@ -493,7 +493,7 @@ function App() {
   if (supabase && !authReady) {
     return (
       <main className="loading-page">
-        <div className="logo dark">BEELBEM</div>
+        <div className="logo dark auth-logo"><img src={beeIcon} alt="" /><span>BEELBEM</span></div>
         <p>Carregando acesso...</p>
       </main>
     );
@@ -709,7 +709,7 @@ function LoginView() {
         <img src={loginLogo} alt="Beelbem Delivery" />
       </section>
       <section className="login-panel">
-        <div className="logo dark">BEELBEM</div>
+        <div className="logo dark auth-logo"><img src={beeIcon} alt="" /><span>BEELBEM</span></div>
         <h1>Seja bem vindo!</h1>
         <p>Rapido, seguro e brasileiro.</p>
         <form onSubmit={handleLogin}>
@@ -780,7 +780,7 @@ function ForgotPasswordView() {
   return (
     <main className="password-page">
       <section className="password-panel">
-        <div className="logo dark">BEELBEM</div>
+        <div className="logo dark auth-logo"><img src={beeIcon} alt="" /><span>BEELBEM</span></div>
         <h1>Redefinir senha</h1>
         <p>Informe o e-mail cadastrado. O Supabase enviara um link seguro para criar uma nova senha.</p>
         <form onSubmit={handleSubmit}>
@@ -859,7 +859,7 @@ function CreateAccountView() {
   return (
     <main className="password-page">
       <section className="password-panel">
-        <div className="logo dark">BEELBEM</div>
+        <div className="logo dark auth-logo"><img src={beeIcon} alt="" /><span>BEELBEM</span></div>
         <h1>Criar conta</h1>
         <p>Crie o acesso inicial. A entrada no sistema so sera liberada depois que um administrador vincular seu perfil.</p>
         <form onSubmit={handleSubmit}>
@@ -924,7 +924,7 @@ function AuthUnavailableView() {
   return (
     <main className="password-page">
       <section className="password-panel">
-        <div className="logo dark">BEELBEM</div>
+        <div className="logo dark auth-logo"><img src={beeIcon} alt="" /><span>BEELBEM</span></div>
         <h1>Acesso bloqueado</h1>
         <p>O Supabase nao esta configurado nesta instalacao. Por seguranca, nenhuma area interna sera aberta sem autenticacao real.</p>
         <a className="primary-link" href="#login">Voltar para login</a>
@@ -1017,7 +1017,7 @@ function CreatePasswordView() {
   return (
     <main className="password-page">
       <section className="password-panel">
-        <div className="logo dark">BEELBEM</div>
+        <div className="logo dark auth-logo"><img src={beeIcon} alt="" /><span>BEELBEM</span></div>
         <h1>Criar senha</h1>
         <p>Este link de confirmacao expira em 1 hora. Use uma senha forte para proteger sua conta.</p>
         <form onSubmit={handleSubmit}>

@@ -193,6 +193,24 @@ button, a {
   font-size: 24px;
 }
 
+.auth-logo {
+  grid-template-columns: 42px auto;
+  justify-content: start;
+  gap: 12px;
+  padding: 0 14px;
+}
+
+.auth-logo img {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+.auth-logo span {
+  line-height: 1;
+}
+
 .password-panel h1 {
   font-size: 30px;
 }
