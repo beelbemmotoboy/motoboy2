@@ -908,6 +908,7 @@ mark.amber {
 .remember-login {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 8px;
   margin-top: 2px;
   color: #333;

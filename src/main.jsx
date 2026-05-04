@@ -470,6 +470,28 @@ function roleLabel(role) {
   return 'Usuario';
 }
 
+async function functionErrorMessage(error, fallback) {
+  if (!error) return fallback;
+  const response = error.context;
+  if (response?.clone) {
+    try {
+      const data = await response.clone().json();
+      if (data?.error) return data.error;
+      if (data?.message) return data.message;
+    } catch {
+      try {
+        const text = await response.clone().text();
+        if (text) return text;
+      } catch {
+        // Keep the fallback below.
+      }
+    }
+  }
+
+  if (error.message && !error.message.includes('non-2xx')) return error.message;
+  return fallback;
+}
+
 function PasswordInput({ label, value, onChange, placeholder, canCopy = false, autoComplete = 'new-password' }) {
   const [visible, setVisible] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
@@ -630,12 +652,12 @@ function LoginView() {
             />
           </label>
           <label className="remember-login">
+            <span>Manter e-mail e senha neste computador</span>
             <input
               type="checkbox"
               checked={form.remember}
               onChange={(event) => setForm((current) => ({ ...current, remember: event.target.checked }))}
             />
-            Manter e-mail e senha neste computador
           </label>
           {error && <p className="field-error">{error}</p>}
           <button className="primary-action" type="submit" disabled={loading}>
@@ -1359,7 +1381,7 @@ function AccessView({ city, stores, couriers }) {
     setSavingAccess(false);
 
     if (error) {
-      setAccessErrors({ form: error.message || 'Nao foi possivel excluir o usuario.' });
+      setAccessErrors({ form: await functionErrorMessage(error, 'Nao foi possivel excluir o usuario.') });
       return;
     }
 
@@ -1399,7 +1421,7 @@ function AccessView({ city, stores, couriers }) {
       setSavingAccess(false);
 
       if (error) {
-        setAccessErrors({ form: error.message || 'Nao foi possivel atualizar o usuario.' });
+        setAccessErrors({ form: await functionErrorMessage(error, 'Nao foi possivel atualizar o usuario.') });
         return;
       }
 
@@ -1453,7 +1475,7 @@ function AccessView({ city, stores, couriers }) {
 
       if (inviteError) {
         setAccessErrors({
-          form: inviteError.message || 'Convite criado, mas nao foi possivel enviar o e-mail.',
+          form: await functionErrorMessage(inviteError, 'Convite criado, mas nao foi possivel enviar o e-mail.'),
         });
         return;
       }
