@@ -130,6 +130,7 @@ serve(async (request) => {
       store_id: invite.store_id,
       courier_id: invite.courier_id,
       name: invite.name,
+      email,
       cpf: invite.cpf,
       whatsapp: invite.whatsapp,
       address_proof_path: invite.address_proof_path,

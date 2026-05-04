@@ -510,7 +510,18 @@ function PasswordInput({ label, value, onChange, placeholder, canCopy = false })
 }
 
 function LoginView() {
-  const [form, setForm] = React.useState({ email: '', password: '' });
+  const savedLogin = React.useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem('beelbem.rememberLogin') || '{}');
+    } catch {
+      return {};
+    }
+  }, []);
+  const [form, setForm] = React.useState({
+    email: savedLogin.email || '',
+    password: savedLogin.password || '',
+    remember: Boolean(savedLogin.remember),
+  });
   const [error, setError] = React.useState('');
   const [loading, setLoading] = React.useState(false);
 
@@ -574,6 +585,16 @@ function LoginView() {
       return;
     }
 
+    if (form.remember) {
+      localStorage.setItem('beelbem.rememberLogin', JSON.stringify({
+        remember: true,
+        email: form.email.trim(),
+        password: form.password,
+      }));
+    } else {
+      localStorage.removeItem('beelbem.rememberLogin');
+    }
+
     window.location.hash = `#${resolveHomeByRole(profile?.role)}`;
   }
 
@@ -594,6 +615,7 @@ function LoginView() {
               value={form.email}
               onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
               placeholder="voce@empresa.com"
+              autoComplete="email"
             />
           </label>
           <label>
@@ -603,7 +625,16 @@ function LoginView() {
               value={form.password}
               onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
               placeholder="Sua senha"
+              autoComplete="current-password"
             />
+          </label>
+          <label className="remember-login">
+            <input
+              type="checkbox"
+              checked={form.remember}
+              onChange={(event) => setForm((current) => ({ ...current, remember: event.target.checked }))}
+            />
+            Manter e-mail e senha neste computador
           </label>
           {error && <p className="field-error">{error}</p>}
           <button className="primary-action" type="submit" disabled={loading}>
@@ -1185,6 +1216,8 @@ function AccessView({ city, stores, couriers }) {
   const [accessErrors, setAccessErrors] = React.useState({});
   const [usersLoadError, setUsersLoadError] = React.useState('');
   const [inviteMessage, setInviteMessage] = React.useState('');
+  const [editingUser, setEditingUser] = React.useState(null);
+  const [savingAccess, setSavingAccess] = React.useState(false);
   const [form, setForm] = React.useState({
     name: '',
     email: '',
@@ -1200,19 +1233,31 @@ function AccessView({ city, stores, couriers }) {
   React.useEffect(() => {
     setForm((current) => ({
       ...current,
-      store: stores[0]?.id ?? '',
-      courier: couriers[0]?.id ?? '',
+      store: editingUser ? current.store : stores[0]?.id ?? '',
+      courier: editingUser ? current.courier : couriers[0]?.id ?? '',
     }));
-  }, [city.id, stores, couriers]);
+  }, [city.id, stores, couriers, editingUser]);
 
   React.useEffect(() => {
     async function loadUsers() {
       if (!supabase) return;
       setUsersLoadError('');
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from('profiles')
-        .select('id, name, role, city_id, store_id, courier_id, active')
+        .select('id, name, email, cpf, whatsapp, address_proof_path, role, city_id, store_id, courier_id, active')
         .order('created_at', { ascending: false });
+
+      if (error && (error.message || '').includes('email')) {
+        const fallback = await supabase
+          .from('profiles')
+          .select('id, name, cpf, whatsapp, address_proof_path, role, city_id, store_id, courier_id, active')
+          .order('created_at', { ascending: false });
+        data = fallback.data;
+        error = fallback.error;
+        if (!error) {
+          setUsersLoadError('A coluna profiles.email ainda nao existe no Supabase. Rode o schema.sql atualizado para sincronizar o e-mail do Auth.');
+        }
+      }
 
       if (error) {
         setUsers([]);
@@ -1220,17 +1265,23 @@ function AccessView({ city, stores, couriers }) {
         return;
       }
 
-      setUsers((data ?? []).map((profile) => [
-        typeLabel(profile.role),
-        profile.name,
-        profile.id,
-        accessLabel(profile.role),
-        profile.role === 'system_admin' ? 'Todas' : city.name,
-        '',
-        '',
-        '',
-        profile.active ? 'Ativo' : 'Inativo',
-      ]));
+      setUsers((data ?? []).map((profile) => ({
+        id: profile.id,
+        type: typeLabel(profile.role),
+        name: profile.name,
+        email: profile.email || 'E-mail nao sincronizado',
+        role: profile.role,
+        profileLabel: accessLabel(profile.role),
+        scope: profile.role === 'system_admin' ? 'Todas' : city.name,
+        cityId: profile.city_id,
+        storeId: profile.store_id,
+        courierId: profile.courier_id,
+        cpf: maskCpf(profile.cpf ?? ''),
+        whatsapp: maskPhone(profile.whatsapp ?? ''),
+        addressProof: profile.address_proof_path ?? '',
+        active: profile.active,
+        status: profile.active ? 'Ativo' : 'Inativo',
+      })));
     }
 
     loadUsers();
@@ -1257,19 +1308,122 @@ function AccessView({ city, stores, couriers }) {
     return city.name;
   }
 
+  function resetAccessForm() {
+    setEditingUser(null);
+    setForm((current) => ({
+      ...current,
+      name: '',
+      email: '',
+      cpf: '',
+      whatsapp: '',
+      addressProof: '',
+      active: true,
+      role: 'city_admin',
+      store: stores[0]?.id ?? '',
+      courier: couriers[0]?.id ?? '',
+    }));
+  }
+
+  function editUser(user) {
+    setAccessErrors({});
+    setInviteMessage('');
+    setEditingUser(user);
+    setForm({
+      name: user.name,
+      email: user.email === 'E-mail nao sincronizado' ? '' : user.email,
+      cpf: user.cpf,
+      whatsapp: user.whatsapp,
+      addressProof: user.addressProof,
+      active: user.active,
+      role: user.role,
+      store: user.storeId ?? '',
+      courier: user.courierId ?? '',
+    });
+  }
+
+  async function deleteUser(user) {
+    const confirmed = window.confirm(`Excluir o acesso de ${user.name}? Isso remove o usuario do Auth e da tabela profiles.`);
+    if (!confirmed) return;
+
+    setAccessErrors({});
+    setInviteMessage('');
+    setSavingAccess(true);
+    const { error } = await supabase.functions.invoke('manage-access-user', {
+      body: { action: 'delete', profileId: user.id },
+    });
+    setSavingAccess(false);
+
+    if (error) {
+      setAccessErrors({ form: error.message || 'Nao foi possivel excluir o usuario.' });
+      return;
+    }
+
+    setUsers((current) => current.filter((item) => item.id !== user.id));
+    if (editingUser?.id === user.id) resetAccessForm();
+    setInviteMessage('Usuario excluido do Supabase Auth e do perfil de acesso.');
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
-    const validationErrors = validateAccessUserForm(form);
+    const validationErrors = editingUser
+      ? {
+          ...(!form.name.trim() ? { name: 'Nome e obrigatorio.' } : {}),
+          ...(form.cpf && onlyDigits(form.cpf).length !== 11 ? { cpf: 'CPF invalido.' } : {}),
+          ...(form.whatsapp && ![10, 11].includes(onlyDigits(form.whatsapp).length) ? { whatsapp: 'WhatsApp invalido.' } : {}),
+        }
+      : validateAccessUserForm(form);
     setAccessErrors(validationErrors);
     setInviteMessage('');
     if (Object.keys(validationErrors).length) return;
 
+    if (editingUser) {
+      setSavingAccess(true);
+      const { error } = await supabase.functions.invoke('manage-access-user', {
+        body: {
+          action: 'update',
+          profileId: editingUser.id,
+          updates: {
+            name: form.name.trim(),
+            cpf: onlyDigits(form.cpf),
+            whatsapp: onlyDigits(form.whatsapp),
+            address_proof_path: form.addressProof,
+            active: form.active,
+          },
+        },
+      });
+      setSavingAccess(false);
+
+      if (error) {
+        setAccessErrors({ form: error.message || 'Nao foi possivel atualizar o usuario.' });
+        return;
+      }
+
+      setUsers((current) => current.map((user) => (
+        user.id === editingUser.id
+          ? {
+              ...user,
+              name: form.name.trim(),
+              cpf: form.cpf,
+              whatsapp: form.whatsapp,
+              addressProof: form.addressProof,
+              active: form.active,
+              status: form.active ? 'Ativo' : 'Inativo',
+            }
+          : user
+      )));
+      setInviteMessage('Usuario atualizado no profile e no Auth.');
+      resetAccessForm();
+      return;
+    }
+
+    let inviteResult = null;
     if (supabase) {
       const payload = {
         name: form.name.trim(),
         email: form.email.trim(),
         cpf: onlyDigits(form.cpf),
         whatsapp: onlyDigits(form.whatsapp),
+        address_proof_path: form.addressProof,
         role: form.role,
         city_id: form.role === 'system_admin' ? null : city.id,
         store_id: form.role === 'store_admin' ? form.store : null,
@@ -1287,9 +1441,10 @@ function AccessView({ city, stores, couriers }) {
         return;
       }
 
-      const { error: inviteError } = await supabase.functions.invoke('send-access-invite', {
+      const { data: sentInvite, error: inviteError } = await supabase.functions.invoke('send-access-invite', {
         body: { inviteId: invite.id },
       });
+      inviteResult = sentInvite;
 
       if (inviteError) {
         setAccessErrors({
@@ -1302,32 +1457,35 @@ function AccessView({ city, stores, couriers }) {
       return;
     }
 
-    setUsers((current) => [
-      [
-        typeLabel(form.role),
-        form.name.trim(),
-        form.email.trim(),
-        accessLabel(form.role),
-        scopeLabel(),
-        form.cpf,
-        form.whatsapp,
-        form.addressProof,
-        form.active ? 'Ativo' : 'Inativo',
-      ],
-      ...current,
-    ]);
+    setUsers((current) => [{
+      id: inviteResult?.authUserId ?? form.email.trim(),
+      type: typeLabel(form.role),
+      name: form.name.trim(),
+      email: form.email.trim(),
+      role: form.role,
+      profileLabel: accessLabel(form.role),
+      scope: scopeLabel(),
+      cityId: form.role === 'system_admin' ? null : city.id,
+      storeId: form.role === 'store_admin' ? form.store : null,
+      courierId: form.role === 'courier_admin' ? form.courier : null,
+      cpf: form.cpf,
+      whatsapp: form.whatsapp,
+      addressProof: form.addressProof,
+      active: form.active,
+      status: form.active ? 'Ativo' : 'Inativo',
+    }, ...current]);
     setInviteMessage('Cadastro validado. O e-mail de confirmacao foi enviado com o link para criar senha.');
-    setForm((current) => ({ ...current, name: '', email: '', cpf: '', whatsapp: '', addressProof: '', active: true }));
+    resetAccessForm();
   }
 
-  const visibleUsers = typeFilter === 'Todos' ? users : users.filter((row) => row[0] === typeFilter);
+  const visibleUsers = typeFilter === 'Todos' ? users : users.filter((user) => user.type === typeFilter);
 
   return (
     <section className="access-layout">
       <form className="panel user-form" onSubmit={handleSubmit}>
         <div className="panel-header">
-          <h2>Cadastrar usuario</h2>
-          <span className="count-pill">Convite</span>
+          <h2>{editingUser ? 'Editar usuario' : 'Cadastrar usuario'}</h2>
+          <span className="count-pill">{editingUser ? 'Auth vinculado' : 'Convite'}</span>
         </div>
         <div className="user-form-grid">
           <label>
@@ -1346,7 +1504,9 @@ function AccessView({ city, stores, couriers }) {
               onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
               placeholder="email@empresa.com"
               type="email"
+              disabled={Boolean(editingUser)}
             />
+            {editingUser && <span className="field-help">E-mail vem do Supabase Auth e fica apenas para exibicao.</span>}
             {accessErrors.email && <span className="field-error">{accessErrors.email}</span>}
           </label>
           <label>
@@ -1369,7 +1529,7 @@ function AccessView({ city, stores, couriers }) {
           </label>
           <label>
             Perfil
-            <select value={form.role} onChange={(event) => setForm((current) => ({ ...current, role: event.target.value }))}>
+            <select value={form.role} onChange={(event) => setForm((current) => ({ ...current, role: event.target.value }))} disabled={Boolean(editingUser)}>
               <option value="system_admin">Admin do sistema</option>
               <option value="city_admin">Admin da cidade</option>
               <option value="store_admin">Admin lojista</option>
@@ -1418,7 +1578,14 @@ function AccessView({ city, stores, couriers }) {
             {accessErrors.addressProof && <span className="field-error">{accessErrors.addressProof}</span>}
           </label>
         </div>
-        <button className="primary-action" type="submit"><Plus size={18} />Cadastrar convite</button>
+        <div className="form-actions">
+          <button className="primary-action" type="submit" disabled={savingAccess}>
+            <Plus size={18} />{savingAccess ? 'Salvando...' : editingUser ? 'Salvar alteracoes' : 'Cadastrar convite'}
+          </button>
+          {editingUser && (
+            <button className="secondary-action" type="button" onClick={resetAccessForm}>Cancelar</button>
+          )}
+        </div>
         {accessErrors.form && <p className="field-error">{accessErrors.form}</p>}
         {inviteMessage && <p className="success-message">{inviteMessage}</p>}
         <p className="form-note">Este cadastro grava o convite, envia o e-mail para criar senha e cria o `profile` com o mesmo escopo.</p>
@@ -1459,12 +1626,23 @@ function AccessView({ city, stores, couriers }) {
                 <th>E-mail</th>
                 <th>Perfil</th>
                 <th>Escopo</th>
+                <th>Acoes</th>
               </tr>
             </thead>
             <tbody>
-              {visibleUsers.map((row) => (
-                <tr key={row[2]}>
-                  {row.slice(0, 5).map((cell) => <td key={cell}>{cell}</td>)}
+              {visibleUsers.map((user) => (
+                <tr key={user.id}>
+                  <td>{user.type}</td>
+                  <td>{user.name}</td>
+                  <td>{user.email}</td>
+                  <td>{user.profileLabel}</td>
+                  <td>{user.scope}</td>
+                  <td>
+                    <div className="table-actions">
+                      <button type="button" onClick={() => editUser(user)}>Editar</button>
+                      <button className="danger" type="button" onClick={() => deleteUser(user)}>Excluir</button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
