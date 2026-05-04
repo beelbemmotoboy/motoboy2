@@ -470,14 +470,14 @@ function roleLabel(role) {
   return 'Usuario';
 }
 
-function PasswordInput({ label, value, onChange, placeholder, canCopy = false }) {
+function PasswordInput({ label, value, onChange, placeholder, canCopy = false, autoComplete = 'new-password' }) {
   const [visible, setVisible] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
 
   async function copyPassword() {
     if (!value) return;
     try {
-      await navigator.clipboard.writeText(value);
+      await navigator.clipboard.writeText(String(value));
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1400);
     } catch {
@@ -494,6 +494,7 @@ function PasswordInput({ label, value, onChange, placeholder, canCopy = false })
           value={value}
           onChange={onChange}
           placeholder={placeholder}
+          autoComplete={autoComplete}
         />
         <button type="button" onClick={() => setVisible((current) => !current)} aria-label={visible ? 'Ocultar senha' : 'Mostrar senha'}>
           {visible ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -791,12 +792,14 @@ function CreateAccountView() {
             onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
             placeholder="Digite uma senha forte"
             canCopy
+            autoComplete="new-password"
           />
           <PasswordInput
             label="Confirmar senha"
             value={form.confirmPassword}
             onChange={(event) => setForm((current) => ({ ...current, confirmPassword: event.target.value }))}
             placeholder="Repita a senha"
+            autoComplete="new-password"
           />
           <div className="password-rules">
             <span className={strength.checks.length ? 'ok' : ''}>6 caracteres ou mais</span>
@@ -926,12 +929,14 @@ function CreatePasswordView() {
             onChange={(event) => setPassword(event.target.value)}
             placeholder="Digite uma senha forte"
             canCopy
+            autoComplete="new-password"
           />
           <PasswordInput
             label="Confirmar senha"
             value={confirmPassword}
             onChange={(event) => setConfirmPassword(event.target.value)}
             placeholder="Repita a senha"
+            autoComplete="new-password"
           />
           <div className="password-rules">
             <span className={strength.checks.length ? 'ok' : ''}>6 caracteres ou mais</span>
