@@ -243,6 +243,41 @@ button, a {
   font: inherit;
 }
 
+.password-input-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  align-items: center;
+  border: 1px solid #dedede;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.password-input-wrap:has(input:focus) {
+  border-color: #111;
+}
+
+.password-input-wrap input {
+  border: 0;
+  outline: 0;
+  background: transparent;
+}
+
+.password-input-wrap button {
+  width: 42px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-left: 1px solid #ececec;
+  background: transparent;
+  color: #333;
+  cursor: pointer;
+}
+
+.password-input-wrap:has(button:nth-of-type(2)) {
+  grid-template-columns: minmax(0, 1fr) 42px 42px;
+}
+
 .password-rules {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -138,16 +138,15 @@ export function validateCourierForm(form) {
 export function passwordStrength(password) {
   const result = zxcvbn(password || '');
   const checks = {
-    length: password.length >= 10,
+    length: password.length >= 6,
     upper: /[A-Z]/.test(password),
     lower: /[a-z]/.test(password),
-    number: /\d/.test(password),
     symbol: /[^A-Za-z0-9]/.test(password),
   };
   return {
     checks,
     score: result.score,
     feedback: result.feedback,
-    valid: result.score >= 3 && Object.values(checks).every(Boolean),
+    valid: result.score >= 2 && Object.values(checks).every(Boolean),
   };
 }

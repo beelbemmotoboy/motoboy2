@@ -7,6 +7,9 @@ import {
   ChartNoAxesCombined,
   CircleHelp,
   Clock3,
+  Copy,
+  Eye,
+  EyeOff,
   Home,
   LogOut,
   MapPin,
@@ -635,6 +638,45 @@ function roleLabel(role) {
   return 'Usuario';
 }
 
+function PasswordInput({ label, value, onChange, placeholder, canCopy = false }) {
+  const [visible, setVisible] = React.useState(false);
+  const [copied, setCopied] = React.useState(false);
+
+  async function copyPassword() {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1400);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <label>
+      {label}
+      <div className="password-input-wrap">
+        <input
+          type={visible ? 'text' : 'password'}
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+        />
+        <button type="button" onClick={() => setVisible((current) => !current)} aria-label={visible ? 'Ocultar senha' : 'Mostrar senha'}>
+          {visible ? <EyeOff size={18} /> : <Eye size={18} />}
+        </button>
+        {canCopy && (
+          <button type="button" onClick={copyPassword} aria-label="Copiar senha">
+            <Copy size={17} />
+          </button>
+        )}
+      </div>
+      {canCopy && copied && <span className="field-help">Senha copiada.</span>}
+    </label>
+  );
+}
+
 function LoginView() {
   const [form, setForm] = React.useState({ email: '', password: '' });
   const [error, setError] = React.useState('');
@@ -880,29 +922,23 @@ function CreateAccountView() {
               placeholder="voce@empresa.com"
             />
           </label>
-          <label>
-            Senha
-            <input
-              type="password"
-              value={form.password}
-              onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
-              placeholder="Digite uma senha forte"
-            />
-          </label>
-          <label>
-            Confirmar senha
-            <input
-              type="password"
-              value={form.confirmPassword}
-              onChange={(event) => setForm((current) => ({ ...current, confirmPassword: event.target.value }))}
-              placeholder="Repita a senha"
-            />
-          </label>
+          <PasswordInput
+            label="Senha"
+            value={form.password}
+            onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+            placeholder="Digite uma senha forte"
+            canCopy
+          />
+          <PasswordInput
+            label="Confirmar senha"
+            value={form.confirmPassword}
+            onChange={(event) => setForm((current) => ({ ...current, confirmPassword: event.target.value }))}
+            placeholder="Repita a senha"
+          />
           <div className="password-rules">
-            <span className={strength.checks.length ? 'ok' : ''}>10 caracteres ou mais</span>
+            <span className={strength.checks.length ? 'ok' : ''}>6 caracteres ou mais</span>
             <span className={strength.checks.upper ? 'ok' : ''}>Letra maiuscula</span>
             <span className={strength.checks.lower ? 'ok' : ''}>Letra minuscula</span>
-            <span className={strength.checks.number ? 'ok' : ''}>Numero</span>
             <span className={strength.checks.symbol ? 'ok' : ''}>Simbolo</span>
             <span className={passwordsMatch ? 'ok' : ''}>Confirmacao igual</span>
           </div>
@@ -1021,29 +1057,23 @@ function CreatePasswordView() {
         <h1>Criar senha</h1>
         <p>Este link de confirmacao expira em 1 hora. Use uma senha forte para proteger sua conta.</p>
         <form onSubmit={handleSubmit}>
-          <label>
-            Nova senha
-            <input
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="Digite uma senha forte"
-            />
-          </label>
-          <label>
-            Confirmar senha
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(event) => setConfirmPassword(event.target.value)}
-              placeholder="Repita a senha"
-            />
-          </label>
+          <PasswordInput
+            label="Nova senha"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            placeholder="Digite uma senha forte"
+            canCopy
+          />
+          <PasswordInput
+            label="Confirmar senha"
+            value={confirmPassword}
+            onChange={(event) => setConfirmPassword(event.target.value)}
+            placeholder="Repita a senha"
+          />
           <div className="password-rules">
-            <span className={strength.checks.length ? 'ok' : ''}>10 caracteres ou mais</span>
+            <span className={strength.checks.length ? 'ok' : ''}>6 caracteres ou mais</span>
             <span className={strength.checks.upper ? 'ok' : ''}>Letra maiuscula</span>
             <span className={strength.checks.lower ? 'ok' : ''}>Letra minuscula</span>
-            <span className={strength.checks.number ? 'ok' : ''}>Numero</span>
             <span className={strength.checks.symbol ? 'ok' : ''}>Simbolo</span>
             <span className={passwordsMatch ? 'ok' : ''}>Confirmacao igual</span>
           </div>
