@@ -25,6 +25,7 @@ import {
 import { supabase, supabaseConfigStatus } from './supabaseClient';
 import { maskCep, maskCnpj, maskCpf, maskPhone, onlyDigits, passwordStrength, validateAccessUserForm, validateCourierForm, validateStoreForm } from './utils/validators';
 import loginLogo from '../imagem/logo.png';
+import beeIcon from '../imagem/icone beelbem.png';
 import './styles.css';
 
 const metrics = [
@@ -525,7 +526,10 @@ function App() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="logo">BEELBEM</div>
+        <div className="logo brand-logo">
+          <img src={beeIcon} alt="" />
+          <span>BEELBEM</span>
+        </div>
         <nav className="nav-list" aria-label="Menu principal">
           <button className={page === 'overview' ? 'active' : ''} onClick={() => setPage('overview')}><Home size={18} />Visao geral</button>
           <button><WalletCards size={18} />Entregas</button>
@@ -538,7 +542,18 @@ function App() {
           <button><ChartNoAxesCombined size={18} />Relatorios</button>
           <button><Settings size={18} />Configuracoes</button>
         </nav>
-        <a className="help-link" href="#"><CircleHelp size={19} />Ajuda</a>
+        <div className="sidebar-footer">
+          <a className="help-link" href="#"><CircleHelp size={19} />Ajuda</a>
+          {currentProfile && (
+            <div className="sidebar-user" title={currentProfile.email}>
+              <span>{initials(currentProfile.name || currentProfile.email || 'Usuario')}</span>
+              <div>
+                <strong>{currentProfile.name}</strong>
+                <small>{roleLabel(currentProfile.role)} · {currentProfile.email}</small>
+              </div>
+            </div>
+          )}
+        </div>
       </aside>
 
       <main className="dashboard">
@@ -610,6 +625,14 @@ function resolveHomeByRole(role) {
   if (role === 'store_admin') return 'store-home';
   if (role === 'courier_admin') return 'courier-home';
   return 'overview';
+}
+
+function roleLabel(role) {
+  if (role === 'system_admin') return 'Admin do sistema';
+  if (role === 'city_admin') return 'Admin da cidade';
+  if (role === 'store_admin') return 'Admin lojista';
+  if (role === 'courier_admin') return 'Admin motoboy';
+  return 'Usuario';
 }
 
 function LoginView() {

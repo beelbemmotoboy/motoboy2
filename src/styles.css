@@ -269,6 +269,24 @@ button, a {
   color: #ffffff;
 }
 
+.brand-logo {
+  grid-template-columns: 36px auto;
+  justify-content: start;
+  gap: 10px;
+  height: 46px;
+}
+
+.brand-logo img {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+.brand-logo span {
+  font-size: 17px;
+}
+
 .nav-list {
   display: grid;
   gap: 12px;
@@ -298,10 +316,57 @@ button, a {
   background: #1d1d1d;
 }
 
-.help-link {
+.sidebar-footer {
   margin-top: auto;
+  display: grid;
+  gap: 14px;
+}
+
+.help-link {
   border-top: 1px solid #1c1c1c;
   border-radius: 0;
+}
+
+.sidebar-user {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #1c1c1c;
+  border-radius: 8px;
+  background: #101010;
+}
+
+.sidebar-user > span {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #ffd200;
+  color: #050505;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.sidebar-user strong,
+.sidebar-user small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-user strong {
+  color: #fff;
+  font-size: 14px;
+}
+
+.sidebar-user small {
+  margin-top: 3px;
+  color: #9d9d9d;
+  font-size: 11px;
 }
 
 .dashboard {
@@ -1444,7 +1509,7 @@ th {
     margin-top: 18px;
   }
 
-  .help-link {
+  .sidebar-footer {
     margin-top: 18px;
   }
 
