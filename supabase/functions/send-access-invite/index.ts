@@ -95,7 +95,8 @@ serve(async (request) => {
 
   const email = String(invite.email).trim().toLowerCase();
   let authUser = await findUserByEmail(adminClient, email);
-  let linkType: 'invite' | 'recovery' = 'recovery';
+  let linkType: 'invite' | 'existing_user' = 'existing_user';
+  let emailSent = false;
 
   if (!authUser) {
     const { data: inviteData, error: authInviteError } = await adminClient.auth.admin.inviteUserByEmail(
@@ -112,14 +113,7 @@ serve(async (request) => {
 
     authUser = inviteData.user;
     linkType = 'invite';
-  } else {
-    const { error: recoveryError } = await adminClient.auth.resetPasswordForEmail(email, {
-      redirectTo: `${appUrl}/#create-password`,
-    });
-
-    if (recoveryError) {
-      return json({ error: recoveryError.message }, 400);
-    }
+    emailSent = true;
   }
 
   const { error: profileError } = await adminClient
@@ -146,12 +140,13 @@ serve(async (request) => {
   await adminClient
     .from('access_invites')
     .update({
-      status: 'sent',
-      password_setup_sent_at: new Date().toISOString(),
-      password_setup_expires_at: expiresAt,
+      status: emailSent ? 'sent' : 'accepted',
+      password_setup_sent_at: emailSent ? new Date().toISOString() : null,
+      password_setup_expires_at: emailSent ? expiresAt : null,
+      accepted_at: emailSent ? null : new Date().toISOString(),
       invited_by: user.id,
     })
     .eq('id', invite.id);
 
-  return json({ ok: true, authUserId: authUser.id, linkType });
+  return json({ ok: true, authUserId: authUser.id, linkType, emailSent });
 });

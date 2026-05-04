@@ -1501,7 +1501,11 @@ function AccessView({ city, stores, couriers }) {
       active: form.active,
       status: form.active ? 'Ativo' : 'Inativo',
     }, ...current]);
-    setInviteMessage('Cadastro validado. O e-mail de confirmacao foi enviado com o link para criar senha.');
+    setInviteMessage(
+      inviteResult?.linkType === 'existing_user'
+        ? 'Usuario ja existia no Auth. Perfil de acesso vinculado sem enviar novo e-mail.'
+        : 'Cadastro validado. O e-mail de confirmacao foi enviado com o link para criar senha.',
+    );
     resetAccessForm();
   }
 
