@@ -39,99 +39,6 @@ const metrics = [
   { label: 'Avaliacao media', value: '4.9', detail: '0,1 vs ontem', rating: true },
 ];
 
-const cities = [
-  {
-    id: 'goiania',
-    name: 'Goiania',
-    state: 'GO',
-    availableCouriers: 5,
-    activeDeliveries: 3,
-    pausedCouriers: 1,
-    activeStores: 4,
-    metrics: ['128', '42', '86', '98%', '4.9'],
-  },
-  {
-    id: 'aparecida',
-    name: 'Aparecida de Goiania',
-    state: 'GO',
-    availableCouriers: 2,
-    activeDeliveries: 1,
-    pausedCouriers: 0,
-    activeStores: 2,
-    metrics: ['34', '9', '25', '97%', '4.8'],
-  },
-  {
-    id: 'anapolis',
-    name: 'Anapolis',
-    state: 'GO',
-    availableCouriers: 0,
-    activeDeliveries: 0,
-    pausedCouriers: 0,
-    activeStores: 0,
-    metrics: ['0', '0', '0', '0%', '0.0'],
-  },
-];
-
-const deliveries = [
-  {
-    cityId: 'goiania',
-    courier: 'Carlos Silva',
-    store: 'Pizzaria Italia',
-    order: '#1234',
-    address: 'R. das Flores, 123',
-    eta: '5 min',
-    distance: '2,1 km',
-    status: 'A caminho',
-    rating: '4,9',
-  },
-  {
-    cityId: 'goiania',
-    courier: 'Juliana Santos',
-    store: 'Pizzaria Italia',
-    order: '#1235',
-    address: 'Av. Brasil, 456',
-    eta: '8 min',
-    distance: '3,4 km',
-    status: 'A caminho',
-    rating: '4,8',
-  },
-  {
-    cityId: 'aparecida',
-    courier: 'Paulo Oliveira',
-    store: 'Pizzaria Italia',
-    order: '#1236',
-    address: 'Rua do Sol, 789',
-    eta: '12 min',
-    distance: '4,7 km',
-    status: 'Saiu da loja',
-    rating: '4,9',
-  },
-  {
-    cityId: 'goiania',
-    courier: 'Mariana Costa',
-    store: 'Pizzaria Italia',
-    order: '#1237',
-    address: 'R. da Paz, 321',
-    eta: '15 min',
-    distance: '5,2 km',
-    status: 'A caminho',
-    rating: '4,7',
-  },
-];
-
-const completed = [
-  ['goiania', '#1234', 'Ana Beatriz', 'Pizzaria Italia', 'Carlos Silva', '10:24', 'R$ 54,90'],
-  ['goiania', '#1233', 'Rafael Souza', 'Pizzaria Italia', 'Juliana Santos', '10:15', 'R$ 67,80'],
-  ['aparecida', '#1232', 'Camila Rocha', 'Burger House', 'Paulo Oliveira', '10:02', 'R$ 42,50'],
-];
-
-const activity = [
-  ['goiania', '#1238', 'Entregue', '2 min atras', 'green'],
-  ['goiania', '#1237', 'Saiu para entrega', '8 min atras', 'blue'],
-  ['aparecida', '#1236', 'Saiu da loja', '12 min atras', 'amber'],
-  ['goiania', '#1235', 'Em andamento', '15 min atras', 'blue'],
-];
-
 const accessProfiles = [
   {
     role: 'Admin do sistema',
@@ -159,117 +66,6 @@ const accessProfiles = [
   },
 ];
 
-const storesByCity = {
-  goiania: ['Pizzaria Italia', 'Burger House', 'Acai Central'],
-  aparecida: ['Dunque Pizzaria', 'Mercado Sul'],
-  anapolis: ['Padaria Avenida'],
-};
-
-const initialStores = [
-  {
-    id: 'pizzaria-italia',
-    cityId: 'goiania',
-    name: 'Pizzaria Italia',
-    fantasyName: 'Pizzaria Italia Centro',
-    document: '00.000.000/0000-00',
-    responsible: 'Ana Beatriz',
-    email: 'contato@pizzariaitalia.com',
-    whatsapp: '(62) 99999-1001',
-    landline: '(62) 3333-1001',
-    type: 'Pizzaria',
-    distribution: 'Seguir regra da empresa',
-    address: 'R. das Flores',
-    number: '123',
-    complement: '',
-    district: 'Centro',
-    zipCode: '74.000-000',
-    latitude: '',
-    longitude: '',
-    locationReceived: '',
-    allowManualOrder: 'Sim',
-    requirePickupConfirmation: 'Sim',
-    rateCourierAfterDelivery: 'Sim',
-    notes: '',
-    active: true,
-  },
-  {
-    id: 'burger-house',
-    cityId: 'goiania',
-    name: 'Burger House',
-    fantasyName: 'Burger House',
-    document: '',
-    responsible: 'Rafael Souza',
-    email: 'loja@burgerhouse.com',
-    whatsapp: '(62) 99999-1002',
-    landline: '',
-    type: 'Hamburgueria',
-    distribution: 'Aleatorio pelo sistema',
-    address: 'Av. Brasil',
-    number: '456',
-    complement: '',
-    district: 'Setor Oeste',
-    zipCode: '',
-    latitude: '',
-    longitude: '',
-    locationReceived: '',
-    allowManualOrder: 'Sim',
-    requirePickupConfirmation: 'Sim',
-    rateCourierAfterDelivery: 'Sim',
-    notes: '',
-    active: true,
-  },
-  {
-    id: 'dunque-pizzaria',
-    cityId: 'aparecida',
-    name: 'Dunque Pizzaria',
-    fantasyName: 'Dunque Pizzaria',
-    document: '',
-    responsible: 'Paulo Oliveira',
-    email: 'contato@dunque.com',
-    whatsapp: '(62) 99999-2001',
-    landline: '',
-    type: 'Pizzaria',
-    distribution: 'Fixo na loja + aleatorio permitido',
-    address: 'Rua 10',
-    number: '80',
-    complement: '',
-    district: 'Vila Maria',
-    zipCode: '',
-    latitude: '',
-    longitude: '',
-    locationReceived: '',
-    allowManualOrder: 'Sim',
-    requirePickupConfirmation: 'Sim',
-    rateCourierAfterDelivery: 'Sim',
-    notes: '',
-    active: true,
-  },
-];
-
-const couriersByCity = {
-  goiania: ['Carlos Silva', 'Juliana Santos', 'Mariana Costa', 'Lucas Lima', 'Renato Alves'],
-  aparecida: ['Paulo Oliveira', 'Bianca Freitas'],
-  anapolis: ['Andre Martins'],
-};
-
-const initialCouriers = [
-  {
-    id: 'carlos-silva',
-    cityId: 'goiania',
-    fullName: 'Carlos Silva',
-    cpf: '000.000.000-00',
-    phone: '(62) 99999-3001',
-    email: 'carlos.moto@beelbem.com',
-    vehicle: 'Moto',
-    plate: 'ABC1D23',
-    pix: '000.000.000-00',
-    pixType: 'CPF',
-    pixHolder: 'Carlos Silva',
-    status: 'Pendente de aprovacao',
-    availability: 'Offline',
-  },
-];
-
 function initials(name) {
   return name
     .split(' ')
@@ -284,7 +80,7 @@ function App() {
   const [currentUser, setCurrentUser] = React.useState(null);
   const [currentProfile, setCurrentProfile] = React.useState(null);
   const publicPages = ['login', 'create-password', 'forgot-password', 'create-account'];
-  const currentUserRole = supabase ? currentProfile?.role : 'city_admin';
+  const currentUserRole = currentProfile?.role;
   const emptyCity = {
     id: '',
     name: 'Nenhuma cidade',
@@ -415,9 +211,18 @@ function App() {
 
   React.useEffect(() => {
     async function loadCityRecords() {
-      if (!supabase || !authReady || !currentProfile || !cityId) return;
+      if (!supabase || !authReady || !currentProfile) return;
+      setStoreList([]);
+      setCourierList([]);
+      if (!cityId) return;
+      setCityError('');
 
-      const [{ data: storesData, error: storesError }, { data: couriersData, error: couriersError }] = await Promise.all([
+      const [
+        { data: storesData, error: storesError },
+        { data: couriersData, error: couriersError },
+        { count: activeDeliveriesCount, error: activeDeliveriesError },
+        { count: completedDeliveriesCount, error: completedDeliveriesError },
+      ] = await Promise.all([
         supabase
           .from('stores')
           .select('id, city_id, name, fantasy_name, document, responsible_name, email, whatsapp, store_type, address, address_number, district, active')
@@ -428,7 +233,24 @@ function App() {
           .select('id, city_id, name, birth_date, cpf, phone, email, face_photo_path, whatsapp_validated, vehicle_type, vehicle_plate, pix_key, pix_key_type, pix_holder_name, vehicle_notes, cnh_file_path, cnh_valid_until, internal_notes, approval_status, availability_status, rating, active')
           .eq('city_id', cityId)
           .order('created_at', { ascending: false }),
+        supabase
+          .from('deliveries')
+          .select('id', { count: 'exact', head: true })
+          .eq('city_id', cityId)
+          .in('status', ['pending', 'assigned', 'picked_up', 'on_route']),
+        supabase
+          .from('deliveries')
+          .select('id', { count: 'exact', head: true })
+          .eq('city_id', cityId)
+          .eq('status', 'delivered'),
       ]);
+
+      const loadErrors = [storesError, couriersError, activeDeliveriesError, completedDeliveriesError]
+        .filter(Boolean)
+        .map((error) => error.message);
+      if (loadErrors.length) {
+        setCityError(loadErrors.join(' | '));
+      }
 
       if (!storesError) {
         setStoreList((storesData ?? []).map((store) => ({
@@ -476,7 +298,7 @@ function App() {
         })));
       }
 
-      if (!storesError || !couriersError) {
+      if (!storesError || !couriersError || !activeDeliveriesError || !completedDeliveriesError) {
         setCityList((current) => current.map((city) => (
           city.id === cityId
             ? {
@@ -484,6 +306,16 @@ function App() {
                 activeStores: storesError ? city.activeStores : (storesData ?? []).filter((store) => store.active !== false).length,
                 availableCouriers: couriersError ? city.availableCouriers : (couriersData ?? []).filter((courier) => courier.active !== false && courier.availability_status === 'available').length,
                 pausedCouriers: couriersError ? city.pausedCouriers : (couriersData ?? []).filter((courier) => courier.availability_status === 'paused').length,
+                activeDeliveries: activeDeliveriesError ? city.activeDeliveries : activeDeliveriesCount ?? 0,
+                metrics: [
+                  String((activeDeliveriesCount ?? 0) + (completedDeliveriesCount ?? 0)),
+                  String(activeDeliveriesCount ?? 0),
+                  String(completedDeliveriesCount ?? 0),
+                  completedDeliveriesCount || activeDeliveriesCount
+                    ? `${Math.round(((completedDeliveriesCount ?? 0) / ((activeDeliveriesCount ?? 0) + (completedDeliveriesCount ?? 0))) * 100)}%`
+                    : '0%',
+                  '0.0',
+                ],
               }
             : city
         )));
@@ -1135,7 +967,7 @@ function Overview({ city }) {
         <aside className="side-column">
           <div className="panel">
             <h2>Desempenho dos entregadores</h2>
-            {cityDeliveries.concat(city.id === 'goiania' ? [{ courier: 'Lucas Lima', rating: '4,6' }] : []).map((item) => (
+            {cityDeliveries.map((item) => (
               <div className="ranking-row" key={item.courier}>
                 <div className="avatar small">{initials(item.courier)}</div>
                 <strong>{item.courier}</strong>
@@ -1351,6 +1183,7 @@ function AccessView({ city, stores, couriers }) {
   const [users, setUsers] = React.useState([]);
   const [typeFilter, setTypeFilter] = React.useState('Todos');
   const [accessErrors, setAccessErrors] = React.useState({});
+  const [usersLoadError, setUsersLoadError] = React.useState('');
   const [inviteMessage, setInviteMessage] = React.useState('');
   const [form, setForm] = React.useState({
     name: '',
@@ -1375,12 +1208,17 @@ function AccessView({ city, stores, couriers }) {
   React.useEffect(() => {
     async function loadUsers() {
       if (!supabase) return;
+      setUsersLoadError('');
       const { data, error } = await supabase
         .from('profiles')
         .select('id, name, role, city_id, store_id, courier_id, active')
         .order('created_at', { ascending: false });
 
-      if (error) return;
+      if (error) {
+        setUsers([]);
+        setUsersLoadError(error.message);
+        return;
+      }
 
       setUsers((data ?? []).map((profile) => [
         typeLabel(profile.role),
@@ -1611,6 +1449,7 @@ function AccessView({ city, stores, couriers }) {
             </select>
           </label>
         </div>
+        {usersLoadError && <p className="field-error">Erro ao consultar usuarios no Supabase: {usersLoadError}</p>}
         <div className="table-wrap">
           <table>
             <thead>
