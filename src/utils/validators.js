@@ -1,3 +1,5 @@
+import zxcvbn from 'zxcvbn';
+
 export function onlyDigits(value) {
   return String(value || '').replace(/\D/g, '');
 }
@@ -134,6 +136,7 @@ export function validateCourierForm(form) {
 }
 
 export function passwordStrength(password) {
+  const result = zxcvbn(password || '');
   const checks = {
     length: password.length >= 10,
     upper: /[A-Z]/.test(password),
@@ -141,6 +144,10 @@ export function passwordStrength(password) {
     number: /\d/.test(password),
     symbol: /[^A-Za-z0-9]/.test(password),
   };
-  const score = Object.values(checks).filter(Boolean).length;
-  return { checks, score, valid: score === 5 };
+  return {
+    checks,
+    score: result.score,
+    feedback: result.feedback,
+    valid: result.score >= 3 && Object.values(checks).every(Boolean),
+  };
 }
