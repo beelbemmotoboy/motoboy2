@@ -1439,11 +1439,29 @@ function AccessView({ city, stores, couriers }) {
         user_active: form.active,
         status: 'pending',
       };
-      const { error } = await supabase.from('access_invites').insert(payload);
+      const { data: invite, error } = await supabase
+        .from('access_invites')
+        .insert(payload)
+        .select('id')
+        .single();
       if (error) {
         setAccessErrors({ form: error.message });
         return;
       }
+
+      const { error: inviteError } = await supabase.functions.invoke('send-access-invite', {
+        body: { inviteId: invite.id },
+      });
+
+      if (inviteError) {
+        setAccessErrors({
+          form: inviteError.message || 'Convite criado, mas nao foi possivel enviar o e-mail.',
+        });
+        return;
+      }
+    } else {
+      setAccessErrors({ form: 'Supabase nao configurado. Nao foi possivel enviar o e-mail de convite.' });
+      return;
     }
 
     setUsers((current) => [
@@ -1460,7 +1478,7 @@ function AccessView({ city, stores, couriers }) {
       ],
       ...current,
     ]);
-    setInviteMessage('Cadastro validado. O e-mail de confirmacao sera enviado com o link para criar senha.');
+    setInviteMessage('Cadastro validado. O e-mail de confirmacao foi enviado com o link para criar senha.');
     setForm((current) => ({ ...current, name: '', email: '', cpf: '', whatsapp: '', addressProof: '', active: true }));
   }
 
@@ -1565,7 +1583,7 @@ function AccessView({ city, stores, couriers }) {
         <button className="primary-action" type="submit"><Plus size={18} />Cadastrar convite</button>
         {accessErrors.form && <p className="field-error">{accessErrors.form}</p>}
         {inviteMessage && <p className="success-message">{inviteMessage}</p>}
-        <p className="form-note">No Supabase este cadastro gravara em `access_invites` e, ao aceitar, criara o `profile` com o mesmo escopo.</p>
+        <p className="form-note">Este cadastro grava o convite, envia o e-mail para criar senha e cria o `profile` com o mesmo escopo.</p>
       </form>
 
       <div className="access-grid">
