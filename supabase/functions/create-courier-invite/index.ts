@@ -94,7 +94,9 @@ serve(async (request) => {
   }
 
   let authUser = await findUserByEmail(adminClient, email);
-  let linkType: 'invite' | 'recovery' = 'recovery';
+  let linkType: 'invite' | 'existing_user' | 'email_failed' = 'existing_user';
+  let emailSent = false;
+  let emailWarning = '';
 
   if (!authUser) {
     const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
@@ -106,38 +108,52 @@ serve(async (request) => {
     );
 
     if (inviteError || !inviteData.user) {
-      return json({ error: inviteError?.message || 'Could not create auth invite' }, 400);
-    }
-
-    authUser = inviteData.user;
-    linkType = 'invite';
-  } else {
-    const { error: recoveryError } = await adminClient.auth.resetPasswordForEmail(email, {
-      redirectTo: `${appUrl}/#create-password`,
-    });
-
-    if (recoveryError) {
-      return json({ error: recoveryError.message }, 400);
+      emailWarning = inviteError?.message || 'Could not create auth invite';
+      linkType = 'email_failed';
+      authUser = await findUserByEmail(adminClient, email);
+      if (!authUser) {
+        return json({
+          ok: true,
+          courier: createdCourier,
+          linkType,
+          emailSent,
+          warning: `Entregador cadastrado, mas nao foi possivel criar o usuario no Auth/enviar convite: ${emailWarning}`,
+        });
+      }
+    } else {
+      authUser = inviteData.user;
+      linkType = 'invite';
+      emailSent = true;
     }
   }
 
-  const { error: profileError } = await adminClient
-    .from('profiles')
-    .upsert({
-      id: authUser.id,
-      city_id: createdCourier.city_id,
-      store_id: null,
-      courier_id: createdCourier.id,
-      name: createdCourier.name,
-      cpf: createdCourier.cpf,
-      whatsapp: createdCourier.phone,
-      role: 'courier_admin',
-      active: true,
-    });
+  if (authUser) {
+    const { error: profileError } = await adminClient
+      .from('profiles')
+      .upsert({
+        id: authUser.id,
+        city_id: createdCourier.city_id,
+        store_id: null,
+        courier_id: createdCourier.id,
+        name: createdCourier.name,
+        email,
+        cpf: createdCourier.cpf,
+        whatsapp: createdCourier.phone,
+        role: 'courier_admin',
+        active: true,
+      });
 
-  if (profileError) {
-    return json({ error: profileError.message }, 400);
+    if (profileError) {
+      return json({ error: profileError.message }, 400);
+    }
   }
 
-  return json({ ok: true, courier: createdCourier, authUserId: authUser.id, linkType });
+  return json({
+    ok: true,
+    courier: createdCourier,
+    authUserId: authUser?.id ?? null,
+    linkType,
+    emailSent,
+    warning: emailWarning || null,
+  });
 });

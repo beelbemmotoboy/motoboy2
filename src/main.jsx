@@ -2317,7 +2317,7 @@ function CouriersView({ city, cities, couriers, onChangeCouriers }) {
       setSaving(false);
 
       if (error) {
-        setErrors({ form: error.message || error.context?.error || 'Nao foi possivel salvar o entregador.' });
+        setErrors({ form: await functionErrorMessage(error, 'Nao foi possivel salvar o entregador.') });
         return;
       }
 
@@ -2328,6 +2328,9 @@ function CouriersView({ city, cities, couriers, onChangeCouriers }) {
       }
 
       newCourier = mapCourierFromDb(courierData);
+      if (!editingCourierId && data?.warning) {
+        setMessage(data.warning);
+      }
     }
 
     onChangeCouriers((current) => {
@@ -2340,7 +2343,13 @@ function CouriersView({ city, cities, couriers, onChangeCouriers }) {
       return newCourier.cityId === city.id ? [newCourier, ...current] : current;
     });
     resetForm();
-    setMessage(editingCourierId ? 'Dados do entregador atualizados.' : 'Entregador cadastrado e convite de senha enviado por e-mail.');
+    setMessage((current) => current || (
+      editingCourierId
+        ? 'Dados do entregador atualizados.'
+        : newCourier.email
+          ? 'Entregador cadastrado. Se o e-mail ja existia no Auth, o perfil foi vinculado sem novo convite.'
+          : 'Entregador cadastrado.'
+    ));
   }
 
   function sendWhatsappCode() {
