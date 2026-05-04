@@ -76,8 +76,19 @@ serve(async (request) => {
   }
 
   if (action === 'delete') {
+    await adminClient
+      .from('profiles')
+      .update({ active: false })
+      .eq('id', target.id);
+
     const { error: deleteAuthError } = await adminClient.auth.admin.deleteUser(target.id);
-    if (deleteAuthError) return json({ error: deleteAuthError.message }, 400);
+    if (deleteAuthError) {
+      return json({
+        ok: true,
+        mode: 'deactivated',
+        warning: `Usuario desativado, mas nao foi possivel excluir do Auth: ${deleteAuthError.message}`,
+      });
+    }
     return json({ ok: true });
   }
 

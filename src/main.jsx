@@ -1375,7 +1375,7 @@ function AccessView({ city, stores, couriers }) {
     setAccessErrors({});
     setInviteMessage('');
     setSavingAccess(true);
-    const { error } = await supabase.functions.invoke('manage-access-user', {
+    const { data, error } = await supabase.functions.invoke('manage-access-user', {
       body: { action: 'delete', profileId: user.id },
     });
     setSavingAccess(false);
@@ -1387,7 +1387,7 @@ function AccessView({ city, stores, couriers }) {
 
     setUsers((current) => current.filter((item) => item.id !== user.id));
     if (editingUser?.id === user.id) resetAccessForm();
-    setInviteMessage('Usuario excluido do Supabase Auth e do perfil de acesso.');
+    setInviteMessage(data?.warning || 'Usuario excluido do Supabase Auth e do perfil de acesso.');
   }
 
   async function handleSubmit(event) {
