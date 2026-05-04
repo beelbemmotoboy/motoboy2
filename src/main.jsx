@@ -28,7 +28,7 @@ import {
 import { supabase, supabaseConfigStatus } from './supabaseClient';
 import { maskCep, maskCnpj, maskCpf, maskPhone, onlyDigits, passwordStrength, validateAccessUserForm, validateCourierForm, validateStoreForm } from './utils/validators';
 import loginLogo from '../imagem/logo.png';
-import beeIcon from '../imagem/icone beelbem.png';
+import beeIcon from '../imagem/icone.png';
 import './styles.css';
 
 const metrics = [
@@ -776,7 +776,12 @@ function CreateAccountView() {
     setLoading(false);
 
     if (signUpError) {
-      setError(signUpError.message || 'Nao foi possivel criar a conta.');
+      const message = signUpError.message || '';
+      if (message.toLowerCase().includes('confirmation email')) {
+        setError('O Supabase nao conseguiu enviar o e-mail de confirmacao. Use o cadastro pelo administrador em Acessos ou configure o SMTP do Supabase.');
+      } else {
+        setError(message || 'Nao foi possivel criar a conta.');
+      }
       return;
     }
 
