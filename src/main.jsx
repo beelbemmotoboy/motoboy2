@@ -687,8 +687,9 @@ function LoginView() {
               type="checkbox"
               checked={form.remember}
               onChange={(event) => setForm((current) => ({ ...current, remember: event.target.checked }))}
-            <span>Manter-me conectado.</span>
+            
               />
+            <span>Manter-me conectado.</span>
           </label>
           {error && <p className="field-error">{error}</p>}
           <button className="primary-action" type="submit" disabled={loading}>
