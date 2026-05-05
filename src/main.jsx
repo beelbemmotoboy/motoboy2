@@ -74,8 +74,29 @@ function initials(name) {
     .slice(0, 2);
 }
 
+function hasSupabaseAuthCallback() {
+  const routeHash = window.location.hash.replace(/^#/, '');
+  const paramsText = `${window.location.search}&${routeHash}`;
+  return [
+    'access_token=',
+    'refresh_token=',
+    'token_hash=',
+    'type=invite',
+    'type=recovery',
+    'type=signup',
+    'error=',
+    'error_code=',
+    'code=',
+  ].some((part) => paramsText.includes(part));
+}
+
+function pageFromLocation() {
+  if (hasSupabaseAuthCallback()) return 'create-password';
+  return window.location.hash.replace(/^#/, '') || 'login';
+}
+
 function App() {
-  const [page, setPageState] = React.useState(() => window.location.hash.replace('#', '') || 'login');
+  const [page, setPageState] = React.useState(pageFromLocation);
   const [authReady, setAuthReady] = React.useState(!supabase);
   const [currentUser, setCurrentUser] = React.useState(null);
   const [currentProfile, setCurrentProfile] = React.useState(null);
@@ -141,7 +162,7 @@ function App() {
   }
 
   React.useEffect(() => {
-    const onHashChange = () => setPageState(window.location.hash.replace('#', '') || 'login');
+    const onHashChange = () => setPageState(pageFromLocation());
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
