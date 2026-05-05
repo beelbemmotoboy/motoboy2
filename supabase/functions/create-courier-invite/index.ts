@@ -94,37 +94,31 @@ serve(async (request) => {
   }
 
   let authUser = await findUserByEmail(adminClient, email);
-  let linkType: 'invite' | 'existing_user' | 'email_failed' = 'existing_user';
-  let emailSent = false;
-  let emailWarning = '';
+  let linkType: 'invite' | 'existing_user' = 'existing_user';
+  let setupLink = '';
 
   if (!authUser) {
-    const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
+    const { data: linkData, error: inviteError } = await adminClient.auth.admin.generateLink({
+      type: 'invite',
       email,
-      {
+      options: {
         data: { name: courier.name, role: 'courier_admin' },
         redirectTo: `${appUrl}/#create-password`,
       },
-    );
+    });
 
-    if (inviteError || !inviteData.user) {
-      emailWarning = inviteError?.message || 'Could not create auth invite';
-      linkType = 'email_failed';
-      authUser = await findUserByEmail(adminClient, email);
-      if (!authUser) {
-        return json({
-          ok: true,
-          courier: createdCourier,
-          linkType,
-          emailSent,
-          warning: `Entregador cadastrado, mas nao foi possivel criar o usuario no Auth/enviar convite: ${emailWarning}`,
-        });
-      }
-    } else {
-      authUser = inviteData.user;
-      linkType = 'invite';
-      emailSent = true;
+    if (inviteError || !linkData.user) {
+      return json({
+        ok: true,
+        courier: createdCourier,
+        linkType: 'invite_link_failed',
+        warning: `Entregador cadastrado, mas nao foi possivel criar o usuario no Auth/link de senha: ${inviteError?.message || 'Could not create invite link'}`,
+      });
     }
+
+    authUser = linkData.user;
+    setupLink = linkData.properties?.action_link ?? '';
+    linkType = 'invite';
   }
 
   if (authUser) {
@@ -153,7 +147,7 @@ serve(async (request) => {
     courier: createdCourier,
     authUserId: authUser?.id ?? null,
     linkType,
-    emailSent,
-    warning: emailWarning || null,
+    setupLink,
+    warning: null,
   });
 });

@@ -96,24 +96,25 @@ serve(async (request) => {
   const email = String(invite.email).trim().toLowerCase();
   let authUser = await findUserByEmail(adminClient, email);
   let linkType: 'invite' | 'existing_user' = 'existing_user';
-  let emailSent = false;
+  let setupLink = '';
 
   if (!authUser) {
-    const { data: inviteData, error: authInviteError } = await adminClient.auth.admin.inviteUserByEmail(
+    const { data: linkData, error: authInviteError } = await adminClient.auth.admin.generateLink({
+      type: 'invite',
       email,
-      {
+      options: {
         data: { name: invite.name, role: invite.role },
         redirectTo: `${appUrl}/#create-password`,
       },
-    );
+    });
 
-    if (authInviteError || !inviteData.user) {
-      return json({ error: authInviteError?.message || 'Could not send invite email' }, 400);
+    if (authInviteError || !linkData.user) {
+      return json({ error: authInviteError?.message || 'Could not create invite link' }, 400);
     }
 
-    authUser = inviteData.user;
+    authUser = linkData.user;
+    setupLink = linkData.properties?.action_link ?? '';
     linkType = 'invite';
-    emailSent = true;
   }
 
   const { error: profileError } = await adminClient
@@ -140,13 +141,14 @@ serve(async (request) => {
   await adminClient
     .from('access_invites')
     .update({
-      status: emailSent ? 'sent' : 'accepted',
-      password_setup_sent_at: emailSent ? new Date().toISOString() : null,
-      password_setup_expires_at: emailSent ? expiresAt : null,
-      accepted_at: emailSent ? null : new Date().toISOString(),
+      status: setupLink ? 'sent' : 'accepted',
+      password_setup_sent_at: setupLink ? new Date().toISOString() : null,
+      password_setup_expires_at: setupLink ? expiresAt : null,
+      password_setup_token: setupLink ? 'generated_by_edge_function' : null,
+      accepted_at: setupLink ? null : new Date().toISOString(),
       invited_by: user.id,
     })
     .eq('id', invite.id);
 
-  return json({ ok: true, authUserId: authUser.id, linkType, emailSent });
+  return json({ ok: true, authUserId: authUser.id, linkType, setupLink });
 });

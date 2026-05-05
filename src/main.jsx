@@ -492,6 +492,16 @@ async function functionErrorMessage(error, fallback) {
   return fallback;
 }
 
+async function copyText(text) {
+  if (!text) return false;
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function PasswordInput({ label, value, onChange, placeholder, canCopy = false, autoComplete = 'new-password' }) {
   const [visible, setVisible] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
@@ -499,8 +509,7 @@ function PasswordInput({ label, value, onChange, placeholder, canCopy = false, a
   async function copyPassword() {
     if (!value) return;
     try {
-      await navigator.clipboard.writeText(String(value));
-      setCopied(true);
+      setCopied(await copyText(String(value)));
       window.setTimeout(() => setCopied(false), 1400);
     } catch {
       setCopied(false);
@@ -1509,8 +1518,11 @@ function AccessView({ city, stores, couriers }) {
     setInviteMessage(
       inviteResult?.linkType === 'existing_user'
         ? 'Usuario ja existia no Auth. Perfil de acesso vinculado sem enviar novo e-mail.'
-        : 'Cadastro validado. O e-mail de confirmacao foi enviado com o link para criar senha.',
+        : inviteResult?.setupLink
+          ? 'Usuario criado no Auth. Link de criacao de senha copiado para a area de transferencia.'
+          : 'Cadastro validado. Perfil de acesso vinculado.',
     );
+    if (inviteResult?.setupLink) await copyText(inviteResult.setupLink);
     resetAccessForm();
   }
 
@@ -2330,6 +2342,9 @@ function CouriersView({ city, cities, couriers, onChangeCouriers }) {
       newCourier = mapCourierFromDb(courierData);
       if (!editingCourierId && data?.warning) {
         setMessage(data.warning);
+      } else if (!editingCourierId && data?.setupLink) {
+        await copyText(data.setupLink);
+        setMessage('Entregador cadastrado. Link de criacao de senha copiado para a area de transferencia.');
       }
     }
 
