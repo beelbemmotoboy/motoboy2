@@ -695,7 +695,7 @@ function LoginView() {
           </button>
           <div className="auth-links">
             <a href="#forgot-password">Esqueci minha senha</a>
-            <a href="#create-account">Criar conta</a>
+            <a href="#create-account">Criar conta Ramon</a>
           </div>
         </form>
       </section>
