@@ -682,7 +682,7 @@ function LoginView() {
             />
           </label>
           <label className="remember-login">
-            <span>Manter e-mail e senha neste computador</span>
+            <span>Manter-me conectado.</span>
             <input
               type="checkbox"
               checked={form.remember}
@@ -695,7 +695,7 @@ function LoginView() {
           </button>
           <div className="auth-links">
             <a href="#forgot-password">Esqueci minha senha</a>
-            <a href="#create-account">Criar conta Ramon</a>
+            <a href="#create-account">Criar conta</a>
           </div>
         </form>
       </section>
