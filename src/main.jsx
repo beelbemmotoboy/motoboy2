@@ -100,7 +100,7 @@ function App() {
   const [authReady, setAuthReady] = React.useState(!supabase);
   const [currentUser, setCurrentUser] = React.useState(null);
   const [currentProfile, setCurrentProfile] = React.useState(null);
-  const publicPages = ['login', 'create-password', 'forgot-password', 'create-account'];
+  const publicPages = ['login', 'create-password', 'forgot-password', 'create-account', 'join'];
   const currentUserRole = currentProfile?.role;
   const emptyCity = {
     id: '',
@@ -365,6 +365,10 @@ function App() {
 
   if (page === 'create-account') {
     return <CreateAccountView />;
+  }
+
+  if (page === 'join') {
+    return <JoinView />;
   }
 
   if (page === 'create-password') {
@@ -697,7 +701,7 @@ function LoginView() {
           </button>
           <div className="auth-links">
             <a href="#forgot-password">Esqueci minha senha</a>
-            <a href="#create-account">Criar conta</a>
+            <a href="#join">Criar conta</a>
           </div>
         </form>
       </section>
@@ -881,6 +885,33 @@ function CreateAccountView() {
   );
 }
 
+function JoinView() {
+  return (
+    <main className="password-page">
+      <section className="password-panel join-panel">
+        <div className="logo dark auth-logo"><img src={beeIcon} alt="" /><span>BEELBEM</span></div>
+        <h1>Faça parte!</h1>
+        <p>Escolha como deseja se cadastrar. Depois do cadastro aprovado, voce recebera um link para criar sua senha de acesso.</p>
+        <div className="join-options">
+          <a className="join-card" href="#create-account">
+            <Store size={28} />
+            <strong>Sou lojista</strong>
+            <span>Cadastro para lojas que querem solicitar entregas.</span>
+          </a>
+          <a className="join-card" href="#create-account">
+            <Bike size={30} />
+            <strong>Sou motoboy</strong>
+            <span>Cadastro para entregadores trabalharem na cidade.</span>
+          </a>
+        </div>
+        <div className="auth-links single">
+          <a href="#login">Voltar para login</a>
+        </div>
+      </section>
+    </main>
+  );
+}
+
 function AuthUnavailableView() {
   return (
     <main className="password-page">
@@ -961,7 +992,13 @@ function CreatePasswordView() {
       return;
     }
     if (!supabase) {
-      setStatus('Senha validada. Configure o Supabase para salvar a senha no Auth.');
+      setError('Supabase nao configurado. Nao foi possivel salvar a senha no Auth.');
+      return;
+    }
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) {
+      setError('Link expirado ou invalido. Solicite um novo convite para criar a senha.');
       return;
     }
 
@@ -973,6 +1010,7 @@ function CreatePasswordView() {
 
     await supabase.functions.invoke('complete-password-setup');
     setStatus('Senha criada com sucesso. Agora voce ja pode acessar o sistema.');
+    await supabase.auth.signOut();
   }
 
   return (
@@ -1007,6 +1045,11 @@ function CreatePasswordView() {
           {error && <p className="field-error">{error}</p>}
           {status && <p className="success-message">{status}</p>}
           <button className="primary-action" type="submit">Salvar senha</button>
+          {status && (
+            <div className="auth-links single">
+              <a href="#login">Ir para login</a>
+            </div>
+          )}
         </form>
       </section>
     </main>
