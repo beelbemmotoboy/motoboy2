@@ -659,7 +659,7 @@ function LoginView() {
       <section className="login-panel">
         <div className="logo dark auth-logo"><img src={beeIcon} alt="" /><span>BEELBEM</span></div>
         <h1>Seja bem vindo!</h1>
-        <p>Rapido, seguro e brasileiro.</p>
+        <p>Entrega organizada, pedido resolvido. 😄</p>
         <form onSubmit={handleLogin}>
           <label>
             E-mail
