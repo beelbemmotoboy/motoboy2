@@ -1582,8 +1582,8 @@ function AccessView({ city, stores, couriers }) {
       status: form.active ? 'Ativo' : 'Inativo',
     }, ...current]);
     setInviteMessage(
-      inviteResult?.linkType === 'existing_user'
-        ? 'Usuario ja existia no Auth. Perfil de acesso vinculado sem enviar novo e-mail.'
+      inviteResult?.linkType === 'password_reset'
+        ? 'Usuario ja existia no Auth. Link para criar ou redefinir senha copiado para a area de transferencia.'
         : inviteResult?.setupLink
           ? 'Usuario criado no Auth. Link de criacao de senha copiado para a area de transferencia.'
           : 'Cadastro validado. Perfil de acesso vinculado.',

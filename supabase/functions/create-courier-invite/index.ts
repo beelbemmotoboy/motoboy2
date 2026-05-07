@@ -94,7 +94,7 @@ serve(async (request) => {
   }
 
   let authUser = await findUserByEmail(adminClient, email);
-  let linkType: 'invite' | 'existing_user' = 'existing_user';
+  let linkType: 'invite' | 'password_reset' = 'password_reset';
   let setupLink = '';
 
   if (!authUser) {
@@ -119,6 +119,26 @@ serve(async (request) => {
     authUser = linkData.user;
     setupLink = linkData.properties?.action_link ?? '';
     linkType = 'invite';
+  } else {
+    const { data: linkData, error: recoveryLinkError } = await adminClient.auth.admin.generateLink({
+      type: 'recovery',
+      email,
+      options: {
+        redirectTo: `${appUrl}/#create-password`,
+      },
+    });
+
+    if (recoveryLinkError) {
+      return json({
+        ok: true,
+        courier: createdCourier,
+        linkType: 'password_link_failed',
+        warning: `Entregador cadastrado, mas nao foi possivel gerar o link de criacao de senha: ${recoveryLinkError.message || 'Could not create password recovery link'}`,
+      });
+    }
+
+    setupLink = linkData.properties?.action_link ?? '';
+    linkType = 'password_reset';
   }
 
   if (authUser) {
