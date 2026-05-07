@@ -38,7 +38,6 @@ begin
   set
     encrypted_password = crypt(admin_password, gen_salt('bf')),
     email_confirmed_at = coalesce(email_confirmed_at, now()),
-    confirmed_at = coalesce(confirmed_at, now()),
     aud = 'authenticated',
     role = 'authenticated',
     raw_app_meta_data = jsonb_build_object('provider', 'email', 'providers', jsonb_build_array('email')),
@@ -76,7 +75,6 @@ select
   users.id,
   users.email,
   users.email_confirmed_at,
-  users.confirmed_at,
   profiles.name,
   profiles.role,
   profiles.active
