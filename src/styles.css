@@ -305,6 +305,18 @@ button, a {
   color: #12733d;
 }
 
+.setup-user-note {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #dff6e9;
+  color: #12733d;
+  font-size: 13px;
+}
+
+.setup-user-note strong {
+  color: inherit;
+}
+
 .join-panel {
   width: min(100%, 560px);
 }

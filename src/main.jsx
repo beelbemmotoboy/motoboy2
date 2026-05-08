@@ -95,6 +95,18 @@ function pageFromLocation() {
   return window.location.hash.replace(/^#/, '') || 'login';
 }
 
+function authCallbackParams() {
+  const hashText = window.location.hash.replace(/^#/, '').replace(/^create-password[?&]?/, '');
+  const searchParams = new URLSearchParams(window.location.search);
+  const hashParams = new URLSearchParams(hashText);
+  return {
+    accessToken: hashParams.get('access_token') || searchParams.get('access_token'),
+    refreshToken: hashParams.get('refresh_token') || searchParams.get('refresh_token'),
+    code: searchParams.get('code') || hashParams.get('code'),
+    error: searchParams.get('error_description') || hashParams.get('error_description') || searchParams.get('error') || hashParams.get('error'),
+  };
+}
+
 function App() {
   const [page, setPageState] = React.useState(pageFromLocation);
   const [authReady, setAuthReady] = React.useState(!supabase);
@@ -975,8 +987,56 @@ function CreatePasswordView() {
   const [confirmPassword, setConfirmPassword] = React.useState('');
   const [status, setStatus] = React.useState('');
   const [error, setError] = React.useState('');
+  const [setupLoading, setSetupLoading] = React.useState(Boolean(supabase));
+  const [setupUserEmail, setSetupUserEmail] = React.useState('');
   const strength = passwordStrength(password);
   const passwordsMatch = password && password === confirmPassword;
+
+  React.useEffect(() => {
+    let mounted = true;
+
+    async function preparePasswordSession() {
+      if (!supabase) {
+        setSetupLoading(false);
+        return;
+      }
+
+      setSetupLoading(true);
+      const callback = authCallbackParams();
+      if (callback.error) {
+        if (mounted) {
+          setError(`Link invalido: ${callback.error}`);
+          setSetupLoading(false);
+        }
+        return;
+      }
+
+      if (callback.accessToken && callback.refreshToken) {
+        await supabase.auth.setSession({
+          access_token: callback.accessToken,
+          refresh_token: callback.refreshToken,
+        });
+      } else if (callback.code) {
+        await supabase.auth.exchangeCodeForSession(callback.code);
+      }
+
+      const { data, error: userError } = await supabase.auth.getUser();
+      if (!mounted) return;
+
+      if (userError || !data.user) {
+        setError('Link expirado ou invalido. Solicite um novo convite para criar a senha.');
+        setSetupUserEmail('');
+      } else {
+        setSetupUserEmail(data.user.email || '');
+      }
+      setSetupLoading(false);
+    }
+
+    preparePasswordSession();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -995,9 +1055,13 @@ function CreatePasswordView() {
       setError('Supabase nao configurado. Nao foi possivel salvar a senha no Auth.');
       return;
     }
+    if (setupLoading) {
+      setError('Aguarde a validacao do link antes de salvar a senha.');
+      return;
+    }
 
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData.user) {
       setError('Link expirado ou invalido. Solicite um novo convite para criar a senha.');
       return;
     }
@@ -1019,6 +1083,10 @@ function CreatePasswordView() {
         <div className="logo dark auth-logo"><img src={beeIcon} alt="" /><span>BEELBEM</span></div>
         <h1>Criar senha</h1>
         <p>Este link de confirmacao expira em 1 hora. Use uma senha forte para proteger sua conta.</p>
+        {setupLoading && <p className="form-note">Validando link de criacao de senha...</p>}
+        {!setupLoading && setupUserEmail && (
+          <p className="setup-user-note">A senha sera criada para <strong>{setupUserEmail}</strong>.</p>
+        )}
         <form onSubmit={handleSubmit}>
           <PasswordInput
             label="Nova senha"
@@ -1044,7 +1112,9 @@ function CreatePasswordView() {
           </div>
           {error && <p className="field-error">{error}</p>}
           {status && <p className="success-message">{status}</p>}
-          <button className="primary-action" type="submit">Salvar senha</button>
+          <button className="primary-action" type="submit" disabled={setupLoading || Boolean(status)}>
+            {setupLoading ? 'Validando link...' : 'Salvar senha'}
+          </button>
           {status && (
             <div className="auth-links single">
               <a href="#login">Ir para login</a>
