@@ -1006,9 +1006,11 @@ function PublicSignupView({ type }) {
       }
 
       setLoadingCities(true);
-      const { data, error: cityError } = await supabase.functions.invoke('public-signup', {
-        body: { action: 'cities' },
-      });
+      const { data, error: cityError } = await supabase
+        .from('cities')
+        .select('id, name, state')
+        .eq('active', true)
+        .order('name', { ascending: true });
 
       if (!mounted) return;
       setLoadingCities(false);
@@ -1018,7 +1020,7 @@ function PublicSignupView({ type }) {
         return;
       }
 
-      const cityOptions = data?.cities ?? [];
+      const cityOptions = data ?? [];
       setCities(cityOptions);
       setForm((current) => ({ ...current, cityId: current.cityId || cityOptions[0]?.id || '' }));
     }
@@ -1078,45 +1080,43 @@ function PublicSignupView({ type }) {
     setSubmitting(true);
     const payload = isStore
       ? {
-          action: 'store',
-          store: {
-            city_id: form.cityId,
-            document: onlyDigits(form.document),
-            name: form.name.trim(),
-            fantasy_name: form.fantasyName.trim(),
-            responsible_name: form.responsible.trim(),
-            email: form.email.trim().toLowerCase(),
-            whatsapp: onlyDigits(form.whatsapp),
-            zip_code: onlyDigits(form.zipCode),
-            address: form.address.trim(),
-            address_number: form.number.trim(),
-            district: form.district.trim(),
-            store_type: 'Restaurante',
-            active: false,
-          },
+          city_id: form.cityId,
+          document: onlyDigits(form.document),
+          name: form.name.trim(),
+          fantasy_name: form.fantasyName.trim(),
+          responsible_name: form.responsible.trim(),
+          email: form.email.trim().toLowerCase(),
+          whatsapp: onlyDigits(form.whatsapp),
+          zip_code: onlyDigits(form.zipCode),
+          address: form.address.trim(),
+          address_number: form.number.trim(),
+          district: form.district.trim(),
+          store_type: 'Restaurante',
+          internal_notes: 'Pre-cadastro publico. Validar documentos e liberar acesso pelo painel.',
+          active: false,
         }
       : {
-          action: 'courier',
-          courier: {
-            city_id: form.cityId,
-            name: form.fullName.trim(),
-            birth_date: form.birthDate,
-            cpf: onlyDigits(form.cpf),
-            phone: onlyDigits(form.phone),
-            email: form.email.trim().toLowerCase(),
-            vehicle_type: 'Moto',
-            vehicle_plate: form.plate.trim().toUpperCase(),
-            pix_key: form.pix.trim(),
-            pix_key_type: form.pixType,
-            pix_holder_name: form.pixHolder.trim(),
-            approval_status: 'pending_approval',
-            availability_status: 'offline',
-            active: false,
-            available: false,
-          },
+          city_id: form.cityId,
+          name: form.fullName.trim(),
+          birth_date: form.birthDate,
+          cpf: onlyDigits(form.cpf),
+          phone: onlyDigits(form.phone),
+          email: form.email.trim().toLowerCase(),
+          vehicle_type: 'Moto',
+          vehicle_plate: form.plate.trim().toUpperCase(),
+          pix_key: form.pix.trim(),
+          pix_key_type: form.pixType,
+          pix_holder_name: form.pixHolder.trim(),
+          approval_status: 'pending_approval',
+          availability_status: 'offline',
+          internal_notes: 'Pre-cadastro publico. Validar documentos e liberar acesso pelo painel.',
+          active: false,
+          available: false,
         };
 
-    const { error: submitError } = await supabase.functions.invoke('public-signup', { body: payload });
+    const { error: submitError } = isStore
+      ? await supabase.from('stores').insert(payload)
+      : await supabase.from('couriers').insert(payload);
     setSubmitting(false);
 
     if (submitError) {
