@@ -965,10 +965,11 @@ mark.amber {
 }
 
 .remember-login {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: flex-start;
   gap: 8px;
+  width: fit-content;
   margin-top: 2px;
   color: #333;
   font-size: 13px;
@@ -978,6 +979,7 @@ mark.amber {
 .remember-login input {
   width: 16px;
   height: 16px;
+  margin: 0;
 }
 
 .form-note {
