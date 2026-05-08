@@ -266,7 +266,7 @@ function App() {
       ] = await Promise.all([
         supabase
           .from('stores')
-          .select('id, city_id, name, fantasy_name, document, responsible_name, email, whatsapp, store_type, address, address_number, district, active')
+          .select('id, city_id, name, fantasy_name, document, responsible_name, email, whatsapp, store_type, address, address_number, district, active, logo_url, is_open')
           .eq('city_id', cityId)
           .order('created_at', { ascending: false }),
         supabase
@@ -308,6 +308,8 @@ function App() {
           number: store.address_number,
           district: store.district,
           active: store.active,
+          logoUrl: store.logo_url,
+          isOpen: store.is_open,
         })));
       }
 
@@ -321,7 +323,6 @@ function App() {
           phone: maskPhone(courier.phone ?? ''),
           email: courier.email,
           facePhoto: courier.face_photo_path ?? '',
-          whatsappCode: courier.whatsapp_validated ? '000000' : '',
           whatsappValidated: courier.whatsapp_validated,
           vehicle: courier.vehicle_type,
           plate: courier.vehicle_plate,
@@ -1267,31 +1268,71 @@ function StoreHomeView({ city, store, profile, onLogout }) {
   const storeWords = storeName.split(' ').filter(Boolean);
   const brandTop = storeWords[0] || 'Beelbem';
   const brandBottom = storeWords.slice(1, 3).join(' ') || 'Loja';
+  const storeLogo = store?.logoUrl || store?.logo_url || store?.logo || '';
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const [storeOpen, setStoreOpen] = React.useState(store?.isOpen ?? true);
+  const [statusMessage, setStatusMessage] = React.useState('');
   const deliveryStats = [
-    { label: 'A caminho da loja', value: '30', tone: 'green', icon: <Bike size={38} /> },
-    { label: 'A caminho do cliente', value: '18', tone: 'yellow', icon: <Bike size={38} /> },
-    { label: 'Em atraso', value: '05', tone: 'red', icon: <AlertTriangle size={38} /> },
+    { label: 'A caminho da loja', value: '01', tone: 'green', icon: <Bike size={32} /> },
+    { label: 'A caminho do cliente', value: '00', tone: 'yellow', icon: <Bike size={32} /> },
+    { label: 'Em atraso', value: '00', tone: 'red', icon: <AlertTriangle size={32} /> },
   ];
-  const mapCouriers = [
-    [12, 46], [18, 59], [25, 42], [33, 66], [42, 54], [51, 44], [60, 58], [70, 48],
-    [82, 59], [77, 72], [66, 78], [54, 84], [43, 78], [31, 84], [19, 78], [12, 69],
-    [16, 36], [34, 34], [56, 28], [72, 34], [86, 43],
-  ];
+
+  React.useEffect(() => {
+    setStoreOpen(store?.isOpen ?? true);
+    setStatusMessage('');
+  }, [store?.id, store?.isOpen]);
+
+  async function toggleStoreStatus() {
+    const nextStatus = !storeOpen;
+    setStoreOpen(nextStatus);
+    setStatusMessage('');
+
+    if (!supabase || !store?.id) return;
+
+    const { error } = await supabase
+      .from('stores')
+      .update({ is_open: nextStatus })
+      .eq('id', store.id);
+
+    if (error) {
+      setStoreOpen(!nextStatus);
+      setStatusMessage(`Nao foi possivel alterar o status: ${error.message}`);
+      return;
+    }
+
+    setStatusMessage(nextStatus ? 'Loja aberta para entregas.' : 'Loja fechada para entregas.');
+  }
 
   return (
     <main className="store-app-home">
       <header className="store-app-header">
-        <button className="store-menu-button" type="button" aria-label="Abrir menu">
+        <button className="store-menu-button" type="button" aria-label="Abrir menu" onClick={() => setMenuOpen((current) => !current)}>
           <Menu size={42} />
         </button>
+        {menuOpen && (
+          <nav className="store-mobile-menu" aria-label="Menu lojista">
+            <button type="button">Meus dados</button>
+            <button type="button">Minhas entregas</button>
+            <button type="button">Relatorios</button>
+            <button type="button" onClick={onLogout}>Sair</button>
+          </nav>
+        )}
         <div className="store-logo-badge" aria-label={storeName}>
-          <span>{brandTop}</span>
-          <strong>{brandBottom}</strong>
+          {storeLogo ? (
+            <img src={storeLogo} alt={`Logo ${storeName}`} />
+          ) : (
+            <>
+              <span>{brandTop}</span>
+              <strong>{brandBottom}</strong>
+            </>
+          )}
         </div>
-        <button className="store-connected-pill" type="button" onClick={onLogout} title="Sair do sistema">
-          <span />Conectado
+        <button className={`store-connected-pill ${storeOpen ? 'open' : 'closed'}`} type="button" onClick={toggleStoreStatus}>
+          <span />{storeOpen ? 'Aberto' : 'Fechado'}
         </button>
       </header>
+      {statusMessage && <p className={`store-status-message ${statusMessage.startsWith('Nao') ? 'error' : 'success'}`}>{statusMessage}</p>}
 
       <section className="store-status-grid" aria-label="Resumo das entregas">
         {deliveryStats.map((item) => (
@@ -1315,16 +1356,12 @@ function StoreHomeView({ city, store, profile, onLogout }) {
         <span className="store-map-street street-a">R. Silva Jatahy</span>
         <span className="store-map-street street-b">Av. Santos Dumont</span>
         <span className="store-map-street street-c">Av. Sen. Virgilio Tavora</span>
-        <div className="store-route route-one" />
-        <div className="store-route route-two" />
-        <div className="store-route route-three" />
-        {mapCouriers.map(([left, top], index) => (
-          <span className="store-courier-pin" style={{ left: `${left}%`, top: `${top}%` }} key={`${left}-${top}-${index}`}>
-            <Bike size={23} />
-          </span>
-        ))}
+        <div className="store-route route-to-store" />
+        <span className="store-courier-pin single" style={{ left: '30%', top: '35%' }}>
+          <Bike size={23} />
+        </span>
         <span className="store-main-pin">
-          <Store size={32} />
+          {storeLogo ? <img src={storeLogo} alt="" /> : <Store size={32} />}
           <i />
         </span>
         <div className="store-map-actions">
@@ -2739,7 +2776,6 @@ function StoresView({ city, stores, onChangeStores }) {
 }
 
 function CouriersView({ city, cities, couriers, onChangeCouriers }) {
-  const whatsappCodeRef = React.useRef(null);
   const emptyCourierForm = {
     cityId: city.id,
     fullName: '',
@@ -2748,7 +2784,6 @@ function CouriersView({ city, cities, couriers, onChangeCouriers }) {
     phone: '',
     email: '',
     facePhoto: '',
-    whatsappCode: '',
     vehicle: 'Moto',
     plate: '',
     pix: '',
@@ -2764,7 +2799,6 @@ function CouriersView({ city, cities, couriers, onChangeCouriers }) {
   };
   const [form, setForm] = React.useState(emptyCourierForm);
   const [errors, setErrors] = React.useState({});
-  const [whatsappMessage, setWhatsappMessage] = React.useState('WhatsApp ainda nao validado.');
   const [saving, setSaving] = React.useState(false);
   const [message, setMessage] = React.useState('');
   const [editingCourierId, setEditingCourierId] = React.useState('');
@@ -2780,7 +2814,6 @@ function CouriersView({ city, cities, couriers, onChangeCouriers }) {
     setForm(emptyCourierForm);
     setEditingCourierId('');
     setErrors({});
-    setWhatsappMessage('WhatsApp ainda nao validado.');
   }
 
   function mapCourierFromDb(data) {
@@ -2793,7 +2826,6 @@ function CouriersView({ city, cities, couriers, onChangeCouriers }) {
       phone: maskPhone(data.phone ?? ''),
       email: data.email,
       facePhoto: data.face_photo_path ?? '',
-      whatsappCode: data.whatsapp_validated ? '000000' : '',
       whatsappValidated: data.whatsapp_validated,
       vehicle: data.vehicle_type,
       plate: data.vehicle_plate,
@@ -2823,7 +2855,6 @@ function CouriersView({ city, cities, couriers, onChangeCouriers }) {
       phone: courier.phone ?? '',
       email: courier.email ?? '',
       facePhoto: courier.facePhoto ?? '',
-      whatsappCode: courier.whatsappCode || (courier.whatsappValidated ? '000000' : ''),
       vehicle: 'Moto',
       plate: courier.plate ?? '',
       pix: courier.pix ?? '',
@@ -2839,7 +2870,6 @@ function CouriersView({ city, cities, couriers, onChangeCouriers }) {
     });
     setErrors({});
     setMessage('');
-    setWhatsappMessage(courier.whatsappValidated ? 'WhatsApp ja validado.' : 'WhatsApp ainda nao validado.');
     window.location.hash = '#couriers';
   }
 
@@ -2962,15 +2992,6 @@ function CouriersView({ city, cities, couriers, onChangeCouriers }) {
     ));
   }
 
-  function sendWhatsappCode() {
-    if (!form.phone) {
-      setErrors((current) => ({ ...current, phone: 'Informe o WhatsApp antes de enviar o codigo.' }));
-      return;
-    }
-    setWhatsappMessage('Voce receberá um número no seu WhatsApp para confirmação. Digite ou cole ele aqui.');
-    whatsappCodeRef.current?.focus();
-  }
-
   return (
     <section className="courier-layout">
       <form className="panel courier-form" onSubmit={handleSubmit}>
@@ -3045,13 +3066,6 @@ function CouriersView({ city, cities, couriers, onChangeCouriers }) {
             <input type="file" accept="image/*" onChange={(event) => setForm((current) => ({ ...current, facePhoto: event.target.files?.[0]?.name || '' }))} />
             {errors.facePhoto && <span className="field-error">{errors.facePhoto}</span>}
           </label>
-          <label>
-            Confirmacao do WhatsApp
-            <input ref={whatsappCodeRef} value={form.whatsappCode} maxLength={6} onChange={(event) => setForm((current) => ({ ...current, whatsappCode: event.target.value }))} placeholder="Codigo recebido" />
-            {errors.whatsappCode && <span className="field-error">{errors.whatsappCode}</span>}
-            <span className="field-help">{whatsappMessage}</span>
-          </label>
-          <button className="secondary-inline-button" type="button" onClick={sendWhatsappCode}>Enviar codigo</button>
         </div>
 
         <div className="form-section-title">Veiculo e pagamento</div>

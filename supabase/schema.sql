@@ -38,6 +38,8 @@ create table if not exists public.stores (
   zip_code text,
   latitude numeric(10,7),
   longitude numeric(10,7),
+  logo_url text,
+  is_open boolean not null default true,
   location_received text,
   opening_hours jsonb not null default '{}'::jsonb,
   allow_manual_order boolean not null default true,
@@ -203,6 +205,8 @@ alter table public.cities add column if not exists created_by uuid references au
 alter table public.cities add column if not exists updated_by uuid references auth.users(id);
 alter table public.stores add column if not exists created_by uuid references auth.users(id);
 alter table public.stores add column if not exists updated_by uuid references auth.users(id);
+alter table public.stores add column if not exists logo_url text;
+alter table public.stores add column if not exists is_open boolean not null default true;
 alter table public.couriers add column if not exists created_by uuid references auth.users(id);
 alter table public.couriers add column if not exists updated_by uuid references auth.users(id);
 alter table public.profiles add column if not exists email text;
@@ -453,6 +457,7 @@ drop policy if exists "cities_read_by_authenticated" on public.cities;
 drop policy if exists "cities_manage_by_system_admin" on public.cities;
 drop policy if exists "stores_read_by_scope" on public.stores;
 drop policy if exists "stores_manage_by_system_or_city_admin" on public.stores;
+drop policy if exists "stores_update_own_store_by_store_admin" on public.stores;
 drop policy if exists "couriers_read_by_scope" on public.couriers;
 drop policy if exists "couriers_manage_by_system_or_city_admin" on public.couriers;
 drop policy if exists "profiles_read_by_scope" on public.profiles;
@@ -489,6 +494,17 @@ create policy "stores_read_by_scope" on public.stores
 
 create policy "stores_manage_by_system_or_city_admin" on public.stores
   for all to authenticated using (public.can_manage_city(city_id)) with check (public.can_manage_city(city_id));
+
+create policy "stores_update_own_store_by_store_admin" on public.stores
+  for update to authenticated using (
+    public.current_profile_role() = 'store_admin'
+    and id = public.current_profile_store_id()
+    and city_id = public.current_profile_city_id()
+  ) with check (
+    public.current_profile_role() = 'store_admin'
+    and id = public.current_profile_store_id()
+    and city_id = public.current_profile_city_id()
+  );
 
 create policy "couriers_read_by_scope" on public.couriers
   for select to authenticated using (

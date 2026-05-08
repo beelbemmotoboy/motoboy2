@@ -123,7 +123,6 @@ export function validateCourierForm(form) {
   if (!isValidCpf(form.cpf)) errors.cpf = 'CPF invalido.';
   if (!isValidPhone(form.phone)) errors.phone = 'Telefone/WhatsApp invalido.';
   if (!isValidEmail(form.email)) errors.email = 'E-mail invalido.';
-  if (!form.whatsappCode || form.whatsappCode.length < 6) errors.whatsappCode = 'Codigo de WhatsApp e obrigatorio.';
   if (!form.vehicle) errors.vehicle = 'Selecione o veiculo.';
   if (!form.plate.trim()) errors.plate = 'Placa e obrigatoria.';
   if (!form.pix.trim()) errors.pix = 'Chave Pix e obrigatoria.';
