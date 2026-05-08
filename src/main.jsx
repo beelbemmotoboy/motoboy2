@@ -2,9 +2,11 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   ArrowRight,
+  AlertTriangle,
   Bell,
   Bike,
   CalendarDays,
+  Camera,
   ChartNoAxesCombined,
   CircleHelp,
   Clock3,
@@ -19,7 +21,9 @@ import {
   Menu,
   Minus,
   Navigation,
+  PencilLine,
   Plus,
+  Search,
   Settings,
   ShieldCheck,
   Star,
@@ -133,6 +137,7 @@ function App() {
   const [courierList, setCourierList] = React.useState([]);
   const [cityId, setCityId] = React.useState('');
   const selectedCity = cityList.find((city) => city.id === cityId) ?? cityList[0] ?? emptyCity;
+  const selectedStore = storeList.find((store) => store.id === currentProfile?.store_id) ?? storeList[0] ?? null;
   const [cityLoading, setCityLoading] = React.useState(false);
   const [cityError, setCityError] = React.useState('');
   const setPage = (nextPage) => {
@@ -398,6 +403,10 @@ function App() {
     return <LoginView />;
   }
 
+  if (page === 'store-home' && currentProfile?.role === 'store_admin') {
+    return <StoreHomeView city={selectedCity} store={selectedStore} profile={currentProfile} onLogout={handleLogout} />;
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -477,7 +486,7 @@ function App() {
         {page === 'access' && <AccessView city={selectedCity} stores={storeList} couriers={courierList} />}
         {page === 'stores' && <StoresView city={selectedCity} stores={storeList} onChangeStores={setStoreList} />}
         {page === 'couriers' && <CouriersView city={selectedCity} cities={cityList} couriers={courierList} onChangeCouriers={setCourierList} />}
-        {page === 'store-home' && <StoreHomeView city={selectedCity} />}
+        {page === 'store-home' && <StoreHomeView city={selectedCity} store={selectedStore} profile={currentProfile} onLogout={handleLogout} />}
         {page === 'courier-home' && <CourierHomeView city={selectedCity} />}
         {page === 'overview' && <Overview city={selectedCity} />}
       </main>
@@ -956,21 +965,98 @@ function AuthUnavailableView() {
   );
 }
 
-function StoreHomeView({ city }) {
+function StoreHomeView({ city, store, profile, onLogout }) {
+  const storeName = store?.fantasyName || store?.name || profile?.name || 'Minha loja';
+  const storeWords = storeName.split(' ').filter(Boolean);
+  const brandTop = storeWords[0] || 'Beelbem';
+  const brandBottom = storeWords.slice(1, 3).join(' ') || 'Loja';
+  const deliveryStats = [
+    { label: 'A caminho da loja', value: '30', tone: 'green', icon: <Bike size={38} /> },
+    { label: 'A caminho do cliente', value: '18', tone: 'yellow', icon: <Bike size={38} /> },
+    { label: 'Em atraso', value: '05', tone: 'red', icon: <AlertTriangle size={38} /> },
+  ];
+  const mapCouriers = [
+    [12, 46], [18, 59], [25, 42], [33, 66], [42, 54], [51, 44], [60, 58], [70, 48],
+    [82, 59], [77, 72], [66, 78], [54, 84], [43, 78], [31, 84], [19, 78], [12, 69],
+    [16, 36], [34, 34], [56, 28], [72, 34], [86, 43],
+  ];
+
   return (
-    <section className="role-home">
-      <article className="role-welcome">
-        <span>Lojista</span>
-        <h2>Pedidos da sua loja</h2>
-        <p>Crie novas entregas e acompanhe apenas os pedidos, taxas e historico da sua loja em {city.name}.</p>
-      </article>
-      <div className="availability-grid">
-        <article className="availability-card"><p>Entregas hoje</p><strong>12</strong></article>
-        <article className="availability-card"><p>Em andamento</p><strong>3</strong></article>
-        <article className="availability-card"><p>Concluidas</p><strong>9</strong></article>
-        <article className="availability-card"><p>Total em taxas</p><strong>R$ 148</strong></article>
-      </div>
-    </section>
+    <main className="store-app-home">
+      <header className="store-app-header">
+        <button className="store-menu-button" type="button" aria-label="Abrir menu">
+          <Menu size={42} />
+        </button>
+        <div className="store-logo-badge" aria-label={storeName}>
+          <span>{brandTop}</span>
+          <strong>{brandBottom}</strong>
+        </div>
+        <button className="store-connected-pill" type="button" onClick={onLogout} title="Sair do sistema">
+          <span />Conectado
+        </button>
+      </header>
+
+      <section className="store-status-grid" aria-label="Resumo das entregas">
+        {deliveryStats.map((item) => (
+          <article className={`store-status-card ${item.tone}`} key={item.label}>
+            <div className="store-status-card-top">
+              <div className="store-status-icon">{item.icon}</div>
+              <p>{item.label}</p>
+            </div>
+            <strong>{item.value}</strong>
+          </article>
+        ))}
+      </section>
+
+      <section className="store-live-map" aria-label={`Mapa de entregas em ${city.name}`}>
+        <div className="store-map-grid" />
+        <span className="store-map-label meireles">MEIRELLES</span>
+        <span className="store-map-label aldeota">ALDEOTA</span>
+        <span className="store-map-label papicu">PAPICU</span>
+        <span className="store-map-label dionisio">DIONISIO<br />TORRES</span>
+        <span className="store-map-label coco">COCO</span>
+        <span className="store-map-street street-a">R. Silva Jatahy</span>
+        <span className="store-map-street street-b">Av. Santos Dumont</span>
+        <span className="store-map-street street-c">Av. Sen. Virgilio Tavora</span>
+        <div className="store-route route-one" />
+        <div className="store-route route-two" />
+        <div className="store-route route-three" />
+        {mapCouriers.map(([left, top], index) => (
+          <span className="store-courier-pin" style={{ left: `${left}%`, top: `${top}%` }} key={`${left}-${top}-${index}`}>
+            <Bike size={23} />
+          </span>
+        ))}
+        <span className="store-main-pin">
+          <Store size={32} />
+          <i />
+        </span>
+        <div className="store-map-actions">
+          <button type="button" aria-label="Pesquisar"><Search size={40} /></button>
+          <button type="button" aria-label="Centralizar"><Navigation size={30} /></button>
+          <button type="button" aria-label="Aproximar"><Plus size={34} /></button>
+          <button type="button" aria-label="Afastar"><Minus size={34} /></button>
+        </div>
+      </section>
+
+      <section className="store-request-actions" aria-label="Solicitar entrega">
+        <button className="store-request-card photo" type="button">
+          <span className="request-icon"><Camera size={52} /></span>
+          <span>
+            <strong>Solicitar por foto</strong>
+            <small>Agilize o cadastro do pedido com a foto da comanda.</small>
+          </span>
+          <ArrowRight size={42} />
+        </button>
+        <button className="store-request-card manual" type="button">
+          <span className="request-icon"><PencilLine size={52} /></span>
+          <span>
+            <strong>Solicitar manualmente</strong>
+            <small>Preencha os dados do pedido manualmente.</small>
+          </span>
+          <ArrowRight size={42} />
+        </button>
+      </section>
+    </main>
   );
 }
 
