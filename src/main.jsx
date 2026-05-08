@@ -965,6 +965,8 @@ function PublicSignupView({ type }) {
   const [cities, setCities] = React.useState([]);
   const [loadingCities, setLoadingCities] = React.useState(Boolean(supabase));
   const [submitting, setSubmitting] = React.useState(false);
+  const [cnpjLoading, setCnpjLoading] = React.useState(false);
+  const [cnpjStatus, setCnpjStatus] = React.useState('');
   const [error, setError] = React.useState('');
   const [status, setStatus] = React.useState('');
   const [form, setForm] = React.useState(
@@ -1033,6 +1035,45 @@ function PublicSignupView({ type }) {
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function lookupCnpj() {
+    if (!isStore) return;
+    setError('');
+    setCnpjStatus('');
+    const cnpj = onlyDigits(form.document);
+    if (!isValidCnpj(cnpj)) {
+      setError('CNPJ invalido.');
+      return;
+    }
+
+    setCnpjLoading(true);
+    try {
+      const response = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`);
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.message || 'CNPJ nao encontrado.');
+      }
+
+      setForm((current) => ({
+        ...current,
+        document: maskCnpj(data.cnpj || cnpj),
+        name: data.razao_social || current.name,
+        fantasyName: data.nome_fantasia || current.fantasyName,
+        email: data.email || current.email,
+        whatsapp: data.ddd_telefone_1 ? maskPhone(data.ddd_telefone_1) : current.whatsapp,
+        zipCode: data.cep ? maskCep(data.cep) : current.zipCode,
+        address: data.logradouro || current.address,
+        number: data.numero || current.number,
+        district: data.bairro || current.district,
+      }));
+      setCnpjStatus('Dados do CNPJ preenchidos.');
+    } catch (lookupError) {
+      setError(lookupError.message || 'Nao foi possivel consultar o CNPJ agora.');
+    } finally {
+      setCnpjLoading(false);
+    }
   }
 
   function validatePublicForm() {
@@ -1148,7 +1189,26 @@ function PublicSignupView({ type }) {
 
           {isStore ? (
             <>
-              <label>CNPJ<input value={form.document} onChange={(event) => updateField('document', maskCnpj(event.target.value))} placeholder="00.000.000/0000-00" /></label>
+              <label>
+                CNPJ
+                <div className="lookup-field">
+                  <input
+                    value={form.document}
+                    onBlur={() => {
+                      if (onlyDigits(form.document).length === 14 && !form.name) lookupCnpj();
+                    }}
+                    onChange={(event) => {
+                      setCnpjStatus('');
+                      updateField('document', maskCnpj(event.target.value));
+                    }}
+                    placeholder="00.000.000/0000-00"
+                  />
+                  <button type="button" onClick={lookupCnpj} disabled={cnpjLoading}>
+                    {cnpjLoading ? 'Buscando...' : 'Consultar'}
+                  </button>
+                </div>
+                {cnpjStatus && <span className="field-help success">{cnpjStatus}</span>}
+              </label>
               <label>Nome da loja<input value={form.name} onChange={(event) => updateField('name', event.target.value)} placeholder="Nome da loja" /></label>
               <label>Nome fantasia<input value={form.fantasyName} onChange={(event) => updateField('fantasyName', event.target.value)} placeholder="Nome conhecido pelo cliente" /></label>
               <label>Responsavel<input value={form.responsible} onChange={(event) => updateField('responsible', event.target.value)} placeholder="Nome do responsavel" /></label>

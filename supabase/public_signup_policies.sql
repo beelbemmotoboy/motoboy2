@@ -10,6 +10,10 @@ grant select on public.cities to anon;
 grant insert on public.stores to anon;
 grant insert on public.couriers to anon;
 
+alter table public.cities enable row level security;
+alter table public.stores enable row level security;
+alter table public.couriers enable row level security;
+
 drop policy if exists "cities_public_read_active" on public.cities;
 create policy "cities_public_read_active" on public.cities
   for select to anon

@@ -1138,8 +1138,42 @@ button, a {
   gap: 22px;
 }
 
+.lookup-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 126px;
+  gap: 8px;
+}
+
+.lookup-field input {
+  width: 100%;
+}
+
+.lookup-field button {
+  height: 46px;
+  border: 0;
+  border-radius: 8px;
+  background: #030303;
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.lookup-field button:disabled {
+  opacity: 0.64;
+  cursor: not-allowed;
+}
+
+.field-help.success {
+  color: #12733d;
+  font-weight: 700;
+}
+
 @media (max-width: 680px) {
   .public-signup-panel form {
+    grid-template-columns: 1fr;
+  }
+
+  .lookup-field {
     grid-template-columns: 1fr;
   }
 }
