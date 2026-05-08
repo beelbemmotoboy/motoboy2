@@ -1,6 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import {
+  ArrowRight,
   Bell,
   Bike,
   CalendarDays,
@@ -11,7 +12,9 @@ import {
   Eye,
   EyeOff,
   Home,
+  LockKeyhole,
   LogOut,
+  Mail,
   MapPin,
   Menu,
   Minus,
@@ -593,6 +596,7 @@ function LoginView() {
   });
   const [error, setError] = React.useState('');
   const [loading, setLoading] = React.useState(false);
+  const [showPassword, setShowPassword] = React.useState(false);
 
   async function handleLogin(event) {
     event.preventDefault();
@@ -644,7 +648,7 @@ function LoginView() {
 
     if (!profile) {
       await supabase.auth.signOut();
-      setError('Usuario autenticado, mas sem perfil cadastrado no sistema. Peça ao administrador para liberar seu acesso.');
+      setError('Usuario autenticado, mas sem perfil cadastrado no sistema. Peca ao administrador para liberar seu acesso.');
       return;
     }
 
@@ -669,34 +673,50 @@ function LoginView() {
 
   return (
     <main className="login-page">
-      <section className="login-hero" aria-label="Beelbem Delivery">
-        <img src={loginLogo} alt="Beelbem Delivery" />
+      <section className="login-hero" aria-label="Beelbem Motoboy">
+        <img src={loginLogo} alt="Beelbem Motoboy" />
       </section>
       <section className="login-panel">
-        <div className="logo dark auth-logo"><img src={beeIcon} alt="" /><span>BEELBEM</span></div>
-        <h1>Seja bem vindo!</h1>
-        <p>Entrega organizada, pedido resolvido. 😄</p>
+        <div className="app-login-brand">
+          <img src={beeIcon} alt="" />
+          <div>
+            <strong>BEELBEM</strong>
+            <span>MOTOBOY</span>
+          </div>
+        </div>
+        <h1>Bem-vindo de volta!</h1>
+        <p>Faca login para continuar e comecar a fazer entregas.</p>
         <form onSubmit={handleLogin}>
           <label>
-            E-mail
-            <input
-              type="email"
-              value={form.email}
-              onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
-              placeholder="voce@empresa.com"
-              autoComplete="email"
-            />
+            E-mail ou telefone
+            <div className="login-input-wrap">
+              <Mail size={25} />
+              <input
+                type="text"
+                value={form.email}
+                onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+                placeholder="Digite seu e-mail ou telefone"
+                autoComplete="username"
+              />
+            </div>
           </label>
           <label>
             Senha
-            <input
-              type="password"
-              value={form.password}
-              onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
-              placeholder="Sua senha"
-              autoComplete="current-password"
-            />
+            <div className="login-input-wrap">
+              <LockKeyhole size={25} />
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={form.password}
+                onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+                placeholder="Digite sua senha"
+                autoComplete="current-password"
+              />
+              <button type="button" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}>
+                {showPassword ? <EyeOff size={23} /> : <Eye size={23} />}
+              </button>
+            </div>
           </label>
+          <a className="forgot-inline" href="#forgot-password">Esqueci minha senha</a>
           <label className="remember-login">
             <input
               type="checkbox"
@@ -707,11 +727,12 @@ function LoginView() {
           </label>
           {error && <p className="field-error">{error}</p>}
           <button className="primary-action" type="submit" disabled={loading}>
-            {loading ? 'Entrando...' : 'Entrar'}
+            <span>{loading ? 'Entrando...' : 'Entrar'}</span>
+            {!loading && <ArrowRight size={32} />}
           </button>
           <div className="auth-links">
-            <a href="#forgot-password">Esqueci minha senha</a>
-            <a href="#join">Criar conta</a>
+            <span>Ainda nao tem uma conta?</span>
+            <a href="#join">Cadastre-se</a>
           </div>
         </form>
       </section>
@@ -2810,3 +2831,9 @@ function MapOnlyView({ city, couriers }) {
 }
 
 createRoot(document.getElementById('root')).render(<App />);
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+  });
+}

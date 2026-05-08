@@ -1,0 +1,21 @@
+{
+  "name": "Beelbem Motoboy",
+  "short_name": "Beelbem",
+  "description": "Sistema Beelbem Motoboy para gestao de cidades, lojas, entregadores e entregas.",
+  "start_url": "/#login",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffb800",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/beelbem-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity", "utilities"],
+  "lang": "pt-BR"
+}
