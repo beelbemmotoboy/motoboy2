@@ -33,7 +33,7 @@ import {
   WalletCards,
 } from 'lucide-react';
 import { supabase, supabaseConfigStatus } from './supabaseClient';
-import { maskCep, maskCnpj, maskCpf, maskPhone, onlyDigits, passwordStrength, validateAccessUserForm, validateCourierForm, validateStoreForm } from './utils/validators';
+import { isValidCep, isValidCnpj, isValidCpf, isValidEmail, isValidPhone, maskCep, maskCnpj, maskCpf, maskPhone, onlyDigits, passwordStrength, validateAccessUserForm, validateCourierForm, validateStoreForm } from './utils/validators';
 import loginLogo from '../imagem/logo.png';
 import beeIcon from '../imagem/icone.png';
 import './styles.css';
@@ -119,7 +119,7 @@ function App() {
   const [authReady, setAuthReady] = React.useState(!supabase);
   const [currentUser, setCurrentUser] = React.useState(null);
   const [currentProfile, setCurrentProfile] = React.useState(null);
-  const publicPages = ['login', 'create-password', 'forgot-password', 'create-account', 'join'];
+  const publicPages = ['login', 'create-password', 'forgot-password', 'create-account', 'join', 'signup-store', 'signup-courier'];
   const currentUserRole = currentProfile?.role;
   const emptyCity = {
     id: '',
@@ -389,6 +389,14 @@ function App() {
 
   if (page === 'join') {
     return <JoinView />;
+  }
+
+  if (page === 'signup-store') {
+    return <PublicSignupView type="store" />;
+  }
+
+  if (page === 'signup-courier') {
+    return <PublicSignupView type="courier" />;
   }
 
   if (page === 'create-password') {
@@ -933,12 +941,12 @@ function JoinView() {
         <h1>Faça parte!</h1>
         <p>Escolha como deseja se cadastrar. Depois do cadastro aprovado, voce recebera um link para criar sua senha de acesso.</p>
         <div className="join-options">
-          <a className="join-card" href="#create-account">
+          <a className="join-card" href="#signup-store">
             <Store size={28} />
             <strong>Sou lojista</strong>
             <span>Cadastro para lojas que querem solicitar entregas.</span>
           </a>
-          <a className="join-card" href="#create-account">
+          <a className="join-card" href="#signup-courier">
             <Bike size={30} />
             <strong>Sou motoboy</strong>
             <span>Cadastro para entregadores trabalharem na cidade.</span>
@@ -947,6 +955,235 @@ function JoinView() {
         <div className="auth-links single">
           <a href="#login">Voltar para login</a>
         </div>
+      </section>
+    </main>
+  );
+}
+
+function PublicSignupView({ type }) {
+  const isStore = type === 'store';
+  const [cities, setCities] = React.useState([]);
+  const [loadingCities, setLoadingCities] = React.useState(Boolean(supabase));
+  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [status, setStatus] = React.useState('');
+  const [form, setForm] = React.useState(
+    isStore
+      ? {
+          cityId: '',
+          document: '',
+          name: '',
+          fantasyName: '',
+          responsible: '',
+          email: '',
+          whatsapp: '',
+          zipCode: '',
+          address: '',
+          number: '',
+          district: '',
+        }
+      : {
+          cityId: '',
+          fullName: '',
+          birthDate: '',
+          cpf: '',
+          phone: '',
+          email: '',
+          plate: '',
+          pix: '',
+          pixType: 'CPF',
+          pixHolder: '',
+        },
+  );
+
+  React.useEffect(() => {
+    let mounted = true;
+
+    async function loadPublicCities() {
+      if (!supabase) {
+        setLoadingCities(false);
+        return;
+      }
+
+      setLoadingCities(true);
+      const { data, error: cityError } = await supabase.functions.invoke('public-signup', {
+        body: { action: 'cities' },
+      });
+
+      if (!mounted) return;
+      setLoadingCities(false);
+
+      if (cityError) {
+        setError('Nao foi possivel carregar as cidades cadastradas.');
+        return;
+      }
+
+      const cityOptions = data?.cities ?? [];
+      setCities(cityOptions);
+      setForm((current) => ({ ...current, cityId: current.cityId || cityOptions[0]?.id || '' }));
+    }
+
+    loadPublicCities();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  function updateField(field, value) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function validatePublicForm() {
+    const errors = [];
+    if (!form.cityId) errors.push('Selecione a cidade.');
+    if (isStore) {
+      if (!isValidCnpj(form.document)) errors.push('CNPJ invalido.');
+      if (!form.name.trim()) errors.push('Informe o nome da loja.');
+      if (!form.responsible.trim()) errors.push('Informe o responsavel.');
+      if (!isValidEmail(form.email)) errors.push('E-mail invalido.');
+      if (!isValidPhone(form.whatsapp)) errors.push('WhatsApp invalido.');
+      if (!isValidCep(form.zipCode)) errors.push('CEP invalido.');
+      if (!form.address.trim()) errors.push('Informe o endereco.');
+      if (!form.number.trim()) errors.push('Informe o numero.');
+      if (!form.district.trim()) errors.push('Informe o bairro.');
+    } else {
+      if (!form.fullName.trim()) errors.push('Informe o nome completo.');
+      if (!form.birthDate) errors.push('Informe a data de nascimento.');
+      if (!isValidCpf(form.cpf)) errors.push('CPF invalido.');
+      if (!isValidPhone(form.phone)) errors.push('WhatsApp invalido.');
+      if (!isValidEmail(form.email)) errors.push('E-mail invalido.');
+      if (!form.plate.trim()) errors.push('Informe a placa da moto.');
+      if (!form.pix.trim()) errors.push('Informe a chave Pix.');
+      if (!form.pixHolder.trim()) errors.push('Informe o favorecido do Pix.');
+    }
+    return errors;
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setError('');
+    setStatus('');
+
+    const errors = validatePublicForm();
+    if (errors.length) {
+      setError(errors[0]);
+      return;
+    }
+
+    if (!supabase) {
+      setError('Supabase nao configurado. Cadastro bloqueado.');
+      return;
+    }
+
+    setSubmitting(true);
+    const payload = isStore
+      ? {
+          action: 'store',
+          store: {
+            city_id: form.cityId,
+            document: onlyDigits(form.document),
+            name: form.name.trim(),
+            fantasy_name: form.fantasyName.trim(),
+            responsible_name: form.responsible.trim(),
+            email: form.email.trim().toLowerCase(),
+            whatsapp: onlyDigits(form.whatsapp),
+            zip_code: onlyDigits(form.zipCode),
+            address: form.address.trim(),
+            address_number: form.number.trim(),
+            district: form.district.trim(),
+            store_type: 'Restaurante',
+            active: false,
+          },
+        }
+      : {
+          action: 'courier',
+          courier: {
+            city_id: form.cityId,
+            name: form.fullName.trim(),
+            birth_date: form.birthDate,
+            cpf: onlyDigits(form.cpf),
+            phone: onlyDigits(form.phone),
+            email: form.email.trim().toLowerCase(),
+            vehicle_type: 'Moto',
+            vehicle_plate: form.plate.trim().toUpperCase(),
+            pix_key: form.pix.trim(),
+            pix_key_type: form.pixType,
+            pix_holder_name: form.pixHolder.trim(),
+            approval_status: 'pending_approval',
+            availability_status: 'offline',
+            active: false,
+            available: false,
+          },
+        };
+
+    const { error: submitError } = await supabase.functions.invoke('public-signup', { body: payload });
+    setSubmitting(false);
+
+    if (submitError) {
+      setError(await functionErrorMessage(submitError, 'Nao foi possivel enviar o cadastro.'));
+      return;
+    }
+
+    setStatus(isStore
+      ? 'Cadastro da loja enviado. A equipe Beelbem vai analisar e liberar o acesso.'
+      : 'Cadastro de motoboy enviado. A equipe Beelbem vai analisar e liberar o acesso.');
+  }
+
+  return (
+    <main className="password-page public-signup-page">
+      <section className="password-panel public-signup-panel">
+        <div className="logo dark auth-logo"><img src={beeIcon} alt="" /><span>BEELBEM</span></div>
+        <h1>{isStore ? 'Cadastro de lojista' : 'Cadastro de motoboy'}</h1>
+        <p>{isStore ? 'Informe os dados da loja. O cadastro ficara pendente ate a validacao.' : 'Informe seus dados. O cadastro ficara pendente ate a validacao.'}</p>
+        <form onSubmit={handleSubmit}>
+          <label>
+            Cidade
+            <select value={form.cityId} onChange={(event) => updateField('cityId', event.target.value)} disabled={loadingCities}>
+              <option value="">{loadingCities ? 'Carregando cidades...' : 'Selecione a cidade'}</option>
+              {cities.map((city) => (
+                <option value={city.id} key={city.id}>{city.name} - {city.state}</option>
+              ))}
+            </select>
+          </label>
+
+          {isStore ? (
+            <>
+              <label>CNPJ<input value={form.document} onChange={(event) => updateField('document', maskCnpj(event.target.value))} placeholder="00.000.000/0000-00" /></label>
+              <label>Nome da loja<input value={form.name} onChange={(event) => updateField('name', event.target.value)} placeholder="Nome da loja" /></label>
+              <label>Nome fantasia<input value={form.fantasyName} onChange={(event) => updateField('fantasyName', event.target.value)} placeholder="Nome conhecido pelo cliente" /></label>
+              <label>Responsavel<input value={form.responsible} onChange={(event) => updateField('responsible', event.target.value)} placeholder="Nome do responsavel" /></label>
+              <label>E-mail<input type="email" value={form.email} onChange={(event) => updateField('email', event.target.value)} placeholder="loja@email.com" /></label>
+              <label>WhatsApp<input value={form.whatsapp} onChange={(event) => updateField('whatsapp', maskPhone(event.target.value))} placeholder="(00) 00000-0000" /></label>
+              <label>CEP<input value={form.zipCode} onChange={(event) => updateField('zipCode', maskCep(event.target.value))} placeholder="00.000-000" /></label>
+              <label>Endereco<input value={form.address} onChange={(event) => updateField('address', event.target.value)} placeholder="Rua, avenida..." /></label>
+              <label>Numero<input value={form.number} onChange={(event) => updateField('number', event.target.value)} placeholder="Numero" /></label>
+              <label>Bairro<input value={form.district} onChange={(event) => updateField('district', event.target.value)} placeholder="Bairro" /></label>
+            </>
+          ) : (
+            <>
+              <label>Nome completo<input value={form.fullName} onChange={(event) => updateField('fullName', event.target.value)} placeholder="Nome completo" /></label>
+              <label>Data de nascimento<input type="date" value={form.birthDate} onChange={(event) => updateField('birthDate', event.target.value)} /></label>
+              <label>CPF<input value={form.cpf} onChange={(event) => updateField('cpf', maskCpf(event.target.value))} placeholder="000.000.000-00" /></label>
+              <label>WhatsApp<input value={form.phone} onChange={(event) => updateField('phone', maskPhone(event.target.value))} placeholder="(00) 00000-0000" /></label>
+              <label>E-mail<input type="email" value={form.email} onChange={(event) => updateField('email', event.target.value)} placeholder="motoboy@email.com" /></label>
+              <label>Veiculo<input value="Moto" disabled /></label>
+              <label>Placa<input value={form.plate} onChange={(event) => updateField('plate', event.target.value)} placeholder="ABC1D23" /></label>
+              <label>Tipo da chave Pix<select value={form.pixType} onChange={(event) => updateField('pixType', event.target.value)}><option>CPF</option><option>E-mail</option><option>Telefone</option><option>Chave aleatoria</option></select></label>
+              <label>Chave Pix<input value={form.pix} onChange={(event) => updateField('pix', event.target.value)} placeholder="CPF, e-mail, telefone ou chave" /></label>
+              <label>Favorecido Pix<input value={form.pixHolder} onChange={(event) => updateField('pixHolder', event.target.value)} placeholder="Nome de quem recebe o Pix" /></label>
+            </>
+          )}
+
+          {error && <p className="field-error">{error}</p>}
+          {status && <p className="success-message">{status}</p>}
+          <button className="primary-action" type="submit" disabled={submitting || Boolean(status)}>
+            {submitting ? 'Enviando...' : 'Enviar cadastro'}
+          </button>
+          <div className="auth-links single">
+            <a href="#join">Voltar</a>
+            <a href="#login">Ir para login</a>
+          </div>
+        </form>
       </section>
     </main>
   );

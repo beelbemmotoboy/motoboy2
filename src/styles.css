@@ -708,6 +708,15 @@ button, a {
   font: inherit;
 }
 
+.password-panel select {
+  height: 46px;
+  border: 1px solid #dedede;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #fff;
+  font: inherit;
+}
+
 .password-input-wrap {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 42px;
@@ -989,10 +998,13 @@ button, a {
 .login-panel .auth-links {
   display: grid;
   justify-items: center;
+  justify-self: center;
+  width: 100%;
   gap: 8px;
   margin-top: 12px;
   color: rgba(255, 255, 255, 0.68);
   font-size: 18px;
+  text-align: center;
 }
 
 .login-panel .auth-links a {
@@ -1102,6 +1114,34 @@ button, a {
   color: #666;
   font-size: 14px;
   line-height: 1.4;
+}
+
+.public-signup-panel {
+  width: min(100%, 680px);
+}
+
+.public-signup-panel form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.public-signup-panel form > label:first-child,
+.public-signup-panel .field-error,
+.public-signup-panel .success-message,
+.public-signup-panel .primary-action,
+.public-signup-panel .auth-links {
+  grid-column: 1 / -1;
+}
+
+.public-signup-panel .auth-links.single {
+  display: flex;
+  justify-content: center;
+  gap: 22px;
+}
+
+@media (max-width: 680px) {
+  .public-signup-panel form {
+    grid-template-columns: 1fr;
+  }
 }
 
 .sidebar {
