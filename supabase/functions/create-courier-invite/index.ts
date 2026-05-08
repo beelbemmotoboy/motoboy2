@@ -23,6 +23,13 @@ async function findUserByEmail(supabase: ReturnType<typeof createClient>, email:
   return null;
 }
 
+function temporaryPassword() {
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  const suffix = Array.from(bytes, (byte) => String(byte % 10)).join('');
+  return `Bee@${suffix}a`;
+}
+
 serve(async (request) => {
   if (request.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -40,7 +47,6 @@ serve(async (request) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const appUrl = Deno.env.get('APP_URL') || 'https://www.beelbem.com.br';
 
   const userClient = createClient(supabaseUrl, anonKey, {
     global: { headers: { Authorization: authHeader } },
@@ -94,51 +100,43 @@ serve(async (request) => {
   }
 
   let authUser = await findUserByEmail(adminClient, email);
-  let linkType: 'invite' | 'password_reset' = 'password_reset';
-  let setupLink = '';
+  const password = temporaryPassword();
 
   if (!authUser) {
-    const { data: linkData, error: inviteError } = await adminClient.auth.admin.generateLink({
-      type: 'invite',
+    const { data: createData, error: createError } = await adminClient.auth.admin.createUser({
       email,
-      options: {
-        data: { name: courier.name, role: 'courier_admin' },
-        redirectTo: `${appUrl}/#create-password`,
-      },
+      password,
+      email_confirm: true,
+      user_metadata: { name: courier.name, role: 'courier_admin' },
     });
 
-    if (inviteError || !linkData.user) {
+    if (createError || !createData.user) {
       return json({
         ok: true,
         courier: createdCourier,
-        linkType: 'invite_link_failed',
-        warning: `Entregador cadastrado, mas nao foi possivel criar o usuario no Auth/link de senha: ${inviteError?.message || 'Could not create invite link'}`,
+        mode: 'temporary_password_failed',
+        warning: `Entregador cadastrado, mas nao foi possivel criar o usuario no Auth/senha temporaria: ${createError?.message || 'Could not create Auth user'}`,
       });
     }
 
-    authUser = linkData.user;
-    setupLink = linkData.properties?.action_link ?? '';
-    linkType = 'invite';
+    authUser = createData.user;
   } else {
-    const { data: linkData, error: recoveryLinkError } = await adminClient.auth.admin.generateLink({
-      type: 'recovery',
-      email,
-      options: {
-        redirectTo: `${appUrl}/#create-password`,
-      },
+    const { data: updateData, error: updateError } = await adminClient.auth.admin.updateUserById(authUser.id, {
+      password,
+      email_confirm: true,
+      user_metadata: { ...(authUser.user_metadata || {}), name: courier.name, role: 'courier_admin' },
     });
 
-    if (recoveryLinkError) {
+    if (updateError || !updateData.user) {
       return json({
         ok: true,
         courier: createdCourier,
-        linkType: 'password_link_failed',
-        warning: `Entregador cadastrado, mas nao foi possivel gerar o link de criacao de senha: ${recoveryLinkError.message || 'Could not create password recovery link'}`,
+        mode: 'temporary_password_failed',
+        warning: `Entregador cadastrado, mas nao foi possivel definir senha temporaria no Auth: ${updateError?.message || 'Could not update Auth user password'}`,
       });
     }
 
-    setupLink = linkData.properties?.action_link ?? '';
-    linkType = 'password_reset';
+    authUser = updateData.user;
   }
 
   if (authUser) {
@@ -155,6 +153,7 @@ serve(async (request) => {
         whatsapp: createdCourier.phone,
         role: 'courier_admin',
         active: true,
+        password_set_at: new Date().toISOString(),
       });
 
     if (profileError) {
@@ -166,8 +165,8 @@ serve(async (request) => {
     ok: true,
     courier: createdCourier,
     authUserId: authUser?.id ?? null,
-    linkType,
-    setupLink,
+    mode: 'temporary_password',
+    temporaryPassword: password,
     warning: null,
   });
 });

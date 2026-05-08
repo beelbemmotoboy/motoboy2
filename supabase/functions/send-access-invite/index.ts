@@ -23,6 +23,13 @@ async function findUserByEmail(supabase: ReturnType<typeof createClient>, email:
   return null;
 }
 
+function temporaryPassword() {
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  const suffix = Array.from(bytes, (byte) => String(byte % 10)).join('');
+  return `Bee@${suffix}a`;
+}
+
 serve(async (request) => {
   if (request.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -45,7 +52,6 @@ serve(async (request) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const appUrl = Deno.env.get('APP_URL') || 'https://www.beelbem.com.br';
 
   const userClient = createClient(supabaseUrl, anonKey, {
     global: { headers: { Authorization: authHeader } },
@@ -95,41 +101,33 @@ serve(async (request) => {
 
   const email = String(invite.email).trim().toLowerCase();
   let authUser = await findUserByEmail(adminClient, email);
-  let linkType: 'invite' | 'password_reset' = 'password_reset';
-  let setupLink = '';
+  const password = temporaryPassword();
 
   if (!authUser) {
-    const { data: linkData, error: authInviteError } = await adminClient.auth.admin.generateLink({
-      type: 'invite',
+    const { data: createData, error: createError } = await adminClient.auth.admin.createUser({
       email,
-      options: {
-        data: { name: invite.name, role: invite.role },
-        redirectTo: `${appUrl}/#create-password`,
-      },
+      password,
+      email_confirm: true,
+      user_metadata: { name: invite.name, role: invite.role },
     });
 
-    if (authInviteError || !linkData.user) {
-      return json({ error: authInviteError?.message || 'Could not create invite link' }, 400);
+    if (createError || !createData.user) {
+      return json({ error: createError?.message || 'Could not create Auth user' }, 400);
     }
 
-    authUser = linkData.user;
-    setupLink = linkData.properties?.action_link ?? '';
-    linkType = 'invite';
+    authUser = createData.user;
   } else {
-    const { data: linkData, error: recoveryLinkError } = await adminClient.auth.admin.generateLink({
-      type: 'recovery',
-      email,
-      options: {
-        redirectTo: `${appUrl}/#create-password`,
-      },
+    const { data: updateData, error: updateError } = await adminClient.auth.admin.updateUserById(authUser.id, {
+      password,
+      email_confirm: true,
+      user_metadata: { ...(authUser.user_metadata || {}), name: invite.name, role: invite.role },
     });
 
-    if (recoveryLinkError) {
-      return json({ error: recoveryLinkError.message || 'Could not create password recovery link' }, 400);
+    if (updateError || !updateData.user) {
+      return json({ error: updateError?.message || 'Could not update Auth user password' }, 400);
     }
 
-    setupLink = linkData.properties?.action_link ?? '';
-    linkType = 'password_reset';
+    authUser = updateData.user;
   }
 
   const { error: profileError } = await adminClient
@@ -146,6 +144,7 @@ serve(async (request) => {
       address_proof_path: invite.address_proof_path,
       role: invite.role,
       active: invite.user_active,
+      password_set_at: new Date().toISOString(),
     });
 
   if (profileError) {
@@ -156,14 +155,19 @@ serve(async (request) => {
   await adminClient
     .from('access_invites')
     .update({
-      status: setupLink ? 'sent' : 'accepted',
-      password_setup_sent_at: setupLink ? new Date().toISOString() : null,
-      password_setup_expires_at: setupLink ? expiresAt : null,
-      password_setup_token: setupLink ? 'generated_by_edge_function' : null,
-      accepted_at: setupLink ? null : new Date().toISOString(),
+      status: 'accepted',
+      password_setup_sent_at: new Date().toISOString(),
+      password_setup_expires_at: expiresAt,
+      password_setup_token: 'temporary_password',
+      accepted_at: new Date().toISOString(),
       invited_by: user.id,
     })
     .eq('id', invite.id);
 
-  return json({ ok: true, authUserId: authUser.id, linkType, setupLink });
+  return json({
+    ok: true,
+    authUserId: authUser.id,
+    mode: 'temporary_password',
+    temporaryPassword: password,
+  });
 });

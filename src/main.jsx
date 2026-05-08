@@ -1681,12 +1681,12 @@ function AccessView({ city, stores, couriers }) {
 
       if (inviteError) {
         setAccessErrors({
-          form: await functionErrorMessage(inviteError, 'Convite criado, mas nao foi possivel enviar o e-mail.'),
+          form: await functionErrorMessage(inviteError, 'Cadastro criado, mas nao foi possivel definir a senha temporaria.'),
         });
         return;
       }
     } else {
-      setAccessErrors({ form: 'Supabase nao configurado. Nao foi possivel enviar o e-mail de convite.' });
+      setAccessErrors({ form: 'Supabase nao configurado. Nao foi possivel criar usuario com senha temporaria.' });
       return;
     }
 
@@ -1708,13 +1708,11 @@ function AccessView({ city, stores, couriers }) {
       status: form.active ? 'Ativo' : 'Inativo',
     }, ...current]);
     setInviteMessage(
-      inviteResult?.linkType === 'password_reset'
-        ? 'Usuario ja existia no Auth. Link para criar ou redefinir senha copiado para a area de transferencia.'
-        : inviteResult?.setupLink
-          ? 'Usuario criado no Auth. Link de criacao de senha copiado para a area de transferencia.'
-          : 'Cadastro validado. Perfil de acesso vinculado.',
+      inviteResult?.temporaryPassword
+        ? `Usuario criado no Auth. Senha temporaria: ${inviteResult.temporaryPassword}`
+        : 'Cadastro validado. Perfil de acesso vinculado.',
     );
-    if (inviteResult?.setupLink) await copyText(inviteResult.setupLink);
+    if (inviteResult?.temporaryPassword) await copyText(inviteResult.temporaryPassword);
     resetAccessForm();
   }
 
@@ -1725,7 +1723,7 @@ function AccessView({ city, stores, couriers }) {
       <form className="panel user-form" onSubmit={handleSubmit}>
         <div className="panel-header">
           <h2>{editingUser ? 'Editar usuario' : 'Cadastrar usuario'}</h2>
-          <span className="count-pill">{editingUser ? 'Auth vinculado' : 'Convite'}</span>
+          <span className="count-pill">{editingUser ? 'Auth vinculado' : 'Senha temporaria'}</span>
         </div>
         <div className="user-form-grid">
           <label>
@@ -1820,7 +1818,7 @@ function AccessView({ city, stores, couriers }) {
         </div>
         <div className="form-actions">
           <button className="primary-action" type="submit" disabled={savingAccess}>
-            <Plus size={18} />{savingAccess ? 'Salvando...' : editingUser ? 'Salvar alteracoes' : 'Cadastrar convite'}
+            <Plus size={18} />{savingAccess ? 'Salvando...' : editingUser ? 'Salvar alteracoes' : 'Cadastrar usuario'}
           </button>
           {editingUser && (
             <button className="secondary-action" type="button" onClick={resetAccessForm}>Cancelar</button>
@@ -1828,7 +1826,7 @@ function AccessView({ city, stores, couriers }) {
         </div>
         {accessErrors.form && <p className="field-error">{accessErrors.form}</p>}
         {inviteMessage && <p className="success-message">{inviteMessage}</p>}
-        <p className="form-note">Este cadastro grava o convite, envia o e-mail para criar senha e cria o `profile` com o mesmo escopo.</p>
+        <p className="form-note">Este cadastro cria o usuario no Auth, define uma senha temporaria e grava o `profile` com o mesmo escopo. O envio por e-mail esta desativado.</p>
       </form>
 
       <div className="access-grid">
@@ -2535,9 +2533,9 @@ function CouriersView({ city, cities, couriers, onChangeCouriers }) {
       newCourier = mapCourierFromDb(courierData);
       if (!editingCourierId && data?.warning) {
         setMessage(data.warning);
-      } else if (!editingCourierId && data?.setupLink) {
-        await copyText(data.setupLink);
-        setMessage('Entregador cadastrado. Link de criacao de senha copiado para a area de transferencia.');
+      } else if (!editingCourierId && data?.temporaryPassword) {
+        await copyText(data.temporaryPassword);
+        setMessage(`Entregador cadastrado. Senha temporaria: ${data.temporaryPassword}`);
       }
     }
 
@@ -2555,7 +2553,7 @@ function CouriersView({ city, cities, couriers, onChangeCouriers }) {
       editingCourierId
         ? 'Dados do entregador atualizados.'
         : newCourier.email
-          ? 'Entregador cadastrado. Se o e-mail ja existia no Auth, o perfil foi vinculado sem novo convite.'
+          ? 'Entregador cadastrado. Se o e-mail ja existia no Auth, a senha temporaria foi atualizada.'
           : 'Entregador cadastrado.'
     ));
   }
