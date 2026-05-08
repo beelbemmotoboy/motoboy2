@@ -92,6 +92,37 @@ serve(async (request) => {
     return json({ ok: true });
   }
 
+  if (action === 'set_password') {
+    const password = String(updates?.password ?? '');
+    if (password.length < 6) {
+      return json({ error: 'Password must have at least 6 characters' }, 400);
+    }
+
+    const { error: updatePasswordError } = await adminClient.auth.admin.updateUserById(target.id, {
+      password,
+      email_confirm: true,
+      user_metadata: { name: target.name, role: target.role },
+    });
+
+    if (updatePasswordError) {
+      return json({ error: updatePasswordError.message }, 400);
+    }
+
+    const { error: profileError } = await adminClient
+      .from('profiles')
+      .update({
+        password_set_at: new Date().toISOString(),
+        active: true,
+      })
+      .eq('id', target.id);
+
+    if (profileError) {
+      return json({ error: profileError.message }, 400);
+    }
+
+    return json({ ok: true, profileId: target.id, email: target.email });
+  }
+
   if (action !== 'update') return json({ error: 'Invalid action' }, 400);
 
   const nextName = String(updates?.name ?? target.name).trim();

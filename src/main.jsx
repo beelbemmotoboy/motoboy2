@@ -987,6 +987,7 @@ function CreatePasswordView() {
   const [error, setError] = React.useState('');
   const [setupLoading, setSetupLoading] = React.useState(Boolean(supabase));
   const [setupUserEmail, setSetupUserEmail] = React.useState('');
+  const [savingPassword, setSavingPassword] = React.useState(false);
   const strength = passwordStrength(password);
   const passwordsMatch = password && password === confirmPassword;
 
@@ -1064,15 +1065,37 @@ function CreatePasswordView() {
       return;
     }
 
+    const targetEmail = userData.user.email || setupUserEmail;
+    if (!targetEmail) {
+      setError('Nao foi possivel identificar o e-mail deste link. Solicite um novo convite.');
+      return;
+    }
+
+    setSavingPassword(true);
     const { error: updateError } = await supabase.auth.updateUser({ password });
     if (updateError) {
+      setSavingPassword(false);
       setError(updateError.message || 'Link expirado ou invalido. Solicite um novo convite.');
       return;
     }
 
     await supabase.functions.invoke('complete-password-setup');
-    setStatus('Senha criada com sucesso. Agora voce ja pode acessar o sistema.');
     await supabase.auth.signOut();
+
+    const { error: verifyError } = await supabase.auth.signInWithPassword({
+      email: targetEmail,
+      password,
+    });
+
+    if (verifyError) {
+      setSavingPassword(false);
+      setError('A senha foi enviada ao Supabase, mas o login de validacao falhou. Gere um novo link ou redefina a senha pelo administrador.');
+      return;
+    }
+
+    await supabase.auth.signOut();
+    setSavingPassword(false);
+    setStatus('Senha criada e login validado com sucesso. Agora voce ja pode acessar o sistema.');
   }
 
   return (
@@ -1110,8 +1133,8 @@ function CreatePasswordView() {
           </div>
           {error && <p className="field-error">{error}</p>}
           {status && <p className="success-message">{status}</p>}
-          <button className="primary-action" type="submit" disabled={setupLoading || Boolean(status)}>
-            {setupLoading ? 'Validando link...' : 'Salvar senha'}
+          <button className="primary-action" type="submit" disabled={setupLoading || savingPassword || Boolean(status)}>
+            {setupLoading ? 'Validando link...' : savingPassword ? 'Validando senha...' : 'Salvar senha'}
           </button>
           {status && (
             <div className="auth-links single">
@@ -1538,6 +1561,41 @@ function AccessView({ city, stores, couriers }) {
     setInviteMessage(data?.warning || 'Usuario excluido do Supabase Auth e do perfil de acesso.');
   }
 
+  async function setTemporaryPassword(user) {
+    const password = window.prompt(`Digite a senha temporaria para ${user.name}. Exemplo: Cidade@1`);
+    if (password === null) return;
+    const trimmedPassword = password.trim();
+    const strength = passwordStrength(trimmedPassword);
+
+    setAccessErrors({});
+    setInviteMessage('');
+
+    if (!strength.valid) {
+      setAccessErrors({ form: 'A senha temporaria precisa ter 6 caracteres, letra maiuscula, letra minuscula e simbolo. Exemplo: Cidade@1' });
+      return;
+    }
+
+    setSavingAccess(true);
+    const { error } = await supabase.functions.invoke('manage-access-user', {
+      body: {
+        action: 'set_password',
+        profileId: user.id,
+        updates: { password: trimmedPassword },
+      },
+    });
+    setSavingAccess(false);
+
+    if (error) {
+      setAccessErrors({ form: await functionErrorMessage(error, 'Nao foi possivel definir a senha temporaria.') });
+      return;
+    }
+
+    setUsers((current) => current.map((item) => (
+      item.id === user.id ? { ...item, active: true, status: 'Ativo' } : item
+    )));
+    setInviteMessage(`Senha temporaria definida para ${user.email}. Saia e teste o login com essa senha.`);
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     const validationErrors = editingUser
@@ -1822,6 +1880,7 @@ function AccessView({ city, stores, couriers }) {
                   <td>
                     <div className="table-actions">
                       <button type="button" onClick={() => editUser(user)}>Editar</button>
+                      <button type="button" onClick={() => setTemporaryPassword(user)}>Senha temporaria</button>
                       <button className="danger" type="button" onClick={() => deleteUser(user)}>Excluir</button>
                     </div>
                   </td>
