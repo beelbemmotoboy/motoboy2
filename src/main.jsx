@@ -443,7 +443,7 @@ function App() {
           <button className={page === 'map' ? 'active' : ''} onClick={() => setPage('map')}><MapPin size={18} />Mapa</button>
           <button className={page === 'cities' ? 'active' : ''} onClick={() => setPage('cities')}><Store size={18} />Cidades</button>
           <button className={page === 'access' ? 'active' : ''} onClick={() => setPage('access')}><ShieldCheck size={18} />Acessos</button>
-          <button className={page === 'stores' ? 'active' : ''} onClick={() => setPage('stores')}><Store size={18} />Lojas</button>
+          <button className={['stores', 'store-center'].includes(page) ? 'active' : ''} onClick={() => setPage('store-center')}><Store size={18} />Lojas</button>
           <button><UsersRound size={18} />Clientes</button>
           <button><ChartNoAxesCombined size={18} />Relatorios</button>
           <button><Settings size={18} />Configuracoes</button>
@@ -491,6 +491,16 @@ function App() {
               <Plus size={17} />Novo entregador
             </button>
           )}
+          {page === 'stores' && (
+            <button className="top-secondary-button top-page-switch" type="button" onClick={() => setPage('store-center')}>
+              <Store size={17} />Central de lojas
+            </button>
+          )}
+          {page === 'store-center' && (
+            <button className="top-secondary-button top-page-switch" type="button" onClick={() => setPage('stores')}>
+              <Plus size={17} />Nova loja
+            </button>
+          )}
           <div className="top-actions">
             <button className="icon-button theme-toggle" type="button" onClick={toggleDarkMode} aria-label={darkMode ? 'Ativar modo claro' : 'Ativar modo escuro'}>
               {darkMode ? <Sun size={20} /> : <Moon size={20} />}
@@ -513,6 +523,7 @@ function App() {
         )}
         {page === 'access' && <AccessView city={selectedCity} stores={storeList} couriers={courierList} />}
         {page === 'stores' && <StoresView city={selectedCity} stores={storeList} onChangeStores={setStoreList} />}
+        {page === 'store-center' && <StoreCenterView city={selectedCity} stores={storeList} onChangeStores={setStoreList} onOpenStoreForm={() => setPage('stores')} />}
         {page === 'couriers' && <CouriersView city={selectedCity} cities={cityList} couriers={courierList} onChangeCouriers={setCourierList} courierToEdit={courierToEdit} onEditLoaded={() => setCourierToEdit(null)} />}
         {page === 'courier-center' && <CourierCenterView city={selectedCity} couriers={courierList} onChangeCouriers={setCourierList} onEditCourier={(courier) => { setCourierToEdit(courier); setPage('couriers'); }} />}
         {page === 'store-home' && <StoreHomeView city={selectedCity} store={selectedStore} profile={currentProfile} onLogout={handleLogout} />}
@@ -530,6 +541,7 @@ function pageTitle(page) {
   if (page === 'cities') return 'Cidades';
   if (page === 'access') return 'Controle de acesso';
   if (page === 'stores') return 'Cadastro de lojas';
+  if (page === 'store-center') return 'Central de lojas';
   if (page === 'couriers') return 'Cadastro de entregadores';
   if (page === 'courier-center') return 'Central do entregador';
   return 'Visao geral';
@@ -3199,6 +3211,170 @@ function courierReceivableAmount(courier, index) {
 
 function formatCurrency(value) {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function storeStatusLabel(store) {
+  if (store.active === false) return 'Cadastro nao ativado';
+  if (store.isOpen === false) return 'Fechada';
+  return 'Ativa';
+}
+
+function storeReceivableAmount(store, index) {
+  const source = `${store.id || store.email || store.name || index}`;
+  const seed = source.split('').reduce((total, char) => total + char.charCodeAt(0), 0);
+  return 120 + ((seed + index * 53) % 980);
+}
+
+function StoreCenterView({ city, stores, onChangeStores, onOpenStoreForm }) {
+  const [searchTerm, setSearchTerm] = React.useState('');
+  const [filter, setFilter] = React.useState('all');
+  const [message, setMessage] = React.useState('');
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const filteredStores = stores.filter((store) => {
+    const status = storeStatusLabel(store);
+    const searchable = [store.name, store.fantasyName, store.whatsapp, store.email, store.document].filter(Boolean).join(' ').toLowerCase();
+    const matchesSearch = !normalizedSearch || searchable.includes(normalizedSearch);
+    const matchesFilter =
+      filter === 'all'
+      || (filter === 'inactive' && store.active === false)
+      || (filter === 'closed' && store.isOpen === false)
+      || (filter === 'active' && store.active !== false && store.isOpen !== false);
+    return matchesSearch && matchesFilter;
+  });
+  const inactiveCount = stores.filter((store) => store.active === false).length;
+  const totalReceivable = stores.reduce((total, store, index) => total + storeReceivableAmount(store, index), 0);
+
+  async function toggleStoreOpen(store) {
+    const nextIsOpen = store.isOpen === false;
+    setMessage('');
+
+    if (supabase) {
+      const { error } = await supabase
+        .from('stores')
+        .update({ is_open: nextIsOpen })
+        .eq('id', store.id);
+
+      if (error) {
+        setMessage(error.message);
+        return;
+      }
+    }
+
+    onChangeStores((current) => current.map((item) => (
+      item.id === store.id ? { ...item, isOpen: nextIsOpen } : item
+    )));
+    setMessage(nextIsOpen ? 'Loja marcada como aberta.' : 'Loja marcada como fechada.');
+  }
+
+  async function toggleStoreActive(store) {
+    const nextActive = store.active === false;
+    setMessage('');
+
+    if (supabase) {
+      const { error } = await supabase
+        .from('stores')
+        .update({ active: nextActive })
+        .eq('id', store.id);
+
+      if (error) {
+        setMessage(error.message);
+        return;
+      }
+    }
+
+    onChangeStores((current) => current.map((item) => (
+      item.id === store.id ? { ...item, active: nextActive } : item
+    )));
+    setMessage(nextActive ? 'Loja ativada.' : 'Loja desativada.');
+  }
+
+  return (
+    <section className="courier-center-layout store-center-layout">
+      <div className="courier-center-hero panel">
+        <div>
+          <span className="section-eyebrow">Central de lojas</span>
+          <h2>Lojas de {city.name}</h2>
+          <p>Consulte cadastros, status operacional e valores vinculados as lojas.</p>
+        </div>
+        <div className="courier-center-summary">
+          <span><strong>{stores.length}</strong> cadastros</span>
+          <span><strong>{inactiveCount}</strong> nao ativadas</span>
+          <span><strong>{formatCurrency(totalReceivable)}</strong> em pedidos</span>
+        </div>
+      </div>
+
+      <div className="panel courier-center-panel">
+        <div className="courier-center-toolbar">
+          <label className="search-field">
+            <Search size={18} />
+            <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Pesquisar por loja, CNPJ, telefone ou e-mail" />
+          </label>
+          <label className="filter-field">
+            Status
+            <select value={filter} onChange={(event) => setFilter(event.target.value)}>
+              <option value="all">Todas</option>
+              <option value="active">Ativas e abertas</option>
+              <option value="closed">Fechadas</option>
+              <option value="inactive">Cadastro nao ativado</option>
+            </select>
+          </label>
+        </div>
+
+        {message && <p className={message.includes('erro') || message.includes('permission') ? 'field-error' : 'success-message'}>{message}</p>}
+
+        <div className="courier-center-table" role="table" aria-label="Dados das lojas">
+          <div className="courier-center-head" role="row">
+            <span>Loja</span>
+            <span>Contato</span>
+            <span>Status</span>
+            <span>Valores</span>
+            <span>Acoes</span>
+          </div>
+          {filteredStores.length === 0 && (
+            <p className="empty-state">Nenhuma loja encontrada para o filtro atual.</p>
+          )}
+          {filteredStores.map((store, index) => {
+            const status = storeStatusLabel(store);
+            const needsActivation = store.active === false;
+            return (
+              <article className="courier-center-row" role="row" key={store.id || store.email}>
+                <div className="courier-identity">
+                  <div className="avatar small">{initials(store.fantasyName || store.name || 'Loja')}</div>
+                  <div>
+                    <strong>{store.fantasyName || store.name || 'Sem nome'}</strong>
+                    <span>{store.type || 'Loja'} - {store.document ? maskCnpj(store.document) : 'Sem CNPJ'}</span>
+                  </div>
+                </div>
+                <div>
+                  <strong>{store.whatsapp ? maskPhone(store.whatsapp) : 'Sem telefone'}</strong>
+                  <span>{store.email || 'Sem e-mail'}</span>
+                </div>
+                <div>
+                  <mark className={`status-tag ${needsActivation ? 'pending' : 'active'}`}>{status}</mark>
+                  <span>{store.address || 'Endereco nao informado'}</span>
+                </div>
+                <div>
+                  <strong>{formatCurrency(storeReceivableAmount(store, index))}</strong>
+                  <span>Pedidos e taxas</span>
+                </div>
+                <div className="row-actions">
+                  <button className="toggle-button" type="button" onClick={onOpenStoreForm}>Nova loja</button>
+                  {!needsActivation && (
+                    <button className="toggle-button" type="button" onClick={() => toggleStoreOpen(store)}>
+                      {store.isOpen === false ? 'Abrir' : 'Fechar'}
+                    </button>
+                  )}
+                  <button className="toggle-button highlight" type="button" onClick={() => toggleStoreActive(store)}>
+                    {needsActivation ? 'Ativar' : 'Desativar'}
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function CourierCenterView({ city, couriers, onChangeCouriers, onEditCourier }) {
