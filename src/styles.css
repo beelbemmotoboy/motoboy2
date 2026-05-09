@@ -25,6 +25,11 @@ button, a {
   background: #fbfbfa;
 }
 
+.app-shell.dark-mode {
+  color: #f3f6fb;
+  background: #070b12;
+}
+
 .password-page {
   min-height: 100vh;
   display: grid;
@@ -1558,6 +1563,172 @@ h2 {
   font-weight: 800;
   cursor: pointer;
   white-space: nowrap;
+}
+
+.theme-toggle {
+  border-radius: 999px;
+}
+
+.dark-mode .dashboard {
+  background:
+    radial-gradient(circle at top right, rgba(255, 210, 0, 0.08), transparent 34%),
+    #070b12;
+}
+
+.dark-mode h1,
+.dark-mode h2,
+.dark-mode .panel h2,
+.dark-mode .metric-card strong,
+.dark-mode .courier-center-row strong,
+.dark-mode .city-row strong,
+.dark-mode .store-list-item strong,
+.dark-mode .user-table strong,
+.dark-mode .delivery-main strong {
+  color: #f8fafc;
+}
+
+.dark-mode .icon-button {
+  color: #f8fafc;
+}
+
+.dark-mode .date-filter,
+.dark-mode .city-select,
+.dark-mode .city-locked,
+.dark-mode .user-chip,
+.dark-mode .panel-header button,
+.dark-mode .toggle-button,
+.dark-mode .secondary-action,
+.dark-mode .secondary-inline-button,
+.dark-mode .button-pair button {
+  border-color: #263244;
+  background: #121a27;
+  color: #f8fafc;
+}
+
+.dark-mode .city-select select {
+  color: #f8fafc;
+}
+
+.dark-mode .create-button,
+.dark-mode .top-secondary-button,
+.dark-mode .primary-action,
+.dark-mode .lookup-field button {
+  background: #ffd200;
+  color: #080b10;
+}
+
+.dark-mode .metric-card,
+.dark-mode .panel,
+.dark-mode .map-panel {
+  border-color: #223047;
+  background: #0f1724;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.36);
+}
+
+.dark-mode .metric-card p,
+.dark-mode .panel p,
+.dark-mode .form-note,
+.dark-mode .empty-state,
+.dark-mode .courier-center-hero p,
+.dark-mode .courier-center-row span,
+.dark-mode .city-row span,
+.dark-mode .store-list-item span,
+.dark-mode .delivery-main p,
+.dark-mode .field-help {
+  color: #a7b2c3;
+}
+
+.dark-mode .form-grid label,
+.dark-mode .user-form-grid label,
+.dark-mode .store-form-grid label,
+.dark-mode .notes-field,
+.dark-mode .filter-field {
+  color: #c8d2e1;
+}
+
+.dark-mode .form-grid input,
+.dark-mode .user-form-grid input,
+.dark-mode .user-form-grid select,
+.dark-mode .store-form-grid input,
+.dark-mode .store-form-grid select,
+.dark-mode .notes-field textarea,
+.dark-mode .schedule-row input,
+.dark-mode .search-field,
+.dark-mode .search-field input,
+.dark-mode .filter-field select,
+.dark-mode .type-filter select {
+  border-color: #263244;
+  background: #0a111d;
+  color: #f8fafc;
+}
+
+.dark-mode .form-grid input::placeholder,
+.dark-mode .user-form-grid input::placeholder,
+.dark-mode .store-form-grid input::placeholder,
+.dark-mode .notes-field textarea::placeholder,
+.dark-mode .search-field input::placeholder {
+  color: #728199;
+}
+
+.dark-mode .form-grid input:focus,
+.dark-mode .user-form-grid input:focus,
+.dark-mode .user-form-grid select:focus,
+.dark-mode .store-form-grid input:focus,
+.dark-mode .store-form-grid select:focus,
+.dark-mode .city-select:focus-within,
+.dark-mode .notes-field textarea:focus {
+  border-color: #ffd200;
+}
+
+.dark-mode .user-form-grid input:disabled,
+.dark-mode .user-form-grid select:disabled,
+.dark-mode .store-form-grid input:disabled,
+.dark-mode .store-form-grid select:disabled {
+  background: #121a27;
+  color: #8390a4;
+}
+
+.dark-mode .city-row,
+.dark-mode .store-list-item,
+.dark-mode .courier-row,
+.dark-mode .courier-center-row,
+.dark-mode .delivery-row,
+.dark-mode .user-table-row,
+.dark-mode .schedule-row {
+  border-color: #223047;
+  background: #0b1320;
+}
+
+.dark-mode .city-row.selected {
+  border-color: #ffd200;
+  background: #1b1808;
+}
+
+.dark-mode .courier-center-summary span,
+.dark-mode .city-stats span,
+.dark-mode .count-pill,
+.dark-mode .section-eyebrow {
+  background: #1d2636;
+  color: #f5c400;
+}
+
+.dark-mode .courier-center-summary strong {
+  color: #f8fafc;
+}
+
+.dark-mode .status-tag.active {
+  background: rgba(18, 115, 61, 0.22);
+  color: #37d780;
+}
+
+.dark-mode .status-tag.pending {
+  background: rgba(255, 210, 0, 0.16);
+  color: #ffd200;
+}
+
+.dark-mode .table-panel table,
+.dark-mode table {
+  color: #dce5f2;
 }
 
 .metrics-grid {

@@ -20,6 +20,7 @@ import {
   MapPin,
   Menu,
   Minus,
+  Moon,
   Navigation,
   PencilLine,
   Plus,
@@ -28,6 +29,7 @@ import {
   ShieldCheck,
   Star,
   Store,
+  Sun,
   UserRound,
   UsersRound,
   WalletCards,
@@ -136,6 +138,7 @@ function App() {
   const [storeList, setStoreList] = React.useState([]);
   const [courierList, setCourierList] = React.useState([]);
   const [courierToEdit, setCourierToEdit] = React.useState(null);
+  const [darkMode, setDarkMode] = React.useState(() => localStorage.getItem('beelbem-theme') === 'dark');
   const [cityId, setCityId] = React.useState('');
   const selectedCity = cityList.find((city) => city.id === cityId) ?? cityList[0] ?? emptyCity;
   const selectedStore = storeList.find((store) => store.id === currentProfile?.store_id) ?? storeList[0] ?? null;
@@ -145,6 +148,14 @@ function App() {
     setPageState(nextPage);
     window.location.hash = nextPage;
   };
+
+  function toggleDarkMode() {
+    setDarkMode((current) => {
+      const next = !current;
+      localStorage.setItem('beelbem-theme', next ? 'dark' : 'light');
+      return next;
+    });
+  }
 
   async function loadCurrentProfile(session) {
     const user = session?.user ?? null;
@@ -418,7 +429,7 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${darkMode ? 'dark-mode' : ''}`}>
       <aside className="sidebar">
         <div className="logo brand-logo">
           <img src={beeIcon} alt="" />
@@ -486,6 +497,9 @@ function App() {
                 <strong>{currentProfile.name}</strong>
               </div>
             )}
+            <button className="icon-button theme-toggle" type="button" onClick={toggleDarkMode} aria-label={darkMode ? 'Ativar modo claro' : 'Ativar modo escuro'}>
+              {darkMode ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
             <button className="icon-button notification" aria-label="Notificacoes"><Bell size={21} /><span>3</span></button>
             <button className="create-button" aria-label="Nova entrega"><Plus size={22} /></button>
             <button className="icon-button" type="button" onClick={handleLogout} aria-label="Sair"><LogOut size={20} /></button>
