@@ -116,6 +116,54 @@ function authCallbackParams() {
   };
 }
 
+function safeStorageFileName(fileName) {
+  return String(fileName || 'arquivo')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._-]/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 140);
+}
+
+function randomStorageId() {
+  return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+async function uploadStorageFile(bucket, folder, file) {
+  if (!file) return '';
+  if (!supabase) throw new Error('Supabase nao configurado para enviar arquivos.');
+
+  const path = `${folder}/${Date.now()}-${randomStorageId()}-${safeStorageFileName(file.name)}`;
+  const { error } = await supabase.storage
+    .from(bucket)
+    .upload(path, file, {
+      upsert: false,
+      contentType: file.type || undefined,
+    });
+
+  if (error) throw error;
+  return path;
+}
+
+async function openStorageFile(bucket, path) {
+  if (!path) throw new Error('Arquivo nao encontrado neste cadastro.');
+  if (/^https?:\/\//i.test(path)) {
+    window.open(path, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  if (!path.includes('/')) {
+    throw new Error('Este cadastro tem apenas o nome do arquivo antigo. Reenvie o arquivo pelo formulario para salvar no Storage.');
+  }
+  if (!supabase) throw new Error('Supabase nao configurado para abrir arquivos.');
+
+  const { data, error } = await supabase.storage
+    .from(bucket)
+    .createSignedUrl(path, 600);
+
+  if (error) throw error;
+  window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+}
+
 function App() {
   const [page, setPageState] = React.useState(pageFromLocation);
   const [authReady, setAuthReady] = React.useState(!supabase);
@@ -2522,6 +2570,8 @@ function StoresView({ city, stores, onChangeStores, storeToEdit, onEditLoaded })
     rateCourierAfterDelivery: 'Sim',
     status: 'Ativa',
     notes: '',
+    logoUrl: '',
+    logoFile: null,
   });
   const [errors, setErrors] = React.useState({});
   const [cnpjMessage, setCnpjMessage] = React.useState('');
@@ -2559,6 +2609,8 @@ function StoresView({ city, stores, onChangeStores, storeToEdit, onEditLoaded })
       rateCourierAfterDelivery: 'Sim',
       status: 'Ativa',
       notes: '',
+      logoUrl: '',
+      logoFile: null,
     });
     setEditingStoreId('');
     setErrors({});
@@ -2590,6 +2642,8 @@ function StoresView({ city, stores, onChangeStores, storeToEdit, onEditLoaded })
       rateCourierAfterDelivery: store.rateCourierAfterDelivery ?? 'Sim',
       status: store.active === false ? 'Desativada' : 'Ativa',
       notes: store.notes ?? '',
+      logoUrl: store.logoUrl ?? store.logo_url ?? '',
+      logoFile: null,
     });
     setErrors({});
     setMessage('');
@@ -2601,6 +2655,16 @@ function StoresView({ city, stores, onChangeStores, storeToEdit, onEditLoaded })
     const validationErrors = validateStoreForm(form);
     setErrors(validationErrors);
     if (Object.keys(validationErrors).length) return;
+
+    let logoUrl = form.logoUrl;
+    if (form.logoFile) {
+      try {
+        logoUrl = await uploadStorageFile('user-documents', `stores/${city.id}/logos`, form.logoFile);
+      } catch (uploadError) {
+        setErrors({ form: uploadError.message || 'Nao foi possivel enviar a logo da loja.' });
+        return;
+      }
+    }
 
     const payload = {
       city_id: city.id,
@@ -2626,6 +2690,7 @@ function StoresView({ city, stores, onChangeStores, storeToEdit, onEditLoaded })
       rate_courier_after_delivery: form.rateCourierAfterDelivery === 'Sim',
       internal_notes: form.notes.trim(),
       active: form.status === 'Ativa',
+      logo_url: logoUrl || null,
     };
 
     let newStore = {
@@ -2653,6 +2718,7 @@ function StoresView({ city, stores, onChangeStores, storeToEdit, onEditLoaded })
       rateCourierAfterDelivery: form.rateCourierAfterDelivery,
       notes: payload.internal_notes,
       active: payload.active,
+      logoUrl: logoUrl,
     };
 
     if (supabase) {
@@ -2827,6 +2893,22 @@ function StoresView({ city, stores, onChangeStores, storeToEdit, onEditLoaded })
               <option>Bloqueada</option>
             </select>
           </label>
+          <label>
+            Logo da loja
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(event) => {
+                const file = event.target.files?.[0] || null;
+                setForm((current) => ({
+                  ...current,
+                  logoFile: file,
+                  logoUrl: file?.name || current.logoUrl,
+                }));
+              }}
+            />
+            {form.logoUrl && <span className="field-help">Arquivo atual: {form.logoUrl.includes('/') ? form.logoUrl.split('/').pop() : form.logoUrl}</span>}
+          </label>
         </div>
 
         <div className="form-section-title">Endereco de retirada</div>
@@ -2995,7 +3077,9 @@ function CouriersView({ city, cities, couriers, onChangeCouriers, courierToEdit,
     phone: '',
     email: '',
     facePhoto: '',
+    facePhotoFile: null,
     crlvFile: '',
+    crlvFileObject: null,
     vehicle: 'Moto',
     plate: '',
     pix: '',
@@ -3003,6 +3087,7 @@ function CouriersView({ city, cities, couriers, onChangeCouriers, courierToEdit,
     pixHolder: '',
     vehicleNotes: '',
     cnhFile: '',
+    cnhFileObject: null,
     cnhValidUntil: '',
     notes: '',
     approvalStatus: 'pending_approval',
@@ -3074,7 +3159,9 @@ function CouriersView({ city, cities, couriers, onChangeCouriers, courierToEdit,
       phone: courier.phone ?? '',
       email: courier.email ?? '',
       facePhoto: courier.facePhoto ?? '',
+      facePhotoFile: null,
       crlvFile: courier.crlvFile ?? '',
+      crlvFileObject: null,
       vehicle: 'Moto',
       plate: courier.plate ?? '',
       pix: courier.pix ?? '',
@@ -3082,6 +3169,7 @@ function CouriersView({ city, cities, couriers, onChangeCouriers, courierToEdit,
       pixHolder: courier.pixHolder ?? '',
       vehicleNotes: courier.vehicleNotes ?? '',
       cnhFile: courier.cnhFile ?? '',
+      cnhFileObject: null,
       cnhValidUntil: courier.cnhValidUntil ?? '',
       notes: courier.notes ?? '',
       approvalStatus: courier.approvalStatus ?? courier.status ?? 'pending_approval',
@@ -3123,6 +3211,30 @@ function CouriersView({ city, cities, couriers, onChangeCouriers, courierToEdit,
     setErrors(validationErrors);
     if (Object.keys(validationErrors).length) return;
 
+    let facePhotoPath = form.facePhoto;
+    let crlvFilePath = form.crlvFile;
+    let cnhFilePath = form.cnhFile;
+
+    if (supabase) {
+      setSaving(true);
+      try {
+        const folderBase = `couriers/${form.cityId || city.id}`;
+        if (form.facePhotoFile) {
+          facePhotoPath = await uploadStorageFile('courier-documents', `${folderBase}/face`, form.facePhotoFile);
+        }
+        if (form.crlvFileObject) {
+          crlvFilePath = await uploadStorageFile('courier-documents', `${folderBase}/crlv`, form.crlvFileObject);
+        }
+        if (form.cnhFileObject) {
+          cnhFilePath = await uploadStorageFile('courier-documents', `${folderBase}/cnh`, form.cnhFileObject);
+        }
+      } catch (uploadError) {
+        setSaving(false);
+        setErrors({ form: uploadError.message || 'Nao foi possivel enviar os documentos do entregador.' });
+        return;
+      }
+    }
+
     const payload = {
       city_id: form.cityId || city.id,
       name: form.fullName.trim(),
@@ -3130,7 +3242,7 @@ function CouriersView({ city, cities, couriers, onChangeCouriers, courierToEdit,
       cpf: onlyDigits(form.cpf),
       phone: onlyDigits(form.phone),
       email: form.email.trim(),
-      face_photo_path: form.facePhoto,
+      face_photo_path: facePhotoPath,
       whatsapp_validated: false,
       vehicle_type: 'Moto',
       vehicle_plate: form.plate.toUpperCase(),
@@ -3138,8 +3250,8 @@ function CouriersView({ city, cities, couriers, onChangeCouriers, courierToEdit,
       pix_key_type: form.pixType,
       pix_holder_name: form.pixHolder.trim(),
       vehicle_notes: form.vehicleNotes.trim(),
-      crlv_file_path: form.crlvFile,
-      cnh_file_path: form.cnhFile,
+      crlv_file_path: crlvFilePath,
+      cnh_file_path: cnhFilePath,
       cnh_valid_until: form.cnhValidUntil,
       approval_status: form.approvalStatus,
       availability_status: form.availabilityStatus,
@@ -3152,6 +3264,9 @@ function CouriersView({ city, cities, couriers, onChangeCouriers, courierToEdit,
       id: slugifyCity(form.fullName, city.state),
       cityId: form.cityId || city.id,
       ...form,
+      facePhoto: facePhotoPath,
+      crlvFile: crlvFilePath,
+      cnhFile: cnhFilePath,
       plate: form.plate.toUpperCase(),
       status: form.approvalStatus,
       availability: form.availabilityStatus,
@@ -3160,7 +3275,6 @@ function CouriersView({ city, cities, couriers, onChangeCouriers, courierToEdit,
     };
 
     if (supabase) {
-      setSaving(true);
       const { data, error } = editingCourierId
         ? await supabase
             .from('couriers')
@@ -3284,7 +3398,15 @@ function CouriersView({ city, cities, couriers, onChangeCouriers, courierToEdit,
           </label>
           <label>
             Foto do rosto
-            <input type="file" accept="image/*" onChange={(event) => setForm((current) => ({ ...current, facePhoto: event.target.files?.[0]?.name || '' }))} />
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(event) => {
+                const file = event.target.files?.[0] || null;
+                setForm((current) => ({ ...current, facePhotoFile: file, facePhoto: file?.name || current.facePhoto }));
+              }}
+            />
+            {form.facePhoto && <span className="field-help">Arquivo atual: {form.facePhoto.includes('/') ? form.facePhoto.split('/').pop() : form.facePhoto}</span>}
             {errors.facePhoto && <span className="field-error">{errors.facePhoto}</span>}
           </label>
         </div>
@@ -3328,12 +3450,28 @@ function CouriersView({ city, cities, couriers, onChangeCouriers, courierToEdit,
           </label>
           <label>
             Foto ou copia da CNH
-            <input type="file" accept="image/*,.pdf" onChange={(event) => setForm((current) => ({ ...current, cnhFile: event.target.files?.[0]?.name || '' }))} />
+            <input
+              type="file"
+              accept="image/*,.pdf"
+              onChange={(event) => {
+                const file = event.target.files?.[0] || null;
+                setForm((current) => ({ ...current, cnhFileObject: file, cnhFile: file?.name || current.cnhFile }));
+              }}
+            />
+            {form.cnhFile && <span className="field-help">Arquivo atual: {form.cnhFile.includes('/') ? form.cnhFile.split('/').pop() : form.cnhFile}</span>}
             {errors.cnhFile && <span className="field-error">{errors.cnhFile}</span>}
           </label>
           <label>
             Documento do veiculo CRLV
-            <input type="file" accept="image/*,.pdf" onChange={(event) => setForm((current) => ({ ...current, crlvFile: event.target.files?.[0]?.name || '' }))} />
+            <input
+              type="file"
+              accept="image/*,.pdf"
+              onChange={(event) => {
+                const file = event.target.files?.[0] || null;
+                setForm((current) => ({ ...current, crlvFileObject: file, crlvFile: file?.name || current.crlvFile }));
+              }}
+            />
+            {form.crlvFile && <span className="field-help">Arquivo atual: {form.crlvFile.includes('/') ? form.crlvFile.split('/').pop() : form.crlvFile}</span>}
           </label>
           <label>
             Validade da CNH
@@ -3549,6 +3687,7 @@ function CourierCenterView({ city, couriers, onChangeCouriers, onEditCourier }) 
   const [passwordCourier, setPasswordCourier] = React.useState(null);
   const [temporaryPassword, setTemporaryPassword] = React.useState('');
   const [passwordMessage, setPasswordMessage] = React.useState('');
+  const [fileMessage, setFileMessage] = React.useState('');
   const [savingPassword, setSavingPassword] = React.useState(false);
   const normalizedSearch = searchTerm.trim().toLowerCase();
   const filteredCouriers = couriers.filter((courier) => {
@@ -3569,6 +3708,15 @@ function CourierCenterView({ city, couriers, onChangeCouriers, onEditCourier }) 
     setPasswordCourier(courier);
     setTemporaryPassword('');
     setPasswordMessage('');
+  }
+
+  async function handleOpenCourierFile(courier, field, label) {
+    setFileMessage('');
+    try {
+      await openStorageFile('courier-documents', courier[field]);
+    } catch (fileError) {
+      setFileMessage(`${label}: ${fileError.message || 'Nao foi possivel abrir o arquivo.'}`);
+    }
   }
 
   function closePasswordModal() {
@@ -3688,6 +3836,7 @@ function CourierCenterView({ city, couriers, onChangeCouriers, onEditCourier }) 
           {filteredCouriers.length === 0 && (
             <p className="empty-state">Nenhum entregador encontrado para o filtro atual.</p>
           )}
+          {fileMessage && <p className="field-error">{fileMessage}</p>}
           {filteredCouriers.map((courier, index) => {
             const status = courierStatusLabel(courier);
             const needsActivation = status === 'Cadastro nao ativado' || status === 'Pendente';
@@ -3714,6 +3863,12 @@ function CourierCenterView({ city, couriers, onChangeCouriers, onEditCourier }) 
                 </div>
                 <div className="row-actions">
                   <button className="toggle-button" type="button" onClick={() => onEditCourier(courier)}>Editar</button>
+                  {courier.facePhoto && (
+                    <button className="toggle-button" type="button" onClick={() => handleOpenCourierFile(courier, 'facePhoto', 'Foto do rosto')}>Foto rosto</button>
+                  )}
+                  {courier.cnhFile && (
+                    <button className="toggle-button" type="button" onClick={() => handleOpenCourierFile(courier, 'cnhFile', 'CNH')}>CNH</button>
+                  )}
                   {needsActivation && (
                     <button className="toggle-button highlight" type="button" onClick={() => openPasswordModal(courier)}>Gerar senha</button>
                   )}
