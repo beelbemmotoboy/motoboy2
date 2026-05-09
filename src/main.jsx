@@ -1015,6 +1015,7 @@ function PublicSignupView({ type }) {
   const [cnpjStatus, setCnpjStatus] = React.useState('');
   const [error, setError] = React.useState('');
   const [status, setStatus] = React.useState('');
+  const [locationLocked, setLocationLocked] = React.useState(false);
   const [form, setForm] = React.useState(
     isStore
       ? {
@@ -1085,6 +1086,22 @@ function PublicSignupView({ type }) {
 
   function updateField(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function geolocationErrorMessage(error) {
+    if (error?.code === 1) {
+      return 'Permissao de localizacao negada. Autorize a localizacao no navegador ou cole o link do Google Maps.';
+    }
+    if (error?.code === 2) {
+      return 'Localizacao indisponivel no momento. Verifique GPS/Wi-Fi/dados moveis ou cole o link do Google Maps.';
+    }
+    if (error?.code === 3) {
+      return 'Tempo esgotado para obter a localizacao. Tente novamente em local aberto ou cole o link do Google Maps.';
+    }
+    if (!window.isSecureContext) {
+      return 'A localizacao exige conexao segura HTTPS. Cole o link do Google Maps manualmente.';
+    }
+    return 'Nao foi possivel obter a localizacao. Cole o link do mapa manualmente.';
   }
 
   async function lookupCnpj() {
@@ -1281,8 +1298,12 @@ function PublicSignupView({ type }) {
                 <div className="lookup-field">
                   <input
                     value={form.locationReceived}
-                    onChange={(event) => updateField('locationReceived', event.target.value)}
+                    onChange={(event) => {
+                      setLocationLocked(false);
+                      updateField('locationReceived', event.target.value);
+                    }}
                     placeholder="Cole o link do Google Maps ou use o botao ao lado"
+                    disabled={locationLocked}
                   />
                   <button
                     type="button"
@@ -1292,17 +1313,22 @@ function PublicSignupView({ type }) {
                         return;
                       }
                       setError('');
+                      setLocationLocked(false);
                       navigator.geolocation.getCurrentPosition(
                         (position) => {
                           const { latitude, longitude } = position.coords;
                           updateField('locationReceived', `${latitude.toFixed(7)}, ${longitude.toFixed(7)}`);
+                          setLocationLocked(true);
                         },
-                        () => setError('Nao foi possivel obter a localizacao. Cole o link do mapa manualmente.'),
+                        (geoError) => {
+                          setLocationLocked(false);
+                          setError(geolocationErrorMessage(geoError));
+                        },
                         { enableHighAccuracy: true, timeout: 10000 },
                       );
                     }}
                   >
-                    Enviar localizacao
+                    {locationLocked ? 'Localizacao enviada' : 'Enviar localizacao'}
                   </button>
                 </div>
               </label>
