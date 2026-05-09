@@ -434,7 +434,18 @@ function App() {
   }
 
   if (supabase && !currentProfile) {
-    return <LoginView />;
+    return (
+      <LoginView
+        onLoginSuccess={(user, profile) => {
+          setCurrentUser(user);
+          setCurrentProfile({ ...profile, email: user.email });
+          if (profile.role !== 'system_admin' && profile.city_id) {
+            setCityId(profile.city_id);
+          }
+          setPage(resolveHomeByRole(profile.role));
+        }}
+      />
+    );
   }
 
   if (page === 'store-home' && currentProfile?.role === 'store_admin') {
@@ -644,7 +655,7 @@ function PasswordInput({ label, value, onChange, placeholder, canCopy = false, a
   );
 }
 
-function LoginView() {
+function LoginView({ onLoginSuccess }) {
   const savedLogin = React.useMemo(() => {
     try {
       return JSON.parse(localStorage.getItem('beelbem.rememberLogin') || '{}');
@@ -663,6 +674,7 @@ function LoginView() {
 
   async function handleLogin(event) {
     event.preventDefault();
+    if (loading) return;
     setError('');
     if (!form.email.trim() || !form.password) {
       setError('Informe e-mail e senha.');
@@ -731,7 +743,7 @@ function LoginView() {
       localStorage.removeItem('beelbem.rememberLogin');
     }
 
-    window.location.hash = `#${resolveHomeByRole(profile?.role)}`;
+    onLoginSuccess?.(data.user, profile);
   }
 
   return (
