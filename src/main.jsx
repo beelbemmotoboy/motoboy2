@@ -164,6 +164,32 @@ async function openStorageFile(bucket, path) {
   window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
 }
 
+function readLocalJson(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    return { ...fallback, ...JSON.parse(raw) };
+  } catch {
+    return fallback;
+  }
+}
+
+function writeLocalJson(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Ignore storage errors, usually private mode or full storage.
+  }
+}
+
+function removeLocalJson(key) {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
 function App() {
   const [page, setPageState] = React.useState(pageFromLocation);
   const [authReady, setAuthReady] = React.useState(!supabase);
@@ -1066,6 +1092,37 @@ function JoinView() {
 
 function PublicSignupView({ type }) {
   const isStore = type === 'store';
+  const draftKey = `beelbem-public-signup-${type}`;
+  const defaultStoreForm = {
+    cityId: '',
+    document: '',
+    name: '',
+    fantasyName: '',
+    responsible: '',
+    email: '',
+    whatsapp: '',
+    zipCode: '',
+    address: '',
+    number: '',
+    district: '',
+    locationReceived: '',
+  };
+  const defaultCourierForm = {
+    cityId: '',
+    fullName: '',
+    birthDate: '',
+    cpf: '',
+    phone: '',
+    email: '',
+    plate: '',
+    facePhoto: '',
+    crlvFile: '',
+    cnhFile: '',
+    pix: '',
+    pixType: 'CPF',
+    pixHolder: '',
+  };
+  const defaultForm = isStore ? defaultStoreForm : defaultCourierForm;
   const [cities, setCities] = React.useState([]);
   const [loadingCities, setLoadingCities] = React.useState(Boolean(supabase));
   const [submitting, setSubmitting] = React.useState(false);
@@ -1074,38 +1131,11 @@ function PublicSignupView({ type }) {
   const [error, setError] = React.useState('');
   const [status, setStatus] = React.useState('');
   const [locationLocked, setLocationLocked] = React.useState(false);
-  const [form, setForm] = React.useState(
-    isStore
-      ? {
-          cityId: '',
-          document: '',
-          name: '',
-          fantasyName: '',
-          responsible: '',
-          email: '',
-          whatsapp: '',
-          zipCode: '',
-          address: '',
-          number: '',
-          district: '',
-          locationReceived: '',
-        }
-      : {
-          cityId: '',
-          fullName: '',
-          birthDate: '',
-          cpf: '',
-          phone: '',
-          email: '',
-          plate: '',
-          facePhoto: '',
-          crlvFile: '',
-          cnhFile: '',
-          pix: '',
-          pixType: 'CPF',
-          pixHolder: '',
-        },
-  );
+  const [form, setForm] = React.useState(() => readLocalJson(draftKey, defaultForm));
+
+  React.useEffect(() => {
+    writeLocalJson(draftKey, form);
+  }, [draftKey, form]);
 
   React.useEffect(() => {
     let mounted = true;
@@ -1301,6 +1331,7 @@ function PublicSignupView({ type }) {
     setStatus(isStore
       ? 'Cadastro da loja enviado. A equipe Beelbem vai analisar e liberar o acesso.'
       : 'Cadastro de motoboy enviado. A equipe Beelbem vai analisar e liberar o acesso.');
+    removeLocalJson(draftKey);
   }
 
   return (
