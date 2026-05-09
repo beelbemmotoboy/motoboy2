@@ -70,6 +70,7 @@ create table if not exists public.couriers (
   pix_key_type text,
   pix_holder_name text,
   vehicle_notes text,
+  crlv_file_path text,
   cnh_file_path text,
   cnh_valid_until date,
   approval_status text not null default 'pending_approval',
@@ -209,6 +210,7 @@ alter table public.stores add column if not exists logo_url text;
 alter table public.stores add column if not exists is_open boolean not null default true;
 alter table public.couriers add column if not exists created_by uuid references auth.users(id);
 alter table public.couriers add column if not exists updated_by uuid references auth.users(id);
+alter table public.couriers add column if not exists crlv_file_path text;
 alter table public.profiles add column if not exists email text;
 alter table public.profiles add column if not exists created_by uuid references auth.users(id);
 alter table public.profiles add column if not exists updated_by uuid references auth.users(id);

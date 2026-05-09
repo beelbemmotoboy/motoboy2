@@ -30,6 +30,10 @@ function temporaryPassword() {
   return `Bee@${suffix}a`;
 }
 
+function cleanString(value: unknown) {
+  return String(value ?? '').trim();
+}
+
 serve(async (request) => {
   if (request.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -74,11 +78,17 @@ serve(async (request) => {
 
   const payload = await request.json();
   const courier = payload.courier ?? {};
-  const cityId = String(courier.city_id ?? '');
-  const email = String(courier.email ?? '').trim().toLowerCase();
+  const requestedPassword = cleanString(payload.temporaryPassword);
+  const existingCourierId = cleanString(courier.id);
+  const cityId = cleanString(courier.city_id);
+  const email = cleanString(courier.email).toLowerCase();
 
   if (!cityId || !email || !courier.name) {
     return json({ error: 'Courier city, name and email are required' }, 400);
+  }
+
+  if (requestedPassword && requestedPassword.length < 6) {
+    return json({ error: 'Password must have at least 6 characters' }, 400);
   }
 
   const canManage =
@@ -89,10 +99,21 @@ serve(async (request) => {
     return json({ error: 'You cannot create couriers for this city' }, 403);
   }
 
-  const { data: createdCourier, error: courierError } = await adminClient
-    .from('couriers')
-    .insert(courier)
-    .select('id, city_id, name, birth_date, cpf, phone, email, face_photo_path, whatsapp_validated, vehicle_type, vehicle_plate, pix_key, pix_key_type, pix_holder_name, vehicle_notes, cnh_file_path, cnh_valid_until, internal_notes, approval_status, availability_status, rating, active')
+  const courierMutation = existingCourierId
+    ? adminClient
+        .from('couriers')
+        .update({
+          ...courier,
+          approval_status: courier.approval_status || 'approved',
+          active: true,
+        })
+        .eq('id', existingCourierId)
+    : adminClient
+        .from('couriers')
+        .insert(courier);
+
+  const { data: createdCourier, error: courierError } = await courierMutation
+    .select('id, city_id, name, birth_date, cpf, phone, email, face_photo_path, whatsapp_validated, vehicle_type, vehicle_plate, pix_key, pix_key_type, pix_holder_name, vehicle_notes, crlv_file_path, cnh_file_path, cnh_valid_until, internal_notes, approval_status, availability_status, rating, active')
     .single();
 
   if (courierError) {
@@ -100,7 +121,7 @@ serve(async (request) => {
   }
 
   let authUser = await findUserByEmail(adminClient, email);
-  const password = temporaryPassword();
+  const password = requestedPassword || temporaryPassword();
 
   if (!authUser) {
     const { data: createData, error: createError } = await adminClient.auth.admin.createUser({

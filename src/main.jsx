@@ -283,7 +283,7 @@ function App() {
           .order('created_at', { ascending: false }),
         supabase
           .from('couriers')
-          .select('id, city_id, name, birth_date, cpf, phone, email, face_photo_path, whatsapp_validated, vehicle_type, vehicle_plate, pix_key, pix_key_type, pix_holder_name, vehicle_notes, cnh_file_path, cnh_valid_until, internal_notes, approval_status, availability_status, rating, active')
+          .select('id, city_id, name, birth_date, cpf, phone, email, face_photo_path, whatsapp_validated, vehicle_type, vehicle_plate, pix_key, pix_key_type, pix_holder_name, vehicle_notes, crlv_file_path, cnh_file_path, cnh_valid_until, internal_notes, approval_status, availability_status, rating, active')
           .eq('city_id', cityId)
           .order('created_at', { ascending: false }),
         supabase
@@ -335,6 +335,7 @@ function App() {
           phone: maskPhone(courier.phone ?? ''),
           email: courier.email,
           facePhoto: courier.face_photo_path ?? '',
+          crlvFile: courier.crlv_file_path ?? '',
           whatsappValidated: courier.whatsapp_validated,
           vehicle: courier.vehicle_type,
           plate: courier.vehicle_plate,
@@ -520,7 +521,7 @@ function App() {
         {page === 'access' && <AccessView city={selectedCity} stores={storeList} couriers={courierList} />}
         {page === 'stores' && <StoresView city={selectedCity} stores={storeList} onChangeStores={setStoreList} />}
         {page === 'couriers' && <CouriersView city={selectedCity} cities={cityList} couriers={courierList} onChangeCouriers={setCourierList} courierToEdit={courierToEdit} onEditLoaded={() => setCourierToEdit(null)} />}
-        {page === 'courier-center' && <CourierCenterView city={selectedCity} couriers={courierList} onEditCourier={(courier) => { setCourierToEdit(courier); setPage('couriers'); }} />}
+        {page === 'courier-center' && <CourierCenterView city={selectedCity} couriers={courierList} onChangeCouriers={setCourierList} onEditCourier={(courier) => { setCourierToEdit(courier); setPage('couriers'); }} />}
         {page === 'store-home' && <StoreHomeView city={selectedCity} store={selectedStore} profile={currentProfile} onLogout={handleLogout} />}
         {page === 'courier-home' && <CourierHomeView city={selectedCity} />}
         {page === 'overview' && <Overview city={selectedCity} />}
@@ -1020,6 +1021,9 @@ function PublicSignupView({ type }) {
           phone: '',
           email: '',
           plate: '',
+          facePhoto: '',
+          crlvFile: '',
+          cnhFile: '',
           pix: '',
           pixType: 'CPF',
           pixHolder: '',
@@ -1124,6 +1128,9 @@ function PublicSignupView({ type }) {
       if (!isValidPhone(form.phone)) errors.push('WhatsApp invalido.');
       if (!isValidEmail(form.email)) errors.push('E-mail invalido.');
       if (!form.plate.trim()) errors.push('Informe a placa da moto.');
+      if (!form.facePhoto) errors.push('Informe a foto do rosto.');
+      if (!form.crlvFile) errors.push('Informe o documento do veiculo CRLV.');
+      if (!form.cnhFile) errors.push('Informe a CNH.');
       if (!form.pix.trim()) errors.push('Informe a chave Pix.');
       if (!form.pixHolder.trim()) errors.push('Informe o favorecido do Pix.');
     }
@@ -1171,8 +1178,11 @@ function PublicSignupView({ type }) {
           cpf: onlyDigits(form.cpf),
           phone: onlyDigits(form.phone),
           email: form.email.trim().toLowerCase(),
+          face_photo_path: form.facePhoto,
           vehicle_type: 'Moto',
           vehicle_plate: form.plate.trim().toUpperCase(),
+          crlv_file_path: form.crlvFile,
+          cnh_file_path: form.cnhFile,
           pix_key: form.pix.trim(),
           pix_key_type: form.pixType,
           pix_holder_name: form.pixHolder.trim(),
@@ -1256,6 +1266,9 @@ function PublicSignupView({ type }) {
               <label>E-mail<input type="email" value={form.email} onChange={(event) => updateField('email', event.target.value)} placeholder="motoboy@email.com" /></label>
               <label>Veiculo<input value="Moto" disabled /></label>
               <label>Placa<input value={form.plate} onChange={(event) => updateField('plate', event.target.value)} placeholder="ABC1D23" /></label>
+              <label>Foto do rosto<input type="file" accept="image/*" onChange={(event) => updateField('facePhoto', event.target.files?.[0]?.name || '')} /></label>
+              <label>Documento do veiculo CRLV<input type="file" accept="image/*,.pdf" onChange={(event) => updateField('crlvFile', event.target.files?.[0]?.name || '')} /></label>
+              <label>CNH imagem ou PDF<input type="file" accept="image/*,.pdf" onChange={(event) => updateField('cnhFile', event.target.files?.[0]?.name || '')} /></label>
               <label>Tipo da chave Pix<select value={form.pixType} onChange={(event) => updateField('pixType', event.target.value)}><option>CPF</option><option>E-mail</option><option>Telefone</option><option>Chave aleatoria</option></select></label>
               <label>Chave Pix<input value={form.pix} onChange={(event) => updateField('pix', event.target.value)} placeholder="CPF, e-mail, telefone ou chave" /></label>
               <label>Favorecido Pix<input value={form.pixHolder} onChange={(event) => updateField('pixHolder', event.target.value)} placeholder="Nome de quem recebe o Pix" /></label>
@@ -2811,6 +2824,7 @@ function CouriersView({ city, cities, couriers, onChangeCouriers, courierToEdit,
     phone: '',
     email: '',
     facePhoto: '',
+    crlvFile: '',
     vehicle: 'Moto',
     plate: '',
     pix: '',
@@ -2859,6 +2873,7 @@ function CouriersView({ city, cities, couriers, onChangeCouriers, courierToEdit,
       phone: maskPhone(data.phone ?? ''),
       email: data.email,
       facePhoto: data.face_photo_path ?? '',
+      crlvFile: data.crlv_file_path ?? '',
       whatsappValidated: data.whatsapp_validated,
       vehicle: data.vehicle_type,
       plate: data.vehicle_plate,
@@ -2888,6 +2903,7 @@ function CouriersView({ city, cities, couriers, onChangeCouriers, courierToEdit,
       phone: courier.phone ?? '',
       email: courier.email ?? '',
       facePhoto: courier.facePhoto ?? '',
+      crlvFile: courier.crlvFile ?? '',
       vehicle: 'Moto',
       plate: courier.plate ?? '',
       pix: courier.pix ?? '',
@@ -2951,6 +2967,7 @@ function CouriersView({ city, cities, couriers, onChangeCouriers, courierToEdit,
       pix_key_type: form.pixType,
       pix_holder_name: form.pixHolder.trim(),
       vehicle_notes: form.vehicleNotes.trim(),
+      crlv_file_path: form.crlvFile,
       cnh_file_path: form.cnhFile,
       cnh_valid_until: form.cnhValidUntil,
       approval_status: form.approvalStatus,
@@ -2978,7 +2995,7 @@ function CouriersView({ city, cities, couriers, onChangeCouriers, courierToEdit,
             .from('couriers')
             .update(payload)
             .eq('id', editingCourierId)
-            .select('id, city_id, name, birth_date, cpf, phone, email, face_photo_path, whatsapp_validated, vehicle_type, vehicle_plate, pix_key, pix_key_type, pix_holder_name, vehicle_notes, cnh_file_path, cnh_valid_until, internal_notes, approval_status, availability_status, rating, active')
+            .select('id, city_id, name, birth_date, cpf, phone, email, face_photo_path, whatsapp_validated, vehicle_type, vehicle_plate, pix_key, pix_key_type, pix_holder_name, vehicle_notes, crlv_file_path, cnh_file_path, cnh_valid_until, internal_notes, approval_status, availability_status, rating, active')
             .single()
         : await supabase.functions.invoke('create-courier-invite', {
             body: { courier: payload },
@@ -3144,6 +3161,10 @@ function CouriersView({ city, cities, couriers, onChangeCouriers, courierToEdit,
             {errors.cnhFile && <span className="field-error">{errors.cnhFile}</span>}
           </label>
           <label>
+            Documento do veiculo CRLV
+            <input type="file" accept="image/*,.pdf" onChange={(event) => setForm((current) => ({ ...current, crlvFile: event.target.files?.[0]?.name || '' }))} />
+          </label>
+          <label>
             Validade da CNH
             <input type="date" value={form.cnhValidUntil} onChange={(event) => setForm((current) => ({ ...current, cnhValidUntil: event.target.value }))} />
             {errors.cnhValidUntil && <span className="field-error">{errors.cnhValidUntil}</span>}
@@ -3187,12 +3208,13 @@ function formatCurrency(value) {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-function CourierCenterView({ city, couriers, onEditCourier }) {
+function CourierCenterView({ city, couriers, onChangeCouriers, onEditCourier }) {
   const [searchTerm, setSearchTerm] = React.useState('');
   const [filter, setFilter] = React.useState('all');
   const [passwordCourier, setPasswordCourier] = React.useState(null);
   const [temporaryPassword, setTemporaryPassword] = React.useState('');
   const [passwordMessage, setPasswordMessage] = React.useState('');
+  const [savingPassword, setSavingPassword] = React.useState(false);
   const normalizedSearch = searchTerm.trim().toLowerCase();
   const filteredCouriers = couriers.filter((courier) => {
     const status = courierStatusLabel(courier);
@@ -3218,6 +3240,7 @@ function CourierCenterView({ city, couriers, onEditCourier }) {
     setPasswordCourier(null);
     setTemporaryPassword('');
     setPasswordMessage('');
+    setSavingPassword(false);
   }
 
   async function confirmTemporaryPassword() {
@@ -3225,8 +3248,66 @@ function CourierCenterView({ city, couriers, onEditCourier }) {
       setPasswordMessage('A senha precisa ter no minimo 6 caracteres.');
       return;
     }
+    if (!supabase || !passwordCourier) {
+      setPasswordMessage('Supabase nao configurado para criar senha.');
+      return;
+    }
+
+    setSavingPassword(true);
+    setPasswordMessage('');
+    const courierPayload = {
+      id: passwordCourier.id,
+      city_id: passwordCourier.cityId || city.id,
+      name: passwordCourier.fullName,
+      birth_date: passwordCourier.birthDate || null,
+      cpf: onlyDigits(passwordCourier.cpf || ''),
+      phone: onlyDigits(passwordCourier.phone || ''),
+      email: String(passwordCourier.email || '').trim().toLowerCase(),
+      face_photo_path: passwordCourier.facePhoto || '',
+      whatsapp_validated: false,
+      vehicle_type: 'Moto',
+      vehicle_plate: passwordCourier.plate || '',
+      pix_key: passwordCourier.pix || '',
+      pix_key_type: passwordCourier.pixType || 'CPF',
+      pix_holder_name: passwordCourier.pixHolder || '',
+      vehicle_notes: passwordCourier.vehicleNotes || '',
+      crlv_file_path: passwordCourier.crlvFile || '',
+      cnh_file_path: passwordCourier.cnhFile || '',
+      cnh_valid_until: passwordCourier.cnhValidUntil || null,
+      approval_status: 'approved',
+      availability_status: passwordCourier.availability || passwordCourier.availabilityStatus || 'offline',
+      internal_notes: passwordCourier.notes || '',
+      active: true,
+      available: (passwordCourier.availability || passwordCourier.availabilityStatus) === 'available',
+    };
+
+    const { data, error } = await supabase.functions.invoke('create-courier-invite', {
+      body: {
+        courier: courierPayload,
+        temporaryPassword: temporaryPassword.trim(),
+      },
+    });
+    setSavingPassword(false);
+
+    if (error) {
+      setPasswordMessage(await functionErrorMessage(error, 'Nao foi possivel criar o acesso do motoboy.'));
+      return;
+    }
+
     await copyText(temporaryPassword.trim());
-    setPasswordMessage('Senha provisoria criada e copiada. A integracao com Auth sera ligada na proxima etapa.');
+    if (data?.courier) {
+      onChangeCouriers((current) => current.map((courier) => (
+        courier.id === passwordCourier.id
+          ? {
+              ...courier,
+              active: true,
+              status: 'approved',
+              approvalStatus: 'approved',
+            }
+          : courier
+      )));
+    }
+    setPasswordMessage('Senha provisoria criada no Auth e copiada. O motoboy ja pode fazer login.');
   }
 
   return (
@@ -3332,7 +3413,9 @@ function CourierCenterView({ city, couriers, onEditCourier }) {
                 autoFocus
               />
             </label>
-            <button className="primary-action" type="button" onClick={confirmTemporaryPassword}>Confirmar senha provisoria</button>
+            <button className="primary-action" type="button" onClick={confirmTemporaryPassword} disabled={savingPassword}>
+              {savingPassword ? 'Criando acesso...' : 'Confirmar senha provisoria'}
+            </button>
             {passwordMessage && (
               <p className={passwordMessage.startsWith('Senha provisoria criada') ? 'success-message' : 'field-error'}>{passwordMessage}</p>
             )}
