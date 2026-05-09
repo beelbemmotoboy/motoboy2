@@ -158,6 +158,15 @@ function App() {
     });
   }
 
+  function handleLoginSuccess(user, profile) {
+    setCurrentUser(user);
+    setCurrentProfile({ ...profile, email: user.email });
+    if (profile.role !== 'system_admin' && profile.city_id) {
+      setCityId(profile.city_id);
+    }
+    setPage(resolveHomeByRole(profile.role));
+  }
+
   async function loadCurrentProfile(session) {
     const user = session?.user ?? null;
     setCurrentUser(user);
@@ -402,7 +411,7 @@ function App() {
   }
 
   if (page === 'login') {
-    return <LoginView />;
+    return <LoginView onLoginSuccess={handleLoginSuccess} />;
   }
 
   if (page === 'forgot-password') {
@@ -434,18 +443,7 @@ function App() {
   }
 
   if (supabase && !currentProfile) {
-    return (
-      <LoginView
-        onLoginSuccess={(user, profile) => {
-          setCurrentUser(user);
-          setCurrentProfile({ ...profile, email: user.email });
-          if (profile.role !== 'system_admin' && profile.city_id) {
-            setCityId(profile.city_id);
-          }
-          setPage(resolveHomeByRole(profile.role));
-        }}
-      />
-    );
+    return <LoginView onLoginSuccess={handleLoginSuccess} />;
   }
 
   if (page === 'store-home' && currentProfile?.role === 'store_admin') {
