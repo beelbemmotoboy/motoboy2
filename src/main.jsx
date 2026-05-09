@@ -2411,6 +2411,13 @@ function StoresView({ city, stores, onChangeStores, storeToEdit, onEditLoaded })
     ['sun', 'Domingo'],
   ];
   const emptySchedule = Object.fromEntries(weekdays.map(([key]) => [key, { open: '', close: '' }]));
+  const normalizeSchedule = (schedule = {}) => Object.fromEntries(weekdays.map(([key]) => [
+    key,
+    {
+      open: schedule?.[key]?.open ?? '',
+      close: schedule?.[key]?.close ?? '',
+    },
+  ]));
   const [form, setForm] = React.useState({
     name: '',
     fantasyName: '',
@@ -2496,7 +2503,7 @@ function StoresView({ city, stores, onChangeStores, storeToEdit, onEditLoaded })
       longitude: store.longitude ?? '',
       locationReceived: store.locationReceived ?? '',
       type: store.type ?? 'Restaurante',
-      schedule: store.schedule ?? emptySchedule,
+      schedule: normalizeSchedule(store.schedule),
       allowManualOrder: store.allowManualOrder ?? 'Sim',
       requirePickupConfirmation: store.requirePickupConfirmation ?? 'Sim',
       rateCourierAfterDelivery: store.rateCourierAfterDelivery ?? 'Sim',
@@ -2612,13 +2619,14 @@ function StoresView({ city, stores, onChangeStores, storeToEdit, onEditLoaded })
       };
     }
 
+    const wasEditing = Boolean(editingStoreId);
     onChangeStores((current) => (
-      editingStoreId
+      wasEditing
         ? current.map((store) => (store.id === editingStoreId ? { ...store, ...newStore } : store))
         : [newStore, ...current]
     ));
     resetForm();
-    setMessage(editingStoreId ? 'Loja atualizada no banco de dados.' : 'Loja cadastrada no banco de dados.');
+    setMessage(wasEditing ? 'Loja atualizada no banco de dados.' : 'Loja cadastrada no banco de dados.');
   }
 
   async function consultCnpj() {
