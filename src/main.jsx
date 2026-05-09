@@ -1399,6 +1399,7 @@ function StoreHomeView({ city, store, profile, onLogout }) {
   const storeLogo = store?.logoUrl || store?.logo_url || store?.logo || '';
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [storeOpen, setStoreOpen] = React.useState(store?.isOpen ?? true);
+  const [showOpenPrompt, setShowOpenPrompt] = React.useState(store?.isOpen === false);
   const [statusMessage, setStatusMessage] = React.useState('');
   const deliveryStats = [
     { label: 'A caminho da loja', value: '01', tone: 'green', icon: <Bike size={32} /> },
@@ -1408,6 +1409,7 @@ function StoreHomeView({ city, store, profile, onLogout }) {
 
   React.useEffect(() => {
     setStoreOpen(store?.isOpen ?? true);
+    setShowOpenPrompt(store?.isOpen === false);
     setStatusMessage('');
   }, [store?.id, store?.isOpen]);
 
@@ -1430,13 +1432,21 @@ function StoreHomeView({ city, store, profile, onLogout }) {
     }
 
     setStatusMessage(nextStatus ? 'Loja aberta para entregas.' : 'Loja fechada para entregas.');
+    if (nextStatus) setShowOpenPrompt(false);
   }
 
   return (
     <main className="store-app-home">
       <header className="store-app-header">
-        <button className="store-menu-button" type="button" aria-label="Abrir menu" onClick={() => setMenuOpen((current) => !current)}>
-          <Menu size={42} />
+        <button className="store-menu-button store-logo-menu" type="button" aria-label="Abrir menu" onClick={() => setMenuOpen((current) => !current)}>
+          {storeLogo ? (
+            <img src={storeLogo} alt="" />
+          ) : (
+            <>
+              <span>{brandTop}</span>
+              <strong>{brandBottom}</strong>
+            </>
+          )}
         </button>
         {menuOpen && (
           <nav className="store-mobile-menu" aria-label="Menu lojista">
@@ -1460,6 +1470,18 @@ function StoreHomeView({ city, store, profile, onLogout }) {
           <span />{storeOpen ? 'Aberto' : 'Fechado'}
         </button>
       </header>
+      {showOpenPrompt && (
+        <div className="store-open-prompt" role="dialog" aria-modal="true" aria-labelledby="store-open-title">
+          <section>
+            <h2 id="store-open-title">Sua loja esta fechada</h2>
+            <p>Deseja abrir a loja no sistema para comecar a receber entregas?</p>
+            <div>
+              <button className="primary-action" type="button" onClick={toggleStoreStatus}>Abrir loja</button>
+              <button className="secondary-action" type="button" onClick={() => setShowOpenPrompt(false)}>Agora nao</button>
+            </div>
+          </section>
+        </div>
+      )}
       {statusMessage && <p className={`store-status-message ${statusMessage.startsWith('Nao') ? 'error' : 'success'}`}>{statusMessage}</p>}
 
       <section className="store-status-grid" aria-label="Resumo das entregas">
