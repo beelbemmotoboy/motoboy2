@@ -203,7 +203,7 @@ button, a {
   right: 0;
   z-index: 20;
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 18px;
   padding: 12px min(5vw, 34px);
@@ -723,13 +723,6 @@ button, a {
   .store-connected-pill span {
     width: 16px;
     height: 16px;
-  }
-
-  .store-logo-badge {
-    grid-column: 1 / -1;
-    grid-row: 1;
-    justify-self: center;
-    width: 64px;
   }
 
   .store-status-grid {

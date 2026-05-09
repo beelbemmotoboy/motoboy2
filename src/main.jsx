@@ -1456,16 +1456,6 @@ function StoreHomeView({ city, store, profile, onLogout }) {
             <button type="button" onClick={onLogout}>Sair</button>
           </nav>
         )}
-        <div className="store-logo-badge" aria-label={storeName}>
-          {storeLogo ? (
-            <img src={storeLogo} alt={`Logo ${storeName}`} />
-          ) : (
-            <>
-              <span>{brandTop}</span>
-              <strong>{brandBottom}</strong>
-            </>
-          )}
-        </div>
         <button className={`store-connected-pill ${storeOpen ? 'open' : 'closed'}`} type="button" onClick={toggleStoreStatus}>
           <span />{storeOpen ? 'Aberto' : 'Fechado'}
         </button>
