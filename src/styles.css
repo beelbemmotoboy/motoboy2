@@ -1545,6 +1545,21 @@ h2 {
   color: #fff;
 }
 
+.top-secondary-button {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 1px solid #111;
+  border-radius: 8px;
+  background: #111;
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
 .metrics-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(190px, 1fr));
@@ -2088,6 +2103,187 @@ mark.amber {
   margin-top: 22px;
 }
 
+.courier-center-layout {
+  display: grid;
+  gap: 22px;
+}
+
+.courier-center-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 22px;
+}
+
+.section-eyebrow {
+  display: inline-grid;
+  place-items: center;
+  min-height: 28px;
+  margin-bottom: 10px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #fff4d7;
+  color: #8a6200;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.courier-center-hero h2 {
+  font-size: 24px;
+}
+
+.courier-center-hero p {
+  margin-top: 8px;
+  color: #666;
+  font-size: 14px;
+}
+
+.courier-center-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.courier-center-summary span {
+  min-height: 74px;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f7f7f7;
+  color: #666;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.courier-center-summary strong {
+  color: #111;
+  font-size: 20px;
+}
+
+.courier-center-toolbar {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 240px;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 18px;
+}
+
+.search-field {
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border: 1px solid #dedede;
+  border-radius: 8px;
+  background: #fff;
+  color: #555;
+}
+
+.search-field input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  font: inherit;
+}
+
+.filter-field {
+  display: grid;
+  gap: 6px;
+  color: #444;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.filter-field select {
+  height: 48px;
+  border: 1px solid #dedede;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #fff;
+  font: inherit;
+}
+
+.courier-center-table {
+  display: grid;
+  gap: 10px;
+}
+
+.courier-center-head,
+.courier-center-row {
+  display: grid;
+  grid-template-columns: minmax(190px, 1.2fr) minmax(180px, 1fr) minmax(150px, 0.8fr) minmax(130px, 0.7fr) auto;
+  gap: 14px;
+  align-items: center;
+}
+
+.courier-center-head {
+  min-height: 38px;
+  padding: 0 14px;
+  color: #666;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.courier-center-row {
+  min-height: 86px;
+  padding: 14px;
+  border: 1px solid #e4e4e4;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.courier-center-row strong,
+.courier-center-row span {
+  display: block;
+}
+
+.courier-center-row strong {
+  font-size: 14px;
+}
+
+.courier-center-row span {
+  margin-top: 4px;
+  color: #666;
+  font-size: 12px;
+}
+
+.courier-identity {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.status-tag {
+  min-height: 26px;
+  width: fit-content;
+  margin: 0;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.status-tag.pending {
+  background: #fff4d7;
+  color: #8a6200;
+}
+
+.status-tag.active {
+  background: #dff6e9;
+  color: #12733d;
+}
+
+.toggle-button.highlight {
+  border-color: #111;
+  background: #111;
+  color: #fff;
+}
+
 .courier-list {
   display: grid;
   gap: 12px;
@@ -2573,6 +2769,11 @@ th {
     margin-left: 0;
   }
 
+  .top-secondary-button {
+    width: 100%;
+    justify-content: center;
+  }
+
   .metrics-grid,
   .work-grid,
   .side-column,
@@ -2591,6 +2792,20 @@ th {
   .courier-row,
   .form-actions {
     grid-template-columns: 1fr;
+  }
+
+  .courier-center-hero,
+  .courier-center-toolbar,
+  .courier-center-row {
+    grid-template-columns: 1fr;
+  }
+
+  .courier-center-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .courier-center-head {
+    display: none;
   }
 
   .row-actions {

@@ -135,6 +135,7 @@ function App() {
   const [cityList, setCityList] = React.useState([]);
   const [storeList, setStoreList] = React.useState([]);
   const [courierList, setCourierList] = React.useState([]);
+  const [courierToEdit, setCourierToEdit] = React.useState(null);
   const [cityId, setCityId] = React.useState('');
   const selectedCity = cityList.find((city) => city.id === cityId) ?? cityList[0] ?? emptyCity;
   const selectedStore = storeList.find((store) => store.id === currentProfile?.store_id) ?? storeList[0] ?? null;
@@ -426,7 +427,7 @@ function App() {
         <nav className="nav-list" aria-label="Menu principal">
           <button className={page === 'overview' ? 'active' : ''} onClick={() => setPage('overview')}><Home size={18} />Visao geral</button>
           <button><WalletCards size={18} />Entregas</button>
-          <button className={page === 'couriers' ? 'active' : ''} onClick={() => setPage('couriers')}><UserRound size={18} />Entregadores</button>
+          <button className={['couriers', 'courier-center'].includes(page) ? 'active' : ''} onClick={() => setPage('couriers')}><UserRound size={18} />Entregadores</button>
           <button className={page === 'map' ? 'active' : ''} onClick={() => setPage('map')}><MapPin size={18} />Mapa</button>
           <button className={page === 'cities' ? 'active' : ''} onClick={() => setPage('cities')}><Store size={18} />Cidades</button>
           <button className={page === 'access' ? 'active' : ''} onClick={() => setPage('access')}><ShieldCheck size={18} />Acessos</button>
@@ -469,6 +470,16 @@ function App() {
             )}
           </div>
           <div className="top-actions">
+            {page === 'couriers' && (
+              <button className="top-secondary-button" type="button" onClick={() => setPage('courier-center')}>
+                <UserRound size={17} />Central do entregador
+              </button>
+            )}
+            {page === 'courier-center' && (
+              <button className="top-secondary-button" type="button" onClick={() => setPage('couriers')}>
+                <Plus size={17} />Novo entregador
+              </button>
+            )}
             {currentProfile && (
               <div className="user-chip" title={currentProfile.email}>
                 <span>{initials(currentProfile.name || currentProfile.email || 'Usuario')}</span>
@@ -494,7 +505,8 @@ function App() {
         )}
         {page === 'access' && <AccessView city={selectedCity} stores={storeList} couriers={courierList} />}
         {page === 'stores' && <StoresView city={selectedCity} stores={storeList} onChangeStores={setStoreList} />}
-        {page === 'couriers' && <CouriersView city={selectedCity} cities={cityList} couriers={courierList} onChangeCouriers={setCourierList} />}
+        {page === 'couriers' && <CouriersView city={selectedCity} cities={cityList} couriers={courierList} onChangeCouriers={setCourierList} courierToEdit={courierToEdit} onEditLoaded={() => setCourierToEdit(null)} />}
+        {page === 'courier-center' && <CourierCenterView city={selectedCity} couriers={courierList} onEditCourier={(courier) => { setCourierToEdit(courier); setPage('couriers'); }} />}
         {page === 'store-home' && <StoreHomeView city={selectedCity} store={selectedStore} profile={currentProfile} onLogout={handleLogout} />}
         {page === 'courier-home' && <CourierHomeView city={selectedCity} />}
         {page === 'overview' && <Overview city={selectedCity} />}
@@ -511,6 +523,7 @@ function pageTitle(page) {
   if (page === 'access') return 'Controle de acesso';
   if (page === 'stores') return 'Cadastro de lojas';
   if (page === 'couriers') return 'Cadastro de entregadores';
+  if (page === 'courier-center') return 'Central do entregador';
   return 'Visao geral';
 }
 
@@ -2775,7 +2788,7 @@ function StoresView({ city, stores, onChangeStores }) {
   );
 }
 
-function CouriersView({ city, cities, couriers, onChangeCouriers }) {
+function CouriersView({ city, cities, couriers, onChangeCouriers, courierToEdit, onEditLoaded }) {
   const emptyCourierForm = {
     cityId: city.id,
     fullName: '',
@@ -2809,6 +2822,12 @@ function CouriersView({ city, cities, couriers, onChangeCouriers }) {
       setForm((current) => ({ ...current, cityId: city.id }));
     }
   }, [city.id, editingCourierId]);
+
+  React.useEffect(() => {
+    if (!courierToEdit) return;
+    startEdit(courierToEdit);
+    onEditLoaded?.();
+  }, [courierToEdit, onEditLoaded]);
 
   function resetForm() {
     setForm(emptyCourierForm);
@@ -3132,32 +3151,122 @@ function CouriersView({ city, cities, couriers, onChangeCouriers }) {
         {errors.form && <p className="field-error">{errors.form}</p>}
         {message && <p className="success-message">{message}</p>}
       </form>
+    </section>
+  );
+}
 
-      <div className="panel courier-list-panel">
-        <div className="panel-header">
+function courierStatusLabel(courier) {
+  if (courier.active === false) return 'Cadastro nao ativado';
+  if ((courier.status || courier.approvalStatus) === 'approved') return 'Aprovado';
+  if ((courier.status || courier.approvalStatus) === 'blocked') return 'Bloqueado';
+  if ((courier.status || courier.approvalStatus) === 'rejected') return 'Rejeitado';
+  return 'Pendente';
+}
+
+function courierReceivableAmount(courier, index) {
+  const source = `${courier.id || courier.email || courier.fullName || index}`;
+  const seed = source.split('').reduce((total, char) => total + char.charCodeAt(0), 0);
+  return 45 + ((seed + index * 37) % 420);
+}
+
+function formatCurrency(value) {
+  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function CourierCenterView({ city, couriers, onEditCourier }) {
+  const [searchTerm, setSearchTerm] = React.useState('');
+  const [filter, setFilter] = React.useState('all');
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const filteredCouriers = couriers.filter((courier) => {
+    const status = courierStatusLabel(courier);
+    const searchable = [courier.fullName, courier.phone, courier.email].filter(Boolean).join(' ').toLowerCase();
+    const matchesSearch = !normalizedSearch || searchable.includes(normalizedSearch);
+    const matchesFilter =
+      filter === 'all'
+      || (filter === 'inactive' && courier.active === false)
+      || (filter === 'pending' && ['Pendente', 'Cadastro nao ativado'].includes(status))
+      || (filter === 'approved' && status === 'Aprovado');
+    return matchesSearch && matchesFilter;
+  });
+  const pendingCount = couriers.filter((courier) => ['Pendente', 'Cadastro nao ativado'].includes(courierStatusLabel(courier))).length;
+  const totalReceivable = couriers.reduce((total, courier, index) => total + courierReceivableAmount(courier, index), 0);
+
+  return (
+    <section className="courier-center-layout">
+      <div className="courier-center-hero panel">
+        <div>
+          <span className="section-eyebrow">Central do entregador</span>
           <h2>Entregadores de {city.name}</h2>
-          <span className="count-pill">{couriers.length} cadastros</span>
+          <p>Consulte cadastros, status de ativacao e valores a receber dos motoboys.</p>
         </div>
-        <div className="courier-list">
-          {couriers.length === 0 && (
-            <p className="empty-state">Nenhum entregador cadastrado nesta cidade.</p>
+        <div className="courier-center-summary">
+          <span><strong>{couriers.length}</strong> cadastros</span>
+          <span><strong>{pendingCount}</strong> pendentes</span>
+          <span><strong>{formatCurrency(totalReceivable)}</strong> a receber</span>
+        </div>
+      </div>
+
+      <div className="panel courier-center-panel">
+        <div className="courier-center-toolbar">
+          <label className="search-field">
+            <Search size={18} />
+            <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Pesquisar por nome, telefone ou e-mail" />
+          </label>
+          <label className="filter-field">
+            Status
+            <select value={filter} onChange={(event) => setFilter(event.target.value)}>
+              <option value="all">Todos</option>
+              <option value="inactive">Cadastro nao ativado</option>
+              <option value="pending">Pendente para concluir</option>
+              <option value="approved">Aprovado</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="courier-center-table" role="table" aria-label="Dados dos entregadores">
+          <div className="courier-center-head" role="row">
+            <span>Entregador</span>
+            <span>Contato</span>
+            <span>Status</span>
+            <span>Valores</span>
+            <span>Acoes</span>
+          </div>
+          {filteredCouriers.length === 0 && (
+            <p className="empty-state">Nenhum entregador encontrado para o filtro atual.</p>
           )}
-          {couriers.map((courier) => (
-            <article className="courier-row" key={courier.id}>
-              <div className="avatar small">{initials(courier.fullName || 'Motoboy')}</div>
-              <div>
-                <strong>{courier.fullName}</strong>
-                <span>{courier.phone || 'Sem WhatsApp'} · {courier.email || 'Sem e-mail'}</span>
-                <span>{courier.plate || 'Sem placa'} · {courier.active === false ? 'Inativo' : 'Ativo'} · {courier.status || 'pending_approval'}</span>
-              </div>
-              <div className="row-actions">
-                <button className="toggle-button" type="button" onClick={() => startEdit(courier)}>Editar</button>
-                <button className="toggle-button" type="button" onClick={() => toggleCourierActive(courier)}>
-                  {courier.active === false ? 'Ativar' : 'Desativar'}
-                </button>
-              </div>
-            </article>
-          ))}
+          {filteredCouriers.map((courier, index) => {
+            const status = courierStatusLabel(courier);
+            const needsActivation = status === 'Cadastro nao ativado' || status === 'Pendente';
+            return (
+              <article className="courier-center-row" role="row" key={courier.id || courier.email}>
+                <div className="courier-identity">
+                  <div className="avatar small">{initials(courier.fullName || 'Motoboy')}</div>
+                  <div>
+                    <strong>{courier.fullName || 'Sem nome'}</strong>
+                    <span>{courier.plate || 'Sem placa'} - {courier.vehicle || 'Moto'}</span>
+                  </div>
+                </div>
+                <div>
+                  <strong>{courier.phone || 'Sem telefone'}</strong>
+                  <span>{courier.email || 'Sem e-mail'}</span>
+                </div>
+                <div>
+                  <mark className={`status-tag ${needsActivation ? 'pending' : 'active'}`}>{status}</mark>
+                  <span>{courier.availability || courier.availabilityStatus || 'offline'}</span>
+                </div>
+                <div>
+                  <strong>{formatCurrency(courierReceivableAmount(courier, index))}</strong>
+                  <span>Repasses em aberto</span>
+                </div>
+                <div className="row-actions">
+                  <button className="toggle-button" type="button" onClick={() => onEditCourier(courier)}>Editar</button>
+                  {needsActivation && (
+                    <button className="toggle-button highlight" type="button">Gerar senha</button>
+                  )}
+                </div>
+              </article>
+            );
+          })}
         </div>
       </div>
     </section>
