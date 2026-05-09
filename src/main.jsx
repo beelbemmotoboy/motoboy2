@@ -1029,6 +1029,7 @@ function PublicSignupView({ type }) {
           address: '',
           number: '',
           district: '',
+          locationReceived: '',
         }
       : {
           cityId: '',
@@ -1138,6 +1139,7 @@ function PublicSignupView({ type }) {
       if (!form.address.trim()) errors.push('Informe o endereco.');
       if (!form.number.trim()) errors.push('Informe o numero.');
       if (!form.district.trim()) errors.push('Informe o bairro.');
+      if (!form.locationReceived.trim()) errors.push('Informe ou envie a localizacao da loja.');
     } else {
       if (!form.fullName.trim()) errors.push('Informe o nome completo.');
       if (!form.birthDate) errors.push('Informe a data de nascimento.');
@@ -1184,6 +1186,7 @@ function PublicSignupView({ type }) {
           address: form.address.trim(),
           address_number: form.number.trim(),
           district: form.district.trim(),
+          location_received: form.locationReceived.trim(),
           store_type: 'Restaurante',
           internal_notes: 'Pre-cadastro publico. Validar documentos e liberar acesso pelo painel.',
           active: false,
@@ -1273,6 +1276,36 @@ function PublicSignupView({ type }) {
               <label>Endereco<input value={form.address} onChange={(event) => updateField('address', event.target.value)} placeholder="Rua, avenida..." /></label>
               <label>Numero<input value={form.number} onChange={(event) => updateField('number', event.target.value)} placeholder="Numero" /></label>
               <label>Bairro<input value={form.district} onChange={(event) => updateField('district', event.target.value)} placeholder="Bairro" /></label>
+              <label className="wide">
+                Localizacao da loja
+                <div className="lookup-field">
+                  <input
+                    value={form.locationReceived}
+                    onChange={(event) => updateField('locationReceived', event.target.value)}
+                    placeholder="Cole o link do Google Maps ou use o botao ao lado"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!navigator.geolocation) {
+                        setError('Este navegador nao permite enviar localizacao.');
+                        return;
+                      }
+                      setError('');
+                      navigator.geolocation.getCurrentPosition(
+                        (position) => {
+                          const { latitude, longitude } = position.coords;
+                          updateField('locationReceived', `${latitude.toFixed(7)}, ${longitude.toFixed(7)}`);
+                        },
+                        () => setError('Nao foi possivel obter a localizacao. Cole o link do mapa manualmente.'),
+                        { enableHighAccuracy: true, timeout: 10000 },
+                      );
+                    }}
+                  >
+                    Enviar localizacao
+                  </button>
+                </div>
+              </label>
             </>
           ) : (
             <>
@@ -2668,7 +2701,6 @@ function StoresView({ city, stores, onChangeStores, storeToEdit, onEditLoaded })
       <form className="panel store-form" onSubmit={handleSubmit}>
         <div className="panel-header">
           <h2>{editingStoreId ? `Editar loja em ${city.name}` : `Nova loja em ${city.name}`}</h2>
-          <span className="count-pill">city_id</span>
         </div>
         <div className="form-section-title">Dados da loja</div>
         <div className="store-form-grid">
@@ -2901,7 +2933,6 @@ function StoresView({ city, stores, onChangeStores, storeToEdit, onEditLoaded })
         {saving && <p className="form-note">Salvando loja...</p>}
         {errors.form && <p className="field-error">{errors.form}</p>}
         {message && <p className="success-message">{message}</p>}
-        <p className="form-note">Toda loja cadastrada aqui fica vinculada a cidade selecionada no topo e sera gravada com `city_id`.</p>
       </form>
     </section>
   );

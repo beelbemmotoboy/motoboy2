@@ -72,6 +72,7 @@ serve(async (request) => {
         address: cleanText(store.address),
         address_number: cleanText(store.address_number),
         district: cleanText(store.district),
+        location_received: cleanText(store.location_received),
         store_type: cleanText(store.store_type) || 'Restaurante',
         internal_notes: 'Pre-cadastro publico. Validar documentos e liberar acesso pelo painel.',
         active: false,
