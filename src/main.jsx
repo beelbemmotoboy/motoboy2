@@ -439,7 +439,7 @@ function App() {
         <nav className="nav-list" aria-label="Menu principal">
           <button className={page === 'overview' ? 'active' : ''} onClick={() => setPage('overview')}><Home size={18} />Visao geral</button>
           <button><WalletCards size={18} />Entregas</button>
-          <button className={['couriers', 'courier-center'].includes(page) ? 'active' : ''} onClick={() => setPage('couriers')}><UserRound size={18} />Entregadores</button>
+          <button className={['couriers', 'courier-center'].includes(page) ? 'active' : ''} onClick={() => setPage('courier-center')}><UserRound size={18} />Entregadores</button>
           <button className={page === 'map' ? 'active' : ''} onClick={() => setPage('map')}><MapPin size={18} />Mapa</button>
           <button className={page === 'cities' ? 'active' : ''} onClick={() => setPage('cities')}><Store size={18} />Cidades</button>
           <button className={page === 'access' ? 'active' : ''} onClick={() => setPage('access')}><ShieldCheck size={18} />Acessos</button>
@@ -481,28 +481,21 @@ function App() {
               <div className="city-locked"><MapPin size={17} />{selectedCity.name} - {selectedCity.state}</div>
             )}
           </div>
+          {page === 'couriers' && (
+            <button className="top-secondary-button top-page-switch" type="button" onClick={() => setPage('courier-center')}>
+              <UserRound size={17} />Central do entregador
+            </button>
+          )}
+          {page === 'courier-center' && (
+            <button className="top-secondary-button top-page-switch" type="button" onClick={() => setPage('couriers')}>
+              <Plus size={17} />Novo entregador
+            </button>
+          )}
           <div className="top-actions">
-            {page === 'couriers' && (
-              <button className="top-secondary-button" type="button" onClick={() => setPage('courier-center')}>
-                <UserRound size={17} />Central do entregador
-              </button>
-            )}
-            {page === 'courier-center' && (
-              <button className="top-secondary-button" type="button" onClick={() => setPage('couriers')}>
-                <Plus size={17} />Novo entregador
-              </button>
-            )}
-            {currentProfile && (
-              <div className="user-chip" title={currentProfile.email}>
-                <span>{initials(currentProfile.name || currentProfile.email || 'Usuario')}</span>
-                <strong>{currentProfile.name}</strong>
-              </div>
-            )}
             <button className="icon-button theme-toggle" type="button" onClick={toggleDarkMode} aria-label={darkMode ? 'Ativar modo claro' : 'Ativar modo escuro'}>
               {darkMode ? <Sun size={20} /> : <Moon size={20} />}
             </button>
             <button className="icon-button notification" aria-label="Notificacoes"><Bell size={21} /><span>3</span></button>
-            <button className="create-button" aria-label="Nova entrega"><Plus size={22} /></button>
             <button className="icon-button" type="button" onClick={handleLogout} aria-label="Sair"><LogOut size={20} /></button>
           </div>
         </header>

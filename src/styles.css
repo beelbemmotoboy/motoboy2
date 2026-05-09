@@ -1433,8 +1433,9 @@ button, a {
 }
 
 .topbar {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: start;
   gap: 22px;
   margin-bottom: 34px;
 }
@@ -1524,10 +1525,12 @@ h2 {
 }
 
 .top-actions {
-  margin-left: auto;
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 8px;
 }
 
 .user-chip {
@@ -1617,6 +1620,13 @@ h2 {
   font-weight: 800;
   cursor: pointer;
   white-space: nowrap;
+}
+
+.top-page-switch {
+  grid-column: 2 / -1;
+  justify-self: stretch;
+  justify-content: center;
+  margin-top: -8px;
 }
 
 .theme-toggle {
@@ -3053,7 +3063,6 @@ th {
   }
 
   .top-secondary-button {
-    width: 100%;
     justify-content: center;
   }
 
