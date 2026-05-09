@@ -137,6 +137,7 @@ function App() {
   const [cityList, setCityList] = React.useState([]);
   const [storeList, setStoreList] = React.useState([]);
   const [courierList, setCourierList] = React.useState([]);
+  const [storeToEdit, setStoreToEdit] = React.useState(null);
   const [courierToEdit, setCourierToEdit] = React.useState(null);
   const [darkMode, setDarkMode] = React.useState(() => localStorage.getItem('beelbem-theme') === 'dark');
   const [cityId, setCityId] = React.useState('');
@@ -278,7 +279,7 @@ function App() {
       ] = await Promise.all([
         supabase
           .from('stores')
-          .select('id, city_id, name, fantasy_name, document, responsible_name, email, whatsapp, store_type, address, address_number, district, active, logo_url, is_open')
+          .select('id, city_id, name, fantasy_name, document, responsible_name, email, whatsapp, landline, store_type, address, address_number, complement, district, zip_code, latitude, longitude, location_received, opening_hours, allow_manual_order, require_pickup_confirmation, rate_courier_after_delivery, internal_notes, active, logo_url, is_open')
           .eq('city_id', cityId)
           .order('created_at', { ascending: false }),
         supabase
@@ -315,10 +316,21 @@ function App() {
           responsible: store.responsible_name,
           email: store.email,
           whatsapp: store.whatsapp,
+          landline: store.landline,
           type: store.store_type,
           address: store.address,
           number: store.address_number,
+          complement: store.complement,
           district: store.district,
+          zipCode: store.zip_code,
+          latitude: store.latitude ? String(store.latitude) : '',
+          longitude: store.longitude ? String(store.longitude) : '',
+          locationReceived: store.location_received,
+          schedule: store.opening_hours,
+          allowManualOrder: store.allow_manual_order ? 'Sim' : 'Nao',
+          requirePickupConfirmation: store.require_pickup_confirmation ? 'Sim' : 'Nao',
+          rateCourierAfterDelivery: store.rate_courier_after_delivery ? 'Sim' : 'Nao',
+          notes: store.internal_notes,
           active: store.active,
           logoUrl: store.logo_url,
           isOpen: store.is_open,
@@ -522,8 +534,8 @@ function App() {
           />
         )}
         {page === 'access' && <AccessView city={selectedCity} stores={storeList} couriers={courierList} />}
-        {page === 'stores' && <StoresView city={selectedCity} stores={storeList} onChangeStores={setStoreList} />}
-        {page === 'store-center' && <StoreCenterView city={selectedCity} stores={storeList} onChangeStores={setStoreList} onOpenStoreForm={() => setPage('stores')} />}
+        {page === 'stores' && <StoresView city={selectedCity} stores={storeList} onChangeStores={setStoreList} storeToEdit={storeToEdit} onEditLoaded={() => setStoreToEdit(null)} />}
+        {page === 'store-center' && <StoreCenterView city={selectedCity} stores={storeList} onChangeStores={setStoreList} onEditStore={(store) => { setStoreToEdit(store); setPage('stores'); }} />}
         {page === 'couriers' && <CouriersView city={selectedCity} cities={cityList} couriers={courierList} onChangeCouriers={setCourierList} courierToEdit={courierToEdit} onEditLoaded={() => setCourierToEdit(null)} />}
         {page === 'courier-center' && <CourierCenterView city={selectedCity} couriers={courierList} onChangeCouriers={setCourierList} onEditCourier={(courier) => { setCourierToEdit(courier); setPage('couriers'); }} />}
         {page === 'store-home' && <StoreHomeView city={selectedCity} store={selectedStore} profile={currentProfile} onLogout={handleLogout} />}
@@ -2388,7 +2400,7 @@ function AccessView({ city, stores, couriers }) {
   );
 }
 
-function StoresView({ city, stores, onChangeStores }) {
+function StoresView({ city, stores, onChangeStores, storeToEdit, onEditLoaded }) {
   const weekdays = [
     ['mon', 'Segunda'],
     ['tue', 'Terca'],
@@ -2427,6 +2439,73 @@ function StoresView({ city, stores, onChangeStores }) {
   const [cnpjMessage, setCnpjMessage] = React.useState('');
   const [saving, setSaving] = React.useState(false);
   const [message, setMessage] = React.useState('');
+  const [editingStoreId, setEditingStoreId] = React.useState('');
+
+  React.useEffect(() => {
+    if (!storeToEdit) return;
+    startEdit(storeToEdit);
+    onEditLoaded?.();
+  }, [storeToEdit, onEditLoaded]);
+
+  function resetForm() {
+    setForm({
+      name: '',
+      fantasyName: '',
+      document: '',
+      responsible: '',
+      email: '',
+      whatsapp: '',
+      landline: '',
+      address: '',
+      number: '',
+      complement: '',
+      district: '',
+      zipCode: '',
+      latitude: '',
+      longitude: '',
+      locationReceived: '',
+      type: 'Restaurante',
+      schedule: emptySchedule,
+      allowManualOrder: 'Sim',
+      requirePickupConfirmation: 'Sim',
+      rateCourierAfterDelivery: 'Sim',
+      status: 'Ativa',
+      notes: '',
+    });
+    setEditingStoreId('');
+    setErrors({});
+    setMessage('');
+  }
+
+  function startEdit(store) {
+    setEditingStoreId(store.id);
+    setForm({
+      name: store.name ?? '',
+      fantasyName: store.fantasyName ?? '',
+      document: store.document ? maskCnpj(store.document) : '',
+      responsible: store.responsible ?? '',
+      email: store.email ?? '',
+      whatsapp: store.whatsapp ? maskPhone(store.whatsapp) : '',
+      landline: store.landline ? maskPhone(store.landline) : '',
+      address: store.address ?? '',
+      number: store.number ?? '',
+      complement: store.complement ?? '',
+      district: store.district ?? '',
+      zipCode: store.zipCode ? maskCep(store.zipCode) : '',
+      latitude: store.latitude ?? '',
+      longitude: store.longitude ?? '',
+      locationReceived: store.locationReceived ?? '',
+      type: store.type ?? 'Restaurante',
+      schedule: store.schedule ?? emptySchedule,
+      allowManualOrder: store.allowManualOrder ?? 'Sim',
+      requirePickupConfirmation: store.requirePickupConfirmation ?? 'Sim',
+      rateCourierAfterDelivery: store.rateCourierAfterDelivery ?? 'Sim',
+      status: store.active === false ? 'Desativada' : 'Ativa',
+      notes: store.notes ?? '',
+    });
+    setErrors({});
+    setMessage('');
+  }
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -2462,7 +2541,7 @@ function StoresView({ city, stores, onChangeStores }) {
     };
 
     let newStore = {
-      id: slugifyCity(form.name, city.state),
+      id: editingStoreId || slugifyCity(form.name, city.state),
       cityId: city.id,
       name: payload.name,
       fantasyName: payload.fantasy_name,
@@ -2490,10 +2569,11 @@ function StoresView({ city, stores, onChangeStores }) {
 
     if (supabase) {
       setSaving(true);
-      const { data, error } = await supabase
-        .from('stores')
-        .insert(payload)
-        .select('id, city_id, name, fantasy_name, document, responsible_name, email, whatsapp, store_type, address, address_number, district, active')
+      const query = editingStoreId
+        ? supabase.from('stores').update(payload).eq('id', editingStoreId)
+        : supabase.from('stores').insert(payload);
+      const { data, error } = await query
+        .select('id, city_id, name, fantasy_name, document, responsible_name, email, whatsapp, landline, store_type, address, address_number, complement, district, zip_code, latitude, longitude, location_received, opening_hours, allow_manual_order, require_pickup_confirmation, rate_courier_after_delivery, internal_notes, active, logo_url, is_open')
         .single();
       setSaving(false);
 
@@ -2511,36 +2591,34 @@ function StoresView({ city, stores, onChangeStores }) {
         responsible: data.responsible_name,
         email: data.email,
         whatsapp: data.whatsapp,
+        landline: data.landline,
         type: data.store_type,
         address: data.address,
         number: data.address_number,
+        complement: data.complement,
         district: data.district,
+        zipCode: data.zip_code,
+        latitude: data.latitude ? String(data.latitude) : '',
+        longitude: data.longitude ? String(data.longitude) : '',
+        locationReceived: data.location_received,
+        schedule: data.opening_hours,
+        allowManualOrder: data.allow_manual_order ? 'Sim' : 'Nao',
+        requirePickupConfirmation: data.require_pickup_confirmation ? 'Sim' : 'Nao',
+        rateCourierAfterDelivery: data.rate_courier_after_delivery ? 'Sim' : 'Nao',
+        notes: data.internal_notes,
         active: data.active,
+        logoUrl: data.logo_url,
+        isOpen: data.is_open,
       };
     }
 
-    onChangeStores((current) => [newStore, ...current]);
-    setForm((current) => ({
-      ...current,
-      name: '',
-      fantasyName: '',
-      document: '',
-      responsible: '',
-      email: '',
-      whatsapp: '',
-      landline: '',
-      address: '',
-      number: '',
-      complement: '',
-      district: '',
-      zipCode: '',
-      latitude: '',
-      longitude: '',
-      locationReceived: '',
-      schedule: emptySchedule,
-      notes: '',
-    }));
-    setMessage('Loja cadastrada no banco de dados.');
+    onChangeStores((current) => (
+      editingStoreId
+        ? current.map((store) => (store.id === editingStoreId ? { ...store, ...newStore } : store))
+        : [newStore, ...current]
+    ));
+    resetForm();
+    setMessage(editingStoreId ? 'Loja atualizada no banco de dados.' : 'Loja cadastrada no banco de dados.');
   }
 
   async function consultCnpj() {
@@ -2581,7 +2659,7 @@ function StoresView({ city, stores, onChangeStores }) {
     <section className="stores-layout">
       <form className="panel store-form" onSubmit={handleSubmit}>
         <div className="panel-header">
-          <h2>Nova loja em {city.name}</h2>
+          <h2>{editingStoreId ? `Editar loja em ${city.name}` : `Nova loja em ${city.name}`}</h2>
           <span className="count-pill">city_id</span>
         </div>
         <div className="form-section-title">Dados da loja</div>
@@ -2810,7 +2888,8 @@ function StoresView({ city, stores, onChangeStores }) {
             placeholder="Observacoes sobre funcionamento, acesso, retirada, etc."
           />
         </label>
-        <button className="primary-action" type="submit"><Plus size={18} />Cadastrar loja</button>
+        <button className="primary-action" type="submit"><Plus size={18} />{editingStoreId ? 'Salvar alteracoes' : 'Cadastrar loja'}</button>
+        {editingStoreId && <button className="secondary-action" type="button" onClick={resetForm}>Cancelar edicao</button>}
         {saving && <p className="form-note">Salvando loja...</p>}
         {errors.form && <p className="field-error">{errors.form}</p>}
         {message && <p className="success-message">{message}</p>}
@@ -3213,10 +3292,15 @@ function formatCurrency(value) {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+function storeApprovalLabel(store) {
+  if (store.active === false) return 'Nao aprovada';
+  return 'Aprovada';
+}
+
 function storeStatusLabel(store) {
-  if (store.active === false) return 'Cadastro nao ativado';
+  if (store.active === false) return 'Nao aprovada';
   if (store.isOpen === false) return 'Fechada';
-  return 'Ativa';
+  return 'Aberta';
 }
 
 function storeReceivableAmount(store, index) {
@@ -3225,7 +3309,7 @@ function storeReceivableAmount(store, index) {
   return 120 + ((seed + index * 53) % 980);
 }
 
-function StoreCenterView({ city, stores, onChangeStores, onOpenStoreForm }) {
+function StoreCenterView({ city, stores, onChangeStores, onEditStore }) {
   const [searchTerm, setSearchTerm] = React.useState('');
   const [filter, setFilter] = React.useState('all');
   const [message, setMessage] = React.useState('');
@@ -3244,29 +3328,7 @@ function StoreCenterView({ city, stores, onChangeStores, onOpenStoreForm }) {
   const inactiveCount = stores.filter((store) => store.active === false).length;
   const totalReceivable = stores.reduce((total, store, index) => total + storeReceivableAmount(store, index), 0);
 
-  async function toggleStoreOpen(store) {
-    const nextIsOpen = store.isOpen === false;
-    setMessage('');
-
-    if (supabase) {
-      const { error } = await supabase
-        .from('stores')
-        .update({ is_open: nextIsOpen })
-        .eq('id', store.id);
-
-      if (error) {
-        setMessage(error.message);
-        return;
-      }
-    }
-
-    onChangeStores((current) => current.map((item) => (
-      item.id === store.id ? { ...item, isOpen: nextIsOpen } : item
-    )));
-    setMessage(nextIsOpen ? 'Loja marcada como aberta.' : 'Loja marcada como fechada.');
-  }
-
-  async function toggleStoreActive(store) {
+  async function toggleStoreApproval(store) {
     const nextActive = store.active === false;
     setMessage('');
 
@@ -3285,7 +3347,26 @@ function StoreCenterView({ city, stores, onChangeStores, onOpenStoreForm }) {
     onChangeStores((current) => current.map((item) => (
       item.id === store.id ? { ...item, active: nextActive } : item
     )));
-    setMessage(nextActive ? 'Loja ativada.' : 'Loja desativada.');
+    setMessage(nextActive ? 'Loja aprovada.' : 'Loja marcada como nao aprovada.');
+  }
+
+  async function deleteStore(store) {
+    setMessage('');
+
+    if (supabase) {
+      const { error } = await supabase
+        .from('stores')
+        .delete()
+        .eq('id', store.id);
+
+      if (error) {
+        setMessage(error.message);
+        return;
+      }
+    }
+
+    onChangeStores((current) => current.filter((item) => item.id !== store.id));
+    setMessage('Loja excluida.');
   }
 
   return (
@@ -3298,7 +3379,7 @@ function StoreCenterView({ city, stores, onChangeStores, onOpenStoreForm }) {
         </div>
         <div className="courier-center-summary">
           <span><strong>{stores.length}</strong> cadastros</span>
-          <span><strong>{inactiveCount}</strong> nao ativadas</span>
+          <span><strong>{inactiveCount}</strong> nao aprovadas</span>
           <span><strong>{formatCurrency(totalReceivable)}</strong> em pedidos</span>
         </div>
       </div>
@@ -3313,9 +3394,9 @@ function StoreCenterView({ city, stores, onChangeStores, onOpenStoreForm }) {
             Status
             <select value={filter} onChange={(event) => setFilter(event.target.value)}>
               <option value="all">Todas</option>
-              <option value="active">Ativas e abertas</option>
+              <option value="active">Aprovadas e abertas</option>
               <option value="closed">Fechadas</option>
-              <option value="inactive">Cadastro nao ativado</option>
+              <option value="inactive">Nao aprovadas</option>
             </select>
           </label>
         </div>
@@ -3326,7 +3407,7 @@ function StoreCenterView({ city, stores, onChangeStores, onOpenStoreForm }) {
           <div className="courier-center-head" role="row">
             <span>Loja</span>
             <span>Contato</span>
-            <span>Status</span>
+            <span>Aprovacao</span>
             <span>Valores</span>
             <span>Acoes</span>
           </div>
@@ -3336,6 +3417,7 @@ function StoreCenterView({ city, stores, onChangeStores, onOpenStoreForm }) {
           {filteredStores.map((store, index) => {
             const status = storeStatusLabel(store);
             const needsActivation = store.active === false;
+            const approval = storeApprovalLabel(store);
             return (
               <article className="courier-center-row" role="row" key={store.id || store.email}>
                 <div className="courier-identity">
@@ -3350,7 +3432,8 @@ function StoreCenterView({ city, stores, onChangeStores, onOpenStoreForm }) {
                   <span>{store.email || 'Sem e-mail'}</span>
                 </div>
                 <div>
-                  <mark className={`status-tag ${needsActivation ? 'pending' : 'active'}`}>{status}</mark>
+                  <mark className={`status-tag ${needsActivation ? 'pending' : 'active'}`}>{approval}</mark>
+                  <span>{status}</span>
                   <span>{store.address || 'Endereco nao informado'}</span>
                 </div>
                 <div>
@@ -3358,15 +3441,11 @@ function StoreCenterView({ city, stores, onChangeStores, onOpenStoreForm }) {
                   <span>Pedidos e taxas</span>
                 </div>
                 <div className="row-actions">
-                  <button className="toggle-button" type="button" onClick={onOpenStoreForm}>Nova loja</button>
-                  {!needsActivation && (
-                    <button className="toggle-button" type="button" onClick={() => toggleStoreOpen(store)}>
-                      {store.isOpen === false ? 'Abrir' : 'Fechar'}
-                    </button>
-                  )}
-                  <button className="toggle-button highlight" type="button" onClick={() => toggleStoreActive(store)}>
-                    {needsActivation ? 'Ativar' : 'Desativar'}
+                  <button className="toggle-button" type="button" onClick={() => onEditStore(store)}>Editar</button>
+                  <button className="toggle-button highlight" type="button" onClick={() => toggleStoreApproval(store)}>
+                    {needsActivation ? 'Aprovar' : 'Reprovar'}
                   </button>
+                  <button className="toggle-button danger" type="button" onClick={() => deleteStore(store)}>Excluir</button>
                 </div>
               </article>
             );

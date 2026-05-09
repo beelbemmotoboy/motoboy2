@@ -2519,6 +2519,12 @@ mark.amber {
   color: #fff;
 }
 
+.toggle-button.danger {
+  border-color: #ffe1e1;
+  background: #fff1f1;
+  color: #b42318;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
