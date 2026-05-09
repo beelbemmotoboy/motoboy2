@@ -21,8 +21,14 @@ button, a {
 .app-shell {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 270px minmax(0, 1fr);
+  grid-template-columns: 82px minmax(0, 1fr);
   background: #fbfbfa;
+  transition: grid-template-columns 180ms ease;
+}
+
+.app-shell:has(.sidebar:hover),
+.app-shell:has(.sidebar:focus-within) {
+  grid-template-columns: 240px minmax(0, 1fr);
 }
 
 .app-shell.dark-mode {
@@ -1256,11 +1262,13 @@ button, a {
   min-height: 100vh;
   background: #030303;
   color: #f7f7f7;
-  padding: 42px 22px 26px;
+  width: 100%;
+  padding: 28px 12px 20px;
   display: flex;
   flex-direction: column;
   position: sticky;
   top: 0;
+  overflow: hidden;
 }
 
 .logo {
@@ -1274,27 +1282,31 @@ button, a {
 }
 
 .brand-logo {
-  grid-template-columns: 36px auto;
+  grid-template-columns: 34px auto;
   justify-content: start;
-  gap: 10px;
-  height: 46px;
+  gap: 9px;
+  height: 42px;
 }
 
 .brand-logo img {
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   border-radius: 10px;
   object-fit: cover;
 }
 
 .brand-logo span {
-  font-size: 17px;
+  font-size: 15px;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateX(-5px);
+  transition: opacity 160ms ease, transform 160ms ease;
 }
 
 .nav-list {
   display: grid;
-  gap: 12px;
-  margin-top: 42px;
+  gap: 8px;
+  margin-top: 28px;
 }
 
 .nav-list button,
@@ -1303,21 +1315,44 @@ button, a {
   text-decoration: none;
   display: flex;
   align-items: center;
-  gap: 12px;
-  height: 44px;
-  padding: 0 14px;
+  gap: 10px;
+  height: 38px;
+  padding: 0 11px;
   border-radius: 8px;
   border: 0;
   background: transparent;
-  font-weight: 500;
+  font-size: 0;
+  font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
+  transition: color 160ms ease, background 160ms ease, font-size 160ms ease;
+}
+
+.nav-list svg,
+.help-link svg {
+  flex: 0 0 auto;
+  color: #ffd200;
+  stroke-width: 1.55;
+}
+
+.sidebar:hover .nav-list button,
+.sidebar:focus-within .nav-list button,
+.sidebar:hover .help-link,
+.sidebar:focus-within .help-link {
+  font-size: 13px;
+}
+
+.sidebar:hover .brand-logo span,
+.sidebar:focus-within .brand-logo span {
+  opacity: 1;
+  transform: translateX(0);
 }
 
 .nav-list button.active,
 .nav-list button:hover,
 .help-link:hover {
   color: #ffffff;
-  background: #1d1d1d;
+  background: rgba(255, 210, 0, 0.13);
 }
 
 .sidebar-footer {
@@ -1340,6 +1375,18 @@ button, a {
   border: 1px solid #1c1c1c;
   border-radius: 8px;
   background: #101010;
+}
+
+.sidebar-user > div {
+  opacity: 0;
+  transform: translateX(-5px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.sidebar:hover .sidebar-user > div,
+.sidebar:focus-within .sidebar-user > div {
+  opacity: 1;
+  transform: translateX(0);
 }
 
 .sidebar-user > span {
@@ -2455,6 +2502,59 @@ mark.amber {
   color: #fff;
 }
 
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.58);
+  backdrop-filter: blur(6px);
+}
+
+.password-modal {
+  width: min(100%, 520px);
+  padding: 24px;
+  border: 1px solid #e5e5e5;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+}
+
+.modal-password-field {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+  color: #565656;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.modal-password-field input {
+  height: 46px;
+  border: 1px solid #dedede;
+  border-radius: 8px;
+  padding: 0 12px;
+  font: inherit;
+  outline: 0;
+}
+
+.dark-mode .password-modal {
+  border-color: #223047;
+  background: #0f1724;
+}
+
+.dark-mode .modal-password-field {
+  color: #c8d2e1;
+}
+
+.dark-mode .modal-password-field input {
+  border-color: #263244;
+  background: #0a111d;
+  color: #f8fafc;
+}
+
 .courier-list {
   display: grid;
   gap: 12px;
@@ -2850,7 +2950,7 @@ th {
 
 @media (max-width: 1280px) {
   .app-shell {
-    grid-template-columns: 230px minmax(0, 1fr);
+    grid-template-columns: 82px minmax(0, 1fr);
   }
 
   .metrics-grid,
@@ -2908,17 +3008,22 @@ th {
   }
 
   .app-shell {
-    grid-template-columns: 1fr;
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  .app-shell:has(.sidebar:hover),
+  .app-shell:has(.sidebar:focus-within) {
+    grid-template-columns: 220px minmax(0, 1fr);
   }
 
   .sidebar {
-    min-height: auto;
-    position: static;
-    padding: 20px;
+    min-height: 100vh;
+    position: sticky;
+    padding: 20px 10px;
   }
 
   .nav-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
     margin-top: 18px;
   }
 

@@ -3190,6 +3190,9 @@ function formatCurrency(value) {
 function CourierCenterView({ city, couriers, onEditCourier }) {
   const [searchTerm, setSearchTerm] = React.useState('');
   const [filter, setFilter] = React.useState('all');
+  const [passwordCourier, setPasswordCourier] = React.useState(null);
+  const [temporaryPassword, setTemporaryPassword] = React.useState('');
+  const [passwordMessage, setPasswordMessage] = React.useState('');
   const normalizedSearch = searchTerm.trim().toLowerCase();
   const filteredCouriers = couriers.filter((courier) => {
     const status = courierStatusLabel(courier);
@@ -3204,6 +3207,27 @@ function CourierCenterView({ city, couriers, onEditCourier }) {
   });
   const pendingCount = couriers.filter((courier) => ['Pendente', 'Cadastro nao ativado'].includes(courierStatusLabel(courier))).length;
   const totalReceivable = couriers.reduce((total, courier, index) => total + courierReceivableAmount(courier, index), 0);
+
+  function openPasswordModal(courier) {
+    setPasswordCourier(courier);
+    setTemporaryPassword('');
+    setPasswordMessage('');
+  }
+
+  function closePasswordModal() {
+    setPasswordCourier(null);
+    setTemporaryPassword('');
+    setPasswordMessage('');
+  }
+
+  async function confirmTemporaryPassword() {
+    if (temporaryPassword.trim().length < 6) {
+      setPasswordMessage('A senha precisa ter no minimo 6 caracteres.');
+      return;
+    }
+    await copyText(temporaryPassword.trim());
+    setPasswordMessage('Senha provisoria criada e copiada. A integracao com Auth sera ligada na proxima etapa.');
+  }
 
   return (
     <section className="courier-center-layout">
@@ -3275,7 +3299,7 @@ function CourierCenterView({ city, couriers, onEditCourier }) {
                 <div className="row-actions">
                   <button className="toggle-button" type="button" onClick={() => onEditCourier(courier)}>Editar</button>
                   {needsActivation && (
-                    <button className="toggle-button highlight" type="button">Gerar senha</button>
+                    <button className="toggle-button highlight" type="button" onClick={() => openPasswordModal(courier)}>Gerar senha</button>
                   )}
                 </div>
               </article>
@@ -3283,6 +3307,38 @@ function CourierCenterView({ city, couriers, onEditCourier }) {
           })}
         </div>
       </div>
+
+      {passwordCourier && (
+        <div className="modal-backdrop" role="presentation">
+          <section className="password-modal" role="dialog" aria-modal="true" aria-labelledby="courier-password-title">
+            <div className="panel-header">
+              <div>
+                <span className="section-eyebrow">Senha provisoria</span>
+                <h2 id="courier-password-title">Criar senha para {passwordCourier.fullName}</h2>
+              </div>
+              <button type="button" onClick={closePasswordModal}>Fechar</button>
+            </div>
+            <p className="form-note">Defina uma senha inicial para o motoboy acessar o sistema. Depois ele podera alterar a senha.</p>
+            <label className="modal-password-field">
+              Senha escolhida pelo admin
+              <input
+                value={temporaryPassword}
+                onChange={(event) => {
+                  setTemporaryPassword(event.target.value);
+                  setPasswordMessage('');
+                }}
+                placeholder="Digite a senha provisoria"
+                type="text"
+                autoFocus
+              />
+            </label>
+            <button className="primary-action" type="button" onClick={confirmTemporaryPassword}>Confirmar senha provisoria</button>
+            {passwordMessage && (
+              <p className={passwordMessage.startsWith('Senha provisoria criada') ? 'success-message' : 'field-error'}>{passwordMessage}</p>
+            )}
+          </section>
+        </div>
+      )}
     </section>
   );
 }
