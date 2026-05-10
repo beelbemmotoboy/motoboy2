@@ -1489,8 +1489,13 @@ function StoreHomeView({ city, store, profile, onLogout }) {
   }));
   const [dataMessage, setDataMessage] = React.useState('');
   const [savingStoreData, setSavingStoreData] = React.useState(false);
+  const todayIso = new Date().toISOString().slice(0, 10);
   const [deliverySearch, setDeliverySearch] = React.useState('');
   const [deliveryFilter, setDeliveryFilter] = React.useState('all');
+  const [deliveryDate, setDeliveryDate] = React.useState(todayIso);
+  const [storeDeliveries, setStoreDeliveries] = React.useState([]);
+  const [deliveriesLoading, setDeliveriesLoading] = React.useState(false);
+  const [deliveriesMessage, setDeliveriesMessage] = React.useState('');
   const [storeOpen, setStoreOpen] = React.useState(store?.isOpen ?? true);
   const [showOpenPrompt, setShowOpenPrompt] = React.useState(store?.isOpen === false);
   const [statusMessage, setStatusMessage] = React.useState('');
@@ -1516,11 +1521,60 @@ function StoreHomeView({ city, store, profile, onLogout }) {
     });
   }, [store?.id, store?.isOpen]);
 
-  const storeDeliveries = [
-    { courier: 'Carlos Silva', customer: 'Ana Beatriz', order: '#1234', fee: 12.5, date: '10/05/2026', status: 'A caminho' },
-    { courier: 'Juliana Santos', customer: 'Rafael Souza', order: '#1233', fee: 10, date: '10/05/2026', status: 'Entregue' },
-    { courier: 'Paulo Oliveira', customer: 'Mariana Alves', order: '#1232', fee: 14, date: '09/05/2026', status: 'Ocorrencia' },
-  ];
+  React.useEffect(() => {
+    let mounted = true;
+
+    async function loadStoreDeliveries() {
+      if (activePanel !== 'deliveries') return;
+      setDeliveriesMessage('');
+
+      const fallbackDeliveries = [
+        { id: 'demo-1', courier: 'Carlos Silva', customer: 'Ana Beatriz', order: '#1234', fee: 12.5, date: new Date().toLocaleDateString('pt-BR'), status: 'A caminho', courierPhone: '' },
+        { id: 'demo-2', courier: 'Juliana Santos', customer: 'Rafael Souza', order: '#1233', fee: 10, date: new Date().toLocaleDateString('pt-BR'), status: 'Entregue', courierPhone: '' },
+      ];
+
+      if (!supabase || !store?.id) {
+        setStoreDeliveries(fallbackDeliveries);
+        return;
+      }
+
+      const start = `${deliveryDate}T00:00:00`;
+      const end = `${deliveryDate}T23:59:59.999`;
+      setDeliveriesLoading(true);
+      const { data, error } = await supabase
+        .from('deliveries')
+        .select('id, order_code, delivery_fee, status, created_at, customers(name), couriers(name, phone)')
+        .eq('store_id', store.id)
+        .gte('created_at', start)
+        .lte('created_at', end)
+        .order('created_at', { ascending: false });
+      if (!mounted) return;
+      setDeliveriesLoading(false);
+
+      if (error) {
+        setDeliveriesMessage(`Nao foi possivel buscar entregas: ${error.message}`);
+        setStoreDeliveries([]);
+        return;
+      }
+
+      setStoreDeliveries((data ?? []).map((delivery) => ({
+        id: delivery.id,
+        courier: delivery.couriers?.name || 'Sem entregador',
+        courierPhone: delivery.couriers?.phone || '',
+        customer: delivery.customers?.name || 'Cliente nao informado',
+        order: delivery.order_code || delivery.id,
+        fee: Number(delivery.delivery_fee || 0),
+        date: new Date(delivery.created_at).toLocaleDateString('pt-BR'),
+        status: deliveryStatusLabel(delivery.status),
+      })));
+    }
+
+    loadStoreDeliveries();
+    return () => {
+      mounted = false;
+    };
+  }, [activePanel, deliveryDate, store?.id]);
+
   const normalizedDeliverySearch = deliverySearch.trim().toLowerCase();
   const visibleStoreDeliveries = storeDeliveries.filter((delivery) => {
     const searchable = [delivery.courier, delivery.customer, delivery.order, delivery.status].join(' ').toLowerCase();
@@ -1707,6 +1761,10 @@ function StoreHomeView({ city, store, profile, onLogout }) {
               <input value={deliverySearch} onChange={(event) => setDeliverySearch(event.target.value)} placeholder="Buscar por entregador, cliente ou pedido" />
             </label>
             <label className="filter-field">
+              Data
+              <input type="date" value={deliveryDate} onChange={(event) => setDeliveryDate(event.target.value || todayIso)} />
+            </label>
+            <label className="filter-field">
               Status
               <select value={deliveryFilter} onChange={(event) => setDeliveryFilter(event.target.value)}>
                 <option value="all">Todos</option>
@@ -1725,8 +1783,10 @@ function StoreHomeView({ city, store, profile, onLogout }) {
               <span>Taxa</span>
               <span>Data</span>
               <span>Status</span>
-              <span>Mensagem</span>
+              <span>Acoes</span>
             </div>
+            {deliveriesLoading && <p className="form-note">Buscando entregas do dia...</p>}
+            {deliveriesMessage && <p className="field-error">{deliveriesMessage}</p>}
             {visibleStoreDeliveries.map((delivery) => (
               <article className="store-deliveries-row" role="row" key={delivery.order}>
                 <strong>{delivery.courier}</strong>
@@ -1735,7 +1795,10 @@ function StoreHomeView({ city, store, profile, onLogout }) {
                 <span>{formatCurrency(delivery.fee)}</span>
                 <span>{delivery.date}</span>
                 <mark className={`delivery-status ${delivery.status === 'Entregue' ? 'done' : delivery.status === 'Ocorrencia' ? 'issue' : 'route'}`}>{delivery.status}</mark>
-                <button type="button" aria-label={`Enviar mensagem para ${delivery.courier}`}><Mail size={18} /></button>
+                <span className="store-delivery-links">
+                  <a href={delivery.courierPhone ? `https://wa.me/55${onlyDigits(delivery.courierPhone)}` : '#'} target="_blank" rel="noreferrer">Mensagem</a>
+                  <a href={`#delivery-${delivery.id}`}>Detalhes</a>
+                </span>
               </article>
             ))}
             {visibleStoreDeliveries.length === 0 && <p className="empty-state">Nenhuma entrega encontrada.</p>}
@@ -1842,6 +1905,12 @@ function StoreHomeView({ city, store, profile, onLogout }) {
       </section>
     </main>
   );
+}
+
+function deliveryStatusLabel(status) {
+  if (status === 'delivered') return 'Entregue';
+  if (['pending', 'assigned', 'picked_up', 'on_route'].includes(status)) return 'A caminho';
+  return 'Ocorrencia';
 }
 
 function CourierHomeView({ city }) {
