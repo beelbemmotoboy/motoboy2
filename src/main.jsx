@@ -1919,6 +1919,9 @@ function deliveryStatusLabel(status) {
 
 function CourierHomeView({ city, profile, onLogout }) {
   const courierName = profile?.name || 'Carlos Henrique';
+  const [courierPoints, setCourierPoints] = React.useState(0);
+  const [acceptTimeoutSeconds, setAcceptTimeoutSeconds] = React.useState(25);
+  const [menuOpen, setMenuOpen] = React.useState(false);
   const currentDelivery = {
     code: 'E12789',
     customer: 'Carlos Henrique',
@@ -1928,24 +1931,65 @@ function CourierHomeView({ city, profile, onLogout }) {
     refusals: '1/3',
   };
   const [actionMessage, setActionMessage] = React.useState('');
+  const countdownLabel = `${String(Math.floor(acceptTimeoutSeconds / 60)).padStart(2, '0')}:${String(acceptTimeoutSeconds % 60).padStart(2, '0')}`;
+
+  React.useEffect(() => {
+    let mounted = true;
+
+    async function loadCourierConfig() {
+      if (!supabase) return;
+
+      if (profile?.courier_id) {
+        const { data } = await supabase
+          .from('courier_points')
+          .select('total_points')
+          .eq('courier_id', profile.courier_id)
+          .maybeSingle();
+
+        if (mounted) setCourierPoints(data?.total_points ?? 0);
+      }
+
+      const { data: timeoutSetting } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'delivery_accept_timeout')
+        .maybeSingle();
+
+      const configuredSeconds = Number(timeoutSetting?.value?.seconds);
+      if (mounted && Number.isFinite(configuredSeconds) && configuredSeconds > 0) {
+        setAcceptTimeoutSeconds(Math.round(configuredSeconds));
+      }
+    }
+
+    loadCourierConfig();
+
+    return () => {
+      mounted = false;
+    };
+  }, [profile?.courier_id]);
 
   return (
     <main className="courier-app-home">
       <header className="courier-app-header">
-        <button className="courier-store-logo" type="button" aria-label="Loja da entrega">
-          <Store size={27} />
-        </button>
-        <div className="courier-profile-card">
+        <button className="courier-profile-card" type="button" onClick={() => setMenuOpen((current) => !current)} aria-expanded={menuOpen} aria-label="Abrir menu do motoboy">
           <span className="courier-photo"><UserRound size={30} /></span>
           <span className="courier-online-dot" />
           <div>
             <h1>{courierName}</h1>
             <p>Entrega #{currentDelivery.code}</p>
           </div>
-        </div>
+        </button>
+        {menuOpen && (
+          <nav className="courier-profile-menu" aria-label="Menu do motoboy">
+            <button type="button" onClick={() => setActionMessage('Meus dados sera implementado na proxima etapa.')}>Meus dados</button>
+            <button type="button" onClick={() => setActionMessage('Minhas entregas sera implementado na proxima etapa.')}>Minhas entregas</button>
+            <button type="button" onClick={() => setActionMessage('Relatorios sera implementado na proxima etapa.')}>Relatorios</button>
+            <button type="button" onClick={onLogout}>Sair</button>
+          </nav>
+        )}
         <button className="courier-score-pill" type="button" aria-label="Pontuacao">
           <span />
-          <strong>1540</strong>
+          <strong>{courierPoints}</strong>
           <Star size={22} />
         </button>
       </header>
@@ -2050,7 +2094,7 @@ function CourierHomeView({ city, profile, onLogout }) {
 
       <div className="courier-countdown">
         <Clock3 size={28} />
-        <strong>00:25</strong>
+        <strong>{countdownLabel}</strong>
         <span>Tempo para aceitar</span>
       </div>
 

@@ -1038,7 +1038,7 @@ button, a {
   inset: 0 0 auto;
   z-index: 28;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 14px;
   padding: 16px min(4vw, 24px);
@@ -1047,8 +1047,9 @@ button, a {
   backdrop-filter: blur(14px);
 }
 
-.courier-store-logo,
+.courier-profile-card,
 .courier-score-pill,
+.courier-profile-menu button,
 .courier-map-actions button,
 .courier-decision-grid button,
 .courier-logout {
@@ -1075,6 +1076,10 @@ button, a {
   grid-template-columns: 68px minmax(0, 1fr);
   align-items: center;
   gap: 13px;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
 }
 
 .courier-photo {
@@ -1116,6 +1121,36 @@ button, a {
   font-size: clamp(14px, 2.4vw, 21px);
 }
 
+.courier-profile-menu {
+  position: absolute;
+  left: min(4vw, 24px);
+  top: calc(100% + 8px);
+  z-index: 30;
+  width: min(260px, calc(100vw - 28px));
+  padding: 8px;
+  border: 1px solid rgba(255, 204, 0, 0.28);
+  border-radius: 14px;
+  display: grid;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.92);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.42);
+}
+
+.courier-profile-menu button {
+  min-height: 42px;
+  border-radius: 10px;
+  padding: 0 13px;
+  background: transparent;
+  color: #fff;
+  font-weight: 850;
+  text-align: left;
+}
+
+.courier-profile-menu button:hover {
+  background: rgba(255, 204, 0, 0.14);
+  color: #ffcc00;
+}
+
 .courier-score-pill {
   min-height: 58px;
   padding: 0 18px;
@@ -1147,24 +1182,24 @@ button, a {
 }
 
 .courier-xp-card {
-  min-height: 108px;
-  padding: 18px;
+  min-height: 76px;
+  padding: 13px;
   border: 1px solid rgba(255, 255, 255, 0.13);
-  border-radius: 18px;
+  border-radius: 14px;
   display: flex;
   align-items: center;
-  gap: 22px;
+  gap: 15px;
   background: linear-gradient(145deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.01));
 }
 
 .courier-xp-card span,
 .xp-dot {
-  width: 66px;
-  height: 66px;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: 28px;
+  font-size: 19px;
   font-weight: 950;
 }
 
@@ -1184,7 +1219,7 @@ button, a {
 }
 
 .courier-xp-card strong {
-  font-size: clamp(36px, 8vw, 62px);
+  font-size: clamp(29px, 6vw, 45px);
   line-height: 1;
 }
 
@@ -1549,11 +1584,6 @@ button, a {
     padding: 12px 14px;
   }
 
-  .courier-store-logo {
-    width: 50px;
-    height: 50px;
-  }
-
   .courier-profile-card {
     grid-template-columns: 52px minmax(0, 1fr);
     gap: 9px;
@@ -1589,17 +1619,21 @@ button, a {
   }
 
   .courier-xp-card {
-    min-height: 82px;
-    padding: 12px;
-    gap: 10px;
-    border-radius: 14px;
+    min-height: 58px;
+    padding: 9px;
+    gap: 8px;
+    border-radius: 11px;
   }
 
   .courier-xp-card span,
   .xp-dot {
-    width: 45px;
-    height: 45px;
-    font-size: 19px;
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+
+  .courier-xp-card strong {
+    font-size: 32px;
   }
 
   .courier-route-map {

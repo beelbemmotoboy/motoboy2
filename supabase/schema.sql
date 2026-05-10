@@ -92,6 +92,17 @@ create table if not exists public.couriers (
   )
 );
 
+create table if not exists public.courier_points (
+  id uuid not null default gen_random_uuid(),
+  courier_id uuid primary key references public.couriers(id) on delete cascade,
+  total_points integer not null default 0,
+  updated_by uuid references auth.users(id),
+  created_by uuid references auth.users(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint courier_points_total_points_check check (total_points >= 0)
+);
+
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   city_id uuid references public.cities(id),
@@ -202,6 +213,16 @@ create table if not exists public.delivery_events (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.system_settings (
+  id uuid not null default gen_random_uuid(),
+  key text primary key,
+  value jsonb not null default '{}'::jsonb,
+  created_by uuid references auth.users(id),
+  updated_by uuid references auth.users(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 alter table public.cities add column if not exists created_by uuid references auth.users(id);
 alter table public.cities add column if not exists updated_by uuid references auth.users(id);
 alter table public.stores add column if not exists created_by uuid references auth.users(id);
@@ -211,6 +232,9 @@ alter table public.stores add column if not exists is_open boolean not null defa
 alter table public.couriers add column if not exists created_by uuid references auth.users(id);
 alter table public.couriers add column if not exists updated_by uuid references auth.users(id);
 alter table public.couriers add column if not exists crlv_file_path text;
+alter table public.courier_points add column if not exists id uuid not null default gen_random_uuid();
+alter table public.courier_points add column if not exists created_by uuid references auth.users(id);
+alter table public.courier_points add column if not exists updated_by uuid references auth.users(id);
 alter table public.profiles add column if not exists email text;
 alter table public.profiles add column if not exists created_by uuid references auth.users(id);
 alter table public.profiles add column if not exists updated_by uuid references auth.users(id);
@@ -221,6 +245,9 @@ alter table public.customers add column if not exists updated_by uuid references
 alter table public.deliveries add column if not exists created_by uuid references auth.users(id);
 alter table public.deliveries add column if not exists updated_by uuid references auth.users(id);
 alter table public.delivery_events add column if not exists created_by uuid references auth.users(id);
+alter table public.system_settings add column if not exists id uuid not null default gen_random_uuid();
+alter table public.system_settings add column if not exists created_by uuid references auth.users(id);
+alter table public.system_settings add column if not exists updated_by uuid references auth.users(id);
 
 update public.profiles profile
 set email = auth_user.email
@@ -242,6 +269,7 @@ create table if not exists public.audit_logs (
 create index if not exists cities_slug_idx on public.cities(slug);
 create index if not exists stores_city_id_idx on public.stores(city_id);
 create index if not exists couriers_city_id_idx on public.couriers(city_id);
+create index if not exists courier_points_total_points_idx on public.courier_points(total_points);
 create index if not exists profiles_city_id_idx on public.profiles(city_id);
 create index if not exists profiles_store_id_idx on public.profiles(store_id);
 create index if not exists profiles_courier_id_idx on public.profiles(courier_id);
@@ -322,6 +350,10 @@ drop trigger if exists set_couriers_updated_at on public.couriers;
 create trigger set_couriers_updated_at before insert or update on public.couriers
 for each row execute function public.set_updated_at();
 
+drop trigger if exists set_courier_points_updated_at on public.courier_points;
+create trigger set_courier_points_updated_at before insert or update on public.courier_points
+for each row execute function public.set_updated_at();
+
 drop trigger if exists set_profiles_updated_at on public.profiles;
 create trigger set_profiles_updated_at before insert or update on public.profiles
 for each row execute function public.set_updated_at();
@@ -342,6 +374,10 @@ drop trigger if exists set_delivery_events_created_by on public.delivery_events;
 create trigger set_delivery_events_created_by before insert on public.delivery_events
 for each row execute function public.set_created_by();
 
+drop trigger if exists set_system_settings_updated_at on public.system_settings;
+create trigger set_system_settings_updated_at before insert or update on public.system_settings
+for each row execute function public.set_updated_at();
+
 drop trigger if exists audit_cities on public.cities;
 create trigger audit_cities after insert or update or delete on public.cities
 for each row execute function public.write_audit_log();
@@ -352,6 +388,10 @@ for each row execute function public.write_audit_log();
 
 drop trigger if exists audit_couriers on public.couriers;
 create trigger audit_couriers after insert or update or delete on public.couriers
+for each row execute function public.write_audit_log();
+
+drop trigger if exists audit_courier_points on public.courier_points;
+create trigger audit_courier_points after insert or update or delete on public.courier_points
 for each row execute function public.write_audit_log();
 
 drop trigger if exists audit_profiles on public.profiles;
@@ -372,6 +412,10 @@ for each row execute function public.write_audit_log();
 
 drop trigger if exists audit_delivery_events on public.delivery_events;
 create trigger audit_delivery_events after insert or update or delete on public.delivery_events
+for each row execute function public.write_audit_log();
+
+drop trigger if exists audit_system_settings on public.system_settings;
+create trigger audit_system_settings after insert or update or delete on public.system_settings
 for each row execute function public.write_audit_log();
 
 create or replace function public.current_profile_role()
@@ -448,12 +492,14 @@ $$;
 alter table public.cities enable row level security;
 alter table public.stores enable row level security;
 alter table public.couriers enable row level security;
+alter table public.courier_points enable row level security;
 alter table public.profiles enable row level security;
 alter table public.access_invites enable row level security;
 alter table public.customers enable row level security;
 alter table public.deliveries enable row level security;
 alter table public.delivery_events enable row level security;
 alter table public.audit_logs enable row level security;
+alter table public.system_settings enable row level security;
 
 drop policy if exists "cities_read_by_authenticated" on public.cities;
 drop policy if exists "cities_manage_by_system_admin" on public.cities;
@@ -462,6 +508,8 @@ drop policy if exists "stores_manage_by_system_or_city_admin" on public.stores;
 drop policy if exists "stores_update_own_store_by_store_admin" on public.stores;
 drop policy if exists "couriers_read_by_scope" on public.couriers;
 drop policy if exists "couriers_manage_by_system_or_city_admin" on public.couriers;
+drop policy if exists "courier_points_read_by_scope" on public.courier_points;
+drop policy if exists "courier_points_manage_by_system_or_city_admin" on public.courier_points;
 drop policy if exists "profiles_read_by_scope" on public.profiles;
 drop policy if exists "profiles_manage_by_system_or_city_admin" on public.profiles;
 drop policy if exists "access_invites_read_by_scope" on public.access_invites;
@@ -474,6 +522,8 @@ drop policy if exists "deliveries_update_by_scope" on public.deliveries;
 drop policy if exists "delivery_events_read_by_scope" on public.delivery_events;
 drop policy if exists "delivery_events_insert_by_scope" on public.delivery_events;
 drop policy if exists "audit_logs_read_by_system_or_city_admin" on public.audit_logs;
+drop policy if exists "system_settings_read_by_authenticated" on public.system_settings;
+drop policy if exists "system_settings_manage_by_system_admin" on public.system_settings;
 
 create policy "cities_read_by_authenticated" on public.cities
   for select to authenticated using (
@@ -516,6 +566,34 @@ create policy "couriers_read_by_scope" on public.couriers
 
 create policy "couriers_manage_by_system_or_city_admin" on public.couriers
   for all to authenticated using (public.can_manage_city(city_id)) with check (public.can_manage_city(city_id));
+
+create policy "courier_points_read_by_scope" on public.courier_points
+  for select to authenticated using (
+    public.is_system_admin()
+    or courier_id = public.current_profile_courier_id()
+    or exists (
+      select 1 from public.couriers c
+      where c.id = courier_points.courier_id
+      and public.is_city_admin(c.city_id)
+    )
+  );
+
+create policy "courier_points_manage_by_system_or_city_admin" on public.courier_points
+  for all to authenticated using (
+    public.is_system_admin()
+    or exists (
+      select 1 from public.couriers c
+      where c.id = courier_points.courier_id
+      and public.is_city_admin(c.city_id)
+    )
+  ) with check (
+    public.is_system_admin()
+    or exists (
+      select 1 from public.couriers c
+      where c.id = courier_points.courier_id
+      and public.is_city_admin(c.city_id)
+    )
+  );
 
 create policy "profiles_read_by_scope" on public.profiles
   for select to authenticated using (
@@ -661,6 +739,21 @@ create policy "audit_logs_read_by_system_or_city_admin" on public.audit_logs
       ) = public.current_profile_city_id()::text
     )
   );
+
+create policy "system_settings_read_by_authenticated" on public.system_settings
+  for select to authenticated using (true);
+
+create policy "system_settings_manage_by_system_admin" on public.system_settings
+  for all to authenticated using (public.is_system_admin()) with check (public.is_system_admin());
+
+insert into public.system_settings (key, value)
+values ('delivery_accept_timeout', jsonb_build_object('seconds', 25))
+on conflict (key) do nothing;
+
+insert into public.courier_points (courier_id, total_points)
+select id, 0
+from public.couriers
+on conflict (courier_id) do nothing;
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values
