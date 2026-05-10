@@ -35,6 +35,7 @@ import {
   WalletCards,
 } from 'lucide-react';
 import { supabase, supabaseConfigStatus } from './supabaseClient';
+import { acceptQueuedDelivery, createDeliveryWithQueue, emptyDelivery, getNextDeliveryForCourier, rejectQueuedDelivery, setCourierAvailable } from './cadastra_entrega';
 import { isValidCep, isValidCnpj, isValidCpf, isValidEmail, isValidPhone, maskCep, maskCnpj, maskCpf, maskPhone, onlyDigits, passwordStrength, validateAccessUserForm, validateCourierForm, validateStoreForm } from './utils/validators';
 import loginLogo from '../imagem/logo.png';
 import beeIcon from '../imagem/icone.png';
@@ -1726,47 +1727,21 @@ function StoreHomeView({ city, store, profile, onLogout }) {
     }
 
     setRequestSaving(true);
-    const { data: customer, error: customerError } = await supabase
-      .from('customers')
-      .insert({
-        city_id: city.id,
-        name: requestForm.customerName.trim(),
-        phone: onlyDigits(requestForm.customerPhone),
-        address: requestForm.deliveryAddress.trim(),
-      })
-      .select('id')
-      .single();
-
-    if (customerError) {
+    try {
+      const { queuedCount } = await createDeliveryWithQueue({ supabase, city, store, requestForm });
+      setRequestMessage(
+        queuedCount > 0
+          ? `Entrega criada e enviada para ${queuedCount} motoboy(s) na fila.`
+          : 'Entrega criada, mas nao ha motoboy aprovado e disponivel na cidade.'
+      );
+      setRequestModalOpen(false);
+      setActivePanel('deliveries');
+      setDeliveryDate(todayIso);
+    } catch (error) {
+      setRequestMessage(error.message);
+    } finally {
       setRequestSaving(false);
-      setRequestMessage(`Nao foi possivel cadastrar o cliente: ${customerError.message}`);
-      return;
     }
-
-    const deliveryFee = Number(String(requestForm.deliveryFee).replace(',', '.')) || 0;
-    const { error: deliveryError } = await supabase
-      .from('deliveries')
-      .insert({
-        city_id: city.id,
-        order_code: requestForm.orderCode.trim(),
-        store_id: store.id,
-        customer_id: customer.id,
-        pickup_address: [store.address, store.number, store.district].filter(Boolean).join(', '),
-        delivery_address: requestForm.deliveryAddress.trim(),
-        delivery_fee: deliveryFee,
-        status: 'pending',
-      });
-
-    setRequestSaving(false);
-    if (deliveryError) {
-      setRequestMessage(`Nao foi possivel criar a entrega: ${deliveryError.message}`);
-      return;
-    }
-
-    setRequestMessage('Entrega criada e enviada para os motoboys disponiveis.');
-    setRequestModalOpen(false);
-    setActivePanel('deliveries');
-    setDeliveryDate(todayIso);
   }
 
   if (activePanel === 'data') {
@@ -2029,20 +2004,12 @@ function CourierHomeView({ city, profile, onLogout }) {
   const [courierPoints, setCourierPoints] = React.useState(0);
   const [acceptTimeoutSeconds, setAcceptTimeoutSeconds] = React.useState(25);
   const [menuOpen, setMenuOpen] = React.useState(false);
-  const fallbackDelivery = {
-    id: '',
-    code: 'E12789',
-    customer: 'Carlos Henrique',
-    store: 'Pizzaria Bella Roma',
-    fee: 'R$ 18,50',
-    numericFee: 18.5,
-    xp: '+250',
-    refusals: '1/3',
-    status: 'pending',
-  };
-  const [currentDelivery, setCurrentDelivery] = React.useState(fallbackDelivery);
+  const [availabilityPromptOpen, setAvailabilityPromptOpen] = React.useState(true);
+  const [currentDelivery, setCurrentDelivery] = React.useState(emptyDelivery());
   const [deliveryLoading, setDeliveryLoading] = React.useState(false);
   const [actionMessage, setActionMessage] = React.useState('');
+  const hasPendingOffer = Boolean(currentDelivery.id && currentDelivery.status === 'pending');
+  const hasAcceptedDelivery = Boolean(currentDelivery.id && ['assigned', 'picked_up', 'on_route'].includes(currentDelivery.status));
   const countdownLabel = `${String(Math.floor(acceptTimeoutSeconds / 60)).padStart(2, '0')}:${String(acceptTimeoutSeconds % 60).padStart(2, '0')}`;
 
   const mapDeliveryStatus = (status) => {
@@ -2051,76 +2018,18 @@ function CourierHomeView({ city, profile, onLogout }) {
     return 'Aguardando aceite';
   };
 
-  const normalizeDelivery = (delivery) => ({
-    id: delivery.id,
-    code: delivery.order_code || delivery.id,
-    customer: delivery.customers?.name || 'Cliente nao informado',
-    store: delivery.stores?.fantasy_name || delivery.stores?.name || 'Loja nao informada',
-    fee: formatCurrency(Number(delivery.delivery_fee || 0)),
-    numericFee: Number(delivery.delivery_fee || 0),
-    xp: '+250',
-    refusals: '1/3',
-    status: delivery.status,
-  });
-
   const loadCurrentDelivery = React.useCallback(async () => {
     if (!supabase || !profile?.courier_id || !city?.id) return;
     setDeliveryLoading(true);
     setActionMessage('');
-
-    const baseSelect = 'id, order_code, delivery_fee, status, created_at, customers(name), stores(name, fantasy_name)';
-    const { data: assignedData, error: assignedError } = await supabase
-      .from('deliveries')
-      .select(baseSelect)
-      .eq('courier_id', profile.courier_id)
-      .in('status', ['assigned', 'picked_up', 'on_route'])
-      .order('created_at', { ascending: true })
-      .limit(1);
-
-    if (assignedError) {
+    try {
+      const nextDelivery = await getNextDeliveryForCourier({ supabase, cityId: city.id, courierId: profile.courier_id });
+      setCurrentDelivery(nextDelivery);
+    } catch (error) {
+      setActionMessage(error.message);
+    } finally {
       setDeliveryLoading(false);
-      setActionMessage(`Nao foi possivel buscar entrega: ${assignedError.message}`);
-      return;
     }
-
-    if (assignedData?.length) {
-      setCurrentDelivery(normalizeDelivery(assignedData[0]));
-      setDeliveryLoading(false);
-      return;
-    }
-
-    const { data: rejectedData } = await supabase
-      .from('delivery_rejections')
-      .select('delivery_id')
-      .eq('courier_id', profile.courier_id);
-    const rejectedIds = (rejectedData ?? []).map((item) => item.delivery_id).filter(Boolean);
-
-    let pendingQuery = supabase
-      .from('deliveries')
-      .select(baseSelect)
-      .eq('city_id', city.id)
-      .eq('status', 'pending')
-      .is('courier_id', null)
-      .order('created_at', { ascending: true })
-      .limit(5);
-
-    if (rejectedIds.length) {
-      pendingQuery = pendingQuery.not('id', 'in', `(${rejectedIds.join(',')})`);
-    }
-
-    const { data: pendingData, error: pendingError } = await pendingQuery;
-    setDeliveryLoading(false);
-    if (pendingError) {
-      setActionMessage(`Nao foi possivel buscar pedidos pendentes: ${pendingError.message}`);
-      return;
-    }
-
-    if (pendingData?.length) {
-      setCurrentDelivery(normalizeDelivery(pendingData[0]));
-      return;
-    }
-
-    setCurrentDelivery({ ...fallbackDelivery, id: '', code: 'Sem pedido', customer: 'Nenhum pedido pendente', store: 'Aguardando loja', fee: 'R$ 0,00', numericFee: 0, xp: '+0', status: 'empty' });
   }, [city?.id, profile?.courier_id]);
 
   React.useEffect(() => {
@@ -2166,26 +2075,13 @@ function CourierHomeView({ city, profile, onLogout }) {
     }
 
     setActionMessage('');
-    const { error } = await supabase
-      .from('deliveries')
-      .update({ courier_id: profile.courier_id, status: 'assigned' })
-      .eq('id', currentDelivery.id)
-      .eq('status', 'pending');
-
-    if (error) {
-      setActionMessage(`Nao foi possivel aceitar: ${error.message}`);
-      return;
+    try {
+      await acceptQueuedDelivery({ supabase, cityId: city.id, delivery: currentDelivery, courierId: profile.courier_id, courierName });
+      setActionMessage('Entrega aceita.');
+      loadCurrentDelivery();
+    } catch (error) {
+      setActionMessage(error.message);
     }
-
-    await supabase.from('delivery_events').insert({
-      city_id: city.id,
-      delivery_id: currentDelivery.id,
-      status: 'assigned',
-      note: `${courierName} aceitou a entrega.`,
-    });
-    await supabase.from('couriers').update({ availability_status: 'on_delivery' }).eq('id', profile.courier_id);
-    setActionMessage('Entrega aceita.');
-    loadCurrentDelivery();
   }
 
   async function rejectDelivery() {
@@ -2194,28 +2090,20 @@ function CourierHomeView({ city, profile, onLogout }) {
       return;
     }
 
-    const { error } = await supabase
-      .from('delivery_rejections')
-      .upsert({
-        city_id: city.id,
-        delivery_id: currentDelivery.id,
-        courier_id: profile.courier_id,
-        reason: 'Recusada pelo motoboy',
-      }, { onConflict: 'delivery_id,courier_id' });
-
-    if (error) {
-      setActionMessage(`Nao foi possivel recusar: ${error.message}`);
-      return;
+    try {
+      await rejectQueuedDelivery({ supabase, cityId: city.id, delivery: currentDelivery, courierId: profile.courier_id, courierName });
+      setActionMessage('Entrega recusada. Buscando outra disponivel.');
+      loadCurrentDelivery();
+    } catch (error) {
+      setActionMessage(error.message);
     }
+  }
 
-    await supabase.from('delivery_events').insert({
-      city_id: city.id,
-      delivery_id: currentDelivery.id,
-      status: 'pending',
-      note: `${courierName} recusou a entrega.`,
-    });
-    setActionMessage('Entrega recusada. Buscando outra disponivel.');
-    loadCurrentDelivery();
+  async function confirmAvailability(available) {
+    setAvailabilityPromptOpen(false);
+    await setCourierAvailable({ supabase, courierId: profile?.courier_id, available });
+    setActionMessage(available ? 'Status alterado para disponivel.' : 'Status mantido como offline.');
+    if (available) loadCurrentDelivery();
   }
 
   return (
@@ -2254,6 +2142,19 @@ function CourierHomeView({ city, profile, onLogout }) {
           <strong>-30</strong>
         </article>
       </section>
+
+      {availabilityPromptOpen && (
+        <div className="courier-availability-modal" role="dialog" aria-modal="true" aria-labelledby="courier-availability-title">
+          <div>
+            <h2 id="courier-availability-title">Mudar status para disponivel?</h2>
+            <p>Ao confirmar, o sistema pode oferecer novas entregas para voce.</p>
+            <span>
+              <button type="button" className="primary-action" onClick={() => confirmAvailability(true)}>Sim</button>
+              <button type="button" className="secondary-action" onClick={() => confirmAvailability(false)}>Nao</button>
+            </span>
+          </div>
+        </div>
+      )}
 
       <section className="courier-route-map" aria-label={`Mapa da entrega em ${city.name}`}>
         <div className="courier-map-grid" />
@@ -2304,6 +2205,7 @@ function CourierHomeView({ city, profile, onLogout }) {
         </article>
       </section>
 
+      {hasAcceptedDelivery && (
       <section className="courier-delivery-card" aria-label="Dados da entrega">
         <article>
           <UserRound size={32} />
@@ -2326,27 +2228,32 @@ function CourierHomeView({ city, profile, onLogout }) {
           <strong className="xp-value">{currentDelivery.xp}</strong>
         </article>
       </section>
+      )}
 
       {actionMessage && <p className="courier-action-message">{actionMessage}</p>}
 
+      {hasPendingOffer && (
       <section className="courier-decision-grid">
-        <button type="button" className="accept" onClick={acceptDelivery} disabled={deliveryLoading || !currentDelivery.id}>
+        <button type="button" className="accept" onClick={acceptDelivery} disabled={deliveryLoading}>
           <span>✓</span>
           <strong>Aceitar entrega</strong>
           <small>{currentDelivery.fee}</small>
         </button>
-        <button type="button" className="decline" onClick={rejectDelivery} disabled={deliveryLoading || !currentDelivery.id}>
+        <button type="button" className="decline" onClick={rejectDelivery} disabled={deliveryLoading}>
           <span>×</span>
           <strong>Recusar entrega</strong>
           <small>({currentDelivery.refusals})</small>
         </button>
       </section>
+      )}
 
+      {hasPendingOffer && (
       <div className="courier-countdown">
         <Clock3 size={28} />
         <strong>{countdownLabel}</strong>
         <span>Tempo para aceitar</span>
       </div>
+      )}
 
       <button className="courier-logout" type="button" onClick={onLogout}>
         <LogOut size={18} />Sair
