@@ -2001,9 +2001,10 @@ function deliveryStatusLabel(status) {
 }
 
 function CourierHomeView({ city, profile, onLogout }) {
-  const courierName = profile?.name || 'Carlos Henrique';
+  const [courierName, setCourierName] = React.useState(profile?.name || 'Motoboy');
   const [courierPoints, setCourierPoints] = React.useState(0);
-  const [acceptTimeoutSeconds, setAcceptTimeoutSeconds] = React.useState(25);
+  const [acceptTimeoutSeconds, setAcceptTimeoutSeconds] = React.useState(50);
+  const [countdownRemaining, setCountdownRemaining] = React.useState(50);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [availabilityPromptOpen, setAvailabilityPromptOpen] = React.useState(true);
   const [currentDelivery, setCurrentDelivery] = React.useState(emptyDelivery());
@@ -2019,7 +2020,8 @@ function CourierHomeView({ city, profile, onLogout }) {
   const [xpAnimation, setXpAnimation] = React.useState(null);
   const hasPendingOffer = Boolean(currentDelivery.id && currentDelivery.status === 'pending');
   const hasAcceptedDelivery = Boolean(currentDelivery.id && ['assigned', 'picked_up', 'on_route'].includes(currentDelivery.status));
-  const countdownLabel = `${String(Math.floor(acceptTimeoutSeconds / 60)).padStart(2, '0')}:${String(acceptTimeoutSeconds % 60).padStart(2, '0')}`;
+  const showDeliveryData = hasPendingOffer || hasAcceptedDelivery;
+  const countdownLabel = `${String(Math.floor(countdownRemaining / 60)).padStart(2, '0')}:${String(countdownRemaining % 60).padStart(2, '0')}`;
 
   const mapDeliveryStatus = (status) => {
     if (status === 'assigned') return 'A caminho da loja';
@@ -2048,13 +2050,24 @@ function CourierHomeView({ city, profile, onLogout }) {
       if (!supabase) return;
 
       if (profile?.courier_id) {
-        const { data } = await supabase
-          .from('courier_points')
-          .select('total_points')
-          .eq('courier_id', profile.courier_id)
-          .maybeSingle();
+        const [{ data: pointsData }, { data: courierData }] = await Promise.all([
+          supabase
+            .from('courier_points')
+            .select('total_points')
+            .eq('courier_id', profile.courier_id)
+            .maybeSingle(),
+          supabase
+            .from('couriers')
+            .select('name, availability_status')
+            .eq('id', profile.courier_id)
+            .maybeSingle(),
+        ]);
 
-        if (mounted) setCourierPoints(Number(data?.total_points ?? 0));
+        if (mounted) {
+          setCourierPoints(Number(pointsData?.total_points ?? 0));
+          if (courierData?.name) setCourierName(courierData.name);
+          if (courierData?.availability_status) setCourierAvailableState(courierData.availability_status === 'available');
+        }
       }
 
       const { data: timeoutSetting } = await supabase
@@ -2066,6 +2079,7 @@ function CourierHomeView({ city, profile, onLogout }) {
       const configuredSeconds = Number(timeoutSetting?.value?.seconds);
       if (mounted && Number.isFinite(configuredSeconds) && configuredSeconds > 0) {
         setAcceptTimeoutSeconds(Math.round(configuredSeconds));
+        setCountdownRemaining(Math.round(configuredSeconds));
       }
 
       if (city?.id) {
@@ -2089,7 +2103,7 @@ function CourierHomeView({ city, profile, onLogout }) {
             .from('deliveries')
             .select('id', { count: 'exact', head: true })
             .eq('city_id', city.id)
-            .eq('courier_id', profile?.courier_id || '')
+            .eq('courier_id', profile.courier_id)
             .gte('created_at', dayStart.toISOString()),
         ]);
 
@@ -2110,6 +2124,23 @@ function CourierHomeView({ city, profile, onLogout }) {
       mounted = false;
     };
   }, [profile?.courier_id, city?.id, loadCurrentDelivery]);
+
+  React.useEffect(() => {
+    if (!hasPendingOffer) {
+      setCountdownRemaining(acceptTimeoutSeconds);
+      return undefined;
+    }
+
+    function updateCountdown() {
+      const offeredAt = currentDelivery.offeredAt ? new Date(currentDelivery.offeredAt).getTime() : Date.now();
+      const elapsedSeconds = Math.max(0, Math.floor((Date.now() - offeredAt) / 1000));
+      setCountdownRemaining(Math.max(0, acceptTimeoutSeconds - elapsedSeconds));
+    }
+
+    updateCountdown();
+    const intervalId = window.setInterval(updateCountdown, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [acceptTimeoutSeconds, currentDelivery.id, currentDelivery.offeredAt, hasPendingOffer]);
 
   async function acceptDelivery() {
     if (!currentDelivery.id || !profile?.courier_id || !supabase) {
@@ -2266,7 +2297,7 @@ function CourierHomeView({ city, profile, onLogout }) {
       </section>
       {statsLabel && <p className="courier-stats-label">{statsLabel}</p>}
 
-      {hasAcceptedDelivery && (
+      {showDeliveryData && (
       <section className="courier-delivery-card" aria-label="Dados da entrega">
         <article>
           <UserRound size={32} />

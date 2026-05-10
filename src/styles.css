@@ -1535,6 +1535,9 @@ button, a {
 
 .courier-delivery-card {
   margin-top: 18px;
+  margin-left: auto;
+  margin-right: auto;
+  width: min(100%, 620px);
   padding: 18px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 18px;
@@ -1621,6 +1624,9 @@ button, a {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
   margin-top: 20px;
+  margin-left: auto;
+  margin-right: auto;
+  width: min(100%, 620px);
 }
 
 .courier-decision-grid button {
