@@ -524,6 +524,10 @@ function App() {
     return <StoreHomeView city={selectedCity} store={selectedStore} profile={currentProfile} onLogout={handleLogout} />;
   }
 
+  if (page === 'courier-home' && currentProfile?.role === 'courier_admin') {
+    return <CourierHomeView city={selectedCity} profile={currentProfile} onLogout={handleLogout} />;
+  }
+
   return (
     <div className={`app-shell ${darkMode ? 'dark-mode' : ''}`}>
       <aside className="sidebar">
@@ -622,7 +626,7 @@ function App() {
         {page === 'couriers' && <CouriersView city={selectedCity} cities={cityList} couriers={courierList} onChangeCouriers={setCourierList} courierToEdit={courierToEdit} onEditLoaded={() => setCourierToEdit(null)} />}
         {page === 'courier-center' && <CourierCenterView city={selectedCity} couriers={courierList} onChangeCouriers={setCourierList} onEditCourier={(courier) => { setCourierToEdit(courier); setPage('couriers'); }} />}
         {page === 'store-home' && <StoreHomeView city={selectedCity} store={selectedStore} profile={currentProfile} onLogout={handleLogout} />}
-        {page === 'courier-home' && <CourierHomeView city={selectedCity} />}
+        {page === 'courier-home' && <CourierHomeView city={selectedCity} profile={currentProfile} onLogout={handleLogout} />}
         {page === 'overview' && <Overview city={selectedCity} />}
       </main>
     </div>
@@ -1913,21 +1917,147 @@ function deliveryStatusLabel(status) {
   return 'Ocorrencia';
 }
 
-function CourierHomeView({ city }) {
+function CourierHomeView({ city, profile, onLogout }) {
+  const courierName = profile?.name || 'Carlos Henrique';
+  const currentDelivery = {
+    code: 'E12789',
+    customer: 'Carlos Henrique',
+    store: 'Pizzaria Bella Roma',
+    fee: 'R$ 18,50',
+    xp: '+250',
+    refusals: '1/3',
+  };
+  const [actionMessage, setActionMessage] = React.useState('');
+
   return (
-    <section className="role-home">
-      <article className="role-welcome">
-        <span>Motoboy</span>
-        <h2>Minha operacao</h2>
-        <p>Veja seus dados, entregas, repasses e as lojas ativas da cidade onde voce trabalha: {city.name}.</p>
-      </article>
-      <div className="availability-grid">
-        <article className="availability-card"><p>Status</p><strong>Disponivel</strong></article>
-        <article className="availability-card"><p>Entregas hoje</p><strong>7</strong></article>
-        <article className="availability-card"><p>Repasses</p><strong>R$ 92</strong></article>
-        <article className="availability-card"><p>Lojas da cidade</p><strong>{city.activeStores ?? 0}</strong></article>
+    <main className="courier-app-home">
+      <header className="courier-app-header">
+        <button className="courier-store-logo" type="button" aria-label="Loja da entrega">
+          <Store size={27} />
+        </button>
+        <div className="courier-profile-card">
+          <span className="courier-photo"><UserRound size={30} /></span>
+          <span className="courier-online-dot" />
+          <div>
+            <h1>{courierName}</h1>
+            <p>Entrega #{currentDelivery.code}</p>
+          </div>
+        </div>
+        <button className="courier-score-pill" type="button" aria-label="Pontuacao">
+          <span />
+          <strong>1540</strong>
+          <Star size={22} />
+        </button>
+      </header>
+
+      <section className="courier-xp-grid" aria-label="Resumo de XP">
+        <article className="courier-xp-card positive">
+          <span>XP</span>
+          <strong>{currentDelivery.xp}</strong>
+        </article>
+        <article className="courier-xp-card negative">
+          <span>XP</span>
+          <strong>-30</strong>
+        </article>
+      </section>
+
+      <section className="courier-route-map" aria-label={`Mapa da entrega em ${city.name}`}>
+        <div className="courier-map-grid" />
+        <span className="courier-map-label meireles">MEIRELES</span>
+        <span className="courier-map-label aldeota">ALDEOTA</span>
+        <span className="courier-map-label papicu">PAPICU</span>
+        <span className="courier-map-label dionisio">DIONISIO<br />TORRES</span>
+        <span className="courier-map-label coco">COCO</span>
+        <span className="courier-map-street street-a">R. Silva Jatahy</span>
+        <span className="courier-map-street street-b">Av. Santos Dumont</span>
+        <span className="courier-map-street street-c">Av. Sen. Virgilio Tavora</span>
+        <div className="courier-route-line" />
+        <div className="courier-position-pin">
+          <Bike size={33} />
+        </div>
+        <div className="courier-destination-pin">
+          <MapPin size={52} />
+        </div>
+        <article className="courier-map-callout you">
+          <strong>Voce</strong>
+          <span>A caminho do cliente</span>
+        </article>
+        <article className="courier-map-callout destiny">
+          <strong>Destino</strong>
+          <span>Loja Bella Roma</span>
+        </article>
+        <div className="courier-map-actions">
+          <button type="button" aria-label="Pesquisar"><Search size={31} /></button>
+          <button type="button" aria-label="Minha localizacao"><Navigation size={28} /></button>
+        </div>
+      </section>
+
+      <section className="courier-mini-stats" aria-label="Indicadores do motoboy">
+        <article>
+          <UserRound size={30} />
+          <strong>128</strong>
+          <span>+12 hoje</span>
+        </article>
+        <article>
+          <Store size={30} />
+          <strong>86</strong>
+          <span>+5 hoje</span>
+        </article>
+        <article>
+          <WalletCards size={30} />
+          <strong>18</strong>
+          <span>+18 hoje</span>
+        </article>
+      </section>
+
+      <section className="courier-delivery-card" aria-label="Dados da entrega">
+        <article>
+          <UserRound size={32} />
+          <span>Cliente</span>
+          <strong>{currentDelivery.customer}</strong>
+        </article>
+        <article>
+          <MapPin size={34} />
+          <span>Loja</span>
+          <strong>{currentDelivery.store}</strong>
+        </article>
+        <article>
+          <WalletCards size={34} />
+          <span>Valor da entrega</span>
+          <strong className="money">{currentDelivery.fee}</strong>
+        </article>
+        <article>
+          <span className="xp-dot">XP</span>
+          <span>XP da corrida</span>
+          <strong className="xp-value">{currentDelivery.xp}</strong>
+        </article>
+      </section>
+
+      {actionMessage && <p className="courier-action-message">{actionMessage}</p>}
+
+      <section className="courier-decision-grid">
+        <button type="button" className="accept" onClick={() => setActionMessage('Entrega aceita. A integracao real sera conectada ao banco na proxima etapa.')}>
+          <span>✓</span>
+          <strong>Aceitar entrega</strong>
+          <small>{currentDelivery.fee}</small>
+        </button>
+        <button type="button" className="decline" onClick={() => setActionMessage('Recusa registrada apenas na interface por enquanto.')}>
+          <span>×</span>
+          <strong>Recusar entrega</strong>
+          <small>({currentDelivery.refusals})</small>
+        </button>
+      </section>
+
+      <div className="courier-countdown">
+        <Clock3 size={28} />
+        <strong>00:25</strong>
+        <span>Tempo para aceitar</span>
       </div>
-    </section>
+
+      <button className="courier-logout" type="button" onClick={onLogout}>
+        <LogOut size={18} />Sair
+      </button>
+    </main>
   );
 }
 
