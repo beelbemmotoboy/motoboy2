@@ -12,6 +12,7 @@ export function emptyDelivery() {
     refusals: '1/3',
     status: 'empty',
     queueId: '',
+    offeredAt: null,
   };
 }
 
@@ -27,6 +28,7 @@ export function formatDeliveryForCourier(delivery, queueId = '') {
     refusals: '1/3',
     status: delivery.status,
     queueId,
+    offeredAt: delivery.offered_at || null,
   };
 }
 
@@ -139,7 +141,7 @@ export async function getNextDeliveryForCourier({ supabase, cityId, courierId })
 
   const { data: queueRows, error: queueError } = await supabase
     .from('delivery_queue')
-    .select('id, delivery_id, queue_position, deliveries!inner(id, order_code, delivery_fee, status, created_at, customers(name), stores(name, fantasy_name))')
+    .select('id, delivery_id, queue_position, offered_at, deliveries!inner(id, order_code, delivery_fee, status, created_at, customers(name), stores(name, fantasy_name))')
     .eq('city_id', cityId)
     .eq('courier_id', courierId)
     .eq('status', 'waiting')
@@ -147,11 +149,22 @@ export async function getNextDeliveryForCourier({ supabase, cityId, courierId })
     .order('queue_position', { ascending: true })
     .limit(10);
 
-  if (queueError) throw new Error(`Nao foi possivel buscar fila: ${queueError.message}`);
+  if (queueError) {
+    const schemaCacheError = queueError.message?.includes('schema cache') || queueError.message?.includes('delivery_queue');
+    throw new Error(schemaCacheError
+      ? 'Fila ainda nao disponivel no Supabase. Rode o schema.sql completo e depois atualize/recarregue o cache do schema no Supabase.'
+      : `Nao foi possivel buscar fila: ${queueError.message}`);
+  }
 
   for (const queueRow of queueRows ?? []) {
     const blocked = await hasEarlierQueueCandidate({ supabase, deliveryId: queueRow.delivery_id, queuePosition: queueRow.queue_position });
-    if (!blocked && queueRow.deliveries) return formatDeliveryForCourier(queueRow.deliveries, queueRow.id);
+    if (!blocked && queueRow.deliveries) {
+      const offeredAt = queueRow.offered_at || new Date().toISOString();
+      if (!queueRow.offered_at) {
+        await supabase.from('delivery_queue').update({ offered_at: offeredAt }).eq('id', queueRow.id);
+      }
+      return formatDeliveryForCourier({ ...queueRow.deliveries, offered_at: offeredAt }, queueRow.id);
+    }
   }
 
   return emptyDelivery();

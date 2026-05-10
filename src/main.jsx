@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import { supabase, supabaseConfigStatus } from './supabaseClient';
 import { acceptQueuedDelivery, createDeliveryWithQueue, emptyDelivery, getNextDeliveryForCourier, rejectQueuedDelivery, setCourierAvailable } from './cadastra_entrega';
+import { awardAcceptXp } from './xp_motoboy';
 import { isValidCep, isValidCnpj, isValidCpf, isValidEmail, isValidPhone, maskCep, maskCnpj, maskCpf, maskPhone, onlyDigits, passwordStrength, validateAccessUserForm, validateCourierForm, validateStoreForm } from './utils/validators';
 import loginLogo from '../imagem/logo.png';
 import beeIcon from '../imagem/icone.png';
@@ -2008,6 +2009,14 @@ function CourierHomeView({ city, profile, onLogout }) {
   const [currentDelivery, setCurrentDelivery] = React.useState(emptyDelivery());
   const [deliveryLoading, setDeliveryLoading] = React.useState(false);
   const [actionMessage, setActionMessage] = React.useState('');
+  const [courierAvailable, setCourierAvailableState] = React.useState(profile?.availabilityStatus === 'available');
+  const [statsLabel, setStatsLabel] = React.useState('');
+  const [courierStats, setCourierStats] = React.useState({
+    onlineCouriers: 0,
+    openStores: 0,
+    todayDeliveries: 0,
+  });
+  const [xpAnimation, setXpAnimation] = React.useState(null);
   const hasPendingOffer = Boolean(currentDelivery.id && currentDelivery.status === 'pending');
   const hasAcceptedDelivery = Boolean(currentDelivery.id && ['assigned', 'picked_up', 'on_route'].includes(currentDelivery.status));
   const countdownLabel = `${String(Math.floor(acceptTimeoutSeconds / 60)).padStart(2, '0')}:${String(acceptTimeoutSeconds % 60).padStart(2, '0')}`;
@@ -2045,7 +2054,7 @@ function CourierHomeView({ city, profile, onLogout }) {
           .eq('courier_id', profile.courier_id)
           .maybeSingle();
 
-        if (mounted) setCourierPoints(data?.total_points ?? 0);
+        if (mounted) setCourierPoints(Number(data?.total_points ?? 0));
       }
 
       const { data: timeoutSetting } = await supabase
@@ -2058,6 +2067,40 @@ function CourierHomeView({ city, profile, onLogout }) {
       if (mounted && Number.isFinite(configuredSeconds) && configuredSeconds > 0) {
         setAcceptTimeoutSeconds(Math.round(configuredSeconds));
       }
+
+      if (city?.id) {
+        const dayStart = new Date();
+        dayStart.setHours(0, 0, 0, 0);
+
+        const [onlineResult, storesResult, deliveriesResult] = await Promise.all([
+          supabase
+            .from('couriers')
+            .select('id', { count: 'exact', head: true })
+            .eq('city_id', city.id)
+            .eq('active', true)
+            .eq('availability_status', 'available'),
+          supabase
+            .from('stores')
+            .select('id', { count: 'exact', head: true })
+            .eq('city_id', city.id)
+            .eq('active', true)
+            .eq('is_open', true),
+          supabase
+            .from('deliveries')
+            .select('id', { count: 'exact', head: true })
+            .eq('city_id', city.id)
+            .eq('courier_id', profile?.courier_id || '')
+            .gte('created_at', dayStart.toISOString()),
+        ]);
+
+        if (mounted) {
+          setCourierStats({
+            onlineCouriers: onlineResult.count ?? 0,
+            openStores: storesResult.count ?? 0,
+            todayDeliveries: deliveriesResult.count ?? 0,
+          });
+        }
+      }
     }
 
     loadCourierConfig();
@@ -2066,7 +2109,7 @@ function CourierHomeView({ city, profile, onLogout }) {
     return () => {
       mounted = false;
     };
-  }, [profile?.courier_id, loadCurrentDelivery]);
+  }, [profile?.courier_id, city?.id, loadCurrentDelivery]);
 
   async function acceptDelivery() {
     if (!currentDelivery.id || !profile?.courier_id || !supabase) {
@@ -2077,7 +2120,11 @@ function CourierHomeView({ city, profile, onLogout }) {
     setActionMessage('');
     try {
       await acceptQueuedDelivery({ supabase, cityId: city.id, delivery: currentDelivery, courierId: profile.courier_id, courierName });
-      setActionMessage('Entrega aceita.');
+      const xpGained = await awardAcceptXp({ supabase, courierId: profile.courier_id, delivery: currentDelivery, cityId: city.id });
+      setCourierPoints((current) => Number(current || 0) + xpGained);
+      setXpAnimation(`+${xpGained} XP`);
+      setTimeout(() => setXpAnimation(null), 3000);
+      setActionMessage(`Entrega aceita. +${xpGained} XP`);
       loadCurrentDelivery();
     } catch (error) {
       setActionMessage(error.message);
@@ -2102,7 +2149,16 @@ function CourierHomeView({ city, profile, onLogout }) {
   async function confirmAvailability(available) {
     setAvailabilityPromptOpen(false);
     await setCourierAvailable({ supabase, courierId: profile?.courier_id, available });
+    setCourierAvailableState(available);
     setActionMessage(available ? 'Status alterado para disponivel.' : 'Status mantido como offline.');
+    if (available) loadCurrentDelivery();
+  }
+
+  async function changeAvailability(available) {
+    await setCourierAvailable({ supabase, courierId: profile?.courier_id, available });
+    setCourierAvailableState(available);
+    setMenuOpen(false);
+    setActionMessage(available ? 'Voce esta disponivel para receber entregas.' : 'Voce ficou offline.');
     if (available) loadCurrentDelivery();
   }
 
@@ -2110,8 +2166,8 @@ function CourierHomeView({ city, profile, onLogout }) {
     <main className="courier-app-home">
       <header className="courier-app-header">
         <button className="courier-profile-card" type="button" onClick={() => setMenuOpen((current) => !current)} aria-expanded={menuOpen} aria-label="Abrir menu do motoboy">
-          <span className="courier-photo"><UserRound size={30} /></span>
-          <span className="courier-online-dot" />
+          <span className={`courier-photo ${courierAvailable ? 'online' : 'offline'}`}><UserRound size={30} /></span>
+          <span className={`courier-online-dot ${courierAvailable ? 'online' : 'offline'}`} />
           <div>
             <h1>{courierName}</h1>
             <p>Entrega #{currentDelivery.code}</p>
@@ -2119,6 +2175,8 @@ function CourierHomeView({ city, profile, onLogout }) {
         </button>
         {menuOpen && (
           <nav className="courier-profile-menu" aria-label="Menu do motoboy">
+            <button type="button" onClick={() => changeAvailability(true)}>Ficar disponivel On-line</button>
+            <button type="button" onClick={() => changeAvailability(false)}>Ficar Off-line</button>
             <button type="button" onClick={() => setActionMessage('Meus dados sera implementado na proxima etapa.')}>Meus dados</button>
             <button type="button" onClick={() => setActionMessage('Minhas entregas sera implementado na proxima etapa.')}>Minhas entregas</button>
             <button type="button" onClick={() => setActionMessage('Relatorios sera implementado na proxima etapa.')}>Relatorios</button>
@@ -2131,6 +2189,8 @@ function CourierHomeView({ city, profile, onLogout }) {
           <Star size={22} />
         </button>
       </header>
+
+      {xpAnimation && <div className="courier-xp-animation">{xpAnimation}</div>}
 
       <section className="courier-xp-grid" aria-label="Resumo de XP">
         <article className="courier-xp-card positive">
@@ -2188,22 +2248,23 @@ function CourierHomeView({ city, profile, onLogout }) {
       </section>
 
       <section className="courier-mini-stats" aria-label="Indicadores do motoboy">
-        <article>
+        <article role="button" tabIndex="0" onClick={() => setStatsLabel('Motoboys on-line')}>
           <UserRound size={30} />
-          <strong>128</strong>
-          <span>+12 hoje</span>
+          <strong>{courierStats.onlineCouriers}</strong>
+          <span>Motoboys on-line</span>
         </article>
-        <article>
+        <article role="button" tabIndex="0" onClick={() => setStatsLabel('Lojas abertas')}>
           <Store size={30} />
-          <strong>86</strong>
-          <span>+5 hoje</span>
+          <strong>{courierStats.openStores}</strong>
+          <span>Lojas abertas</span>
         </article>
-        <article>
+        <article role="button" tabIndex="0" onClick={() => setStatsLabel('Suas entregas de hoje')}>
           <WalletCards size={30} />
-          <strong>18</strong>
-          <span>+18 hoje</span>
+          <strong>{courierStats.todayDeliveries}</strong>
+          <span>Suas entregas de hoje</span>
         </article>
       </section>
+      {statsLabel && <p className="courier-stats-label">{statsLabel}</p>}
 
       {hasAcceptedDelivery && (
       <section className="courier-delivery-card" aria-label="Dados da entrega">
