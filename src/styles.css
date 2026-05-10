@@ -360,6 +360,105 @@ button, a {
   background: rgba(255, 255, 255, 0.1);
 }
 
+.store-app-header h1 {
+  margin: 0;
+  font-size: clamp(24px, 5vw, 34px);
+}
+
+.back-icon {
+  transform: rotate(180deg);
+}
+
+.store-data-page {
+  padding-top: 112px;
+}
+
+.store-data-card {
+  width: min(920px, 100%);
+  margin: 0 auto;
+  padding: clamp(18px, 4vw, 30px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 22px;
+  background: rgba(10, 15, 16, 0.88);
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.35);
+}
+
+.store-data-identity {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.store-data-logo {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  background: #ffcc00;
+  color: #060606;
+  overflow: hidden;
+}
+
+.store-data-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.store-data-identity span,
+.store-data-grid span {
+  display: block;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 13px;
+  margin-bottom: 5px;
+}
+
+.store-data-identity h2 {
+  margin: 0;
+  font-size: clamp(24px, 5vw, 38px);
+}
+
+.store-data-identity p {
+  margin: 6px 0 0;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.store-data-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.store-data-grid article {
+  min-height: 78px;
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.store-data-grid article.wide {
+  grid-column: 1 / -1;
+}
+
+.store-data-grid strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.store-data-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.store-data-actions .primary-action,
+.store-data-actions .secondary-action {
+  margin: 0;
+}
+
 .store-status-message {
   margin: -16px 0 18px;
   font-size: 14px;

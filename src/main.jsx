@@ -1475,6 +1475,8 @@ function StoreHomeView({ city, store, profile, onLogout }) {
   const brandBottom = storeWords.slice(1, 3).join(' ') || 'Loja';
   const storeLogo = store?.logoUrl || store?.logo_url || store?.logo || '';
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const [activePanel, setActivePanel] = React.useState('home');
+  const [passwordInfo, setPasswordInfo] = React.useState('');
   const [storeOpen, setStoreOpen] = React.useState(store?.isOpen ?? true);
   const [showOpenPrompt, setShowOpenPrompt] = React.useState(store?.isOpen === false);
   const [statusMessage, setStatusMessage] = React.useState('');
@@ -1512,6 +1514,58 @@ function StoreHomeView({ city, store, profile, onLogout }) {
     if (nextStatus) setShowOpenPrompt(false);
   }
 
+  if (activePanel === 'data') {
+    return (
+      <main className="store-app-home store-data-page">
+        <header className="store-app-header">
+          <button className="store-menu-button store-logo-menu" type="button" aria-label="Voltar" onClick={() => setActivePanel('home')}>
+            <ArrowRight size={24} className="back-icon" />
+          </button>
+          <h1>Meus dados</h1>
+          <button className={`store-connected-pill ${storeOpen ? 'open' : 'closed'}`} type="button" onClick={toggleStoreStatus}>
+            <span />{storeOpen ? 'Aberto' : 'Fechado'}
+          </button>
+        </header>
+
+        <section className="store-data-card">
+          <div className="store-data-identity">
+            <div className="store-data-logo">
+              {storeLogo ? <img src={storeLogo} alt="" /> : <Store size={34} />}
+            </div>
+            <div>
+              <span>Loja cadastrada</span>
+              <h2>{storeName}</h2>
+              <p>{store?.type || 'Tipo nao informado'} · {store?.document ? maskCnpj(store.document) : 'CNPJ nao informado'}</p>
+            </div>
+          </div>
+
+          <div className="store-data-grid">
+            <article><span>Responsavel</span><strong>{store?.responsible || profile?.name || 'Nao informado'}</strong></article>
+            <article><span>E-mail</span><strong>{store?.email || profile?.email || 'Nao informado'}</strong></article>
+            <article><span>WhatsApp</span><strong>{store?.whatsapp ? maskPhone(store.whatsapp) : 'Nao informado'}</strong></article>
+            <article><span>Telefone fixo</span><strong>{store?.landline ? maskPhone(store.landline) : 'Nao informado'}</strong></article>
+            <article><span>Cidade</span><strong>{city.name} - {city.state}</strong></article>
+            <article><span>Status no sistema</span><strong>{storeOpen ? 'Aberta' : 'Fechada'}</strong></article>
+            <article className="wide"><span>Endereco</span><strong>{[store?.address, store?.number, store?.district].filter(Boolean).join(', ') || 'Nao informado'}</strong></article>
+            <article className="wide"><span>Localizacao</span><strong>{store?.locationReceived || 'Nao informada'}</strong></article>
+          </div>
+
+          <div className="store-data-actions">
+            <button
+              className="primary-action"
+              type="button"
+              onClick={() => setPasswordInfo('Solicitacao de alteracao de senha registrada. O envio por e-mail sera implementado depois.')}
+            >
+              Alterar senha
+            </button>
+            <button className="secondary-action" type="button" onClick={() => setActivePanel('home')}>Voltar</button>
+          </div>
+          {passwordInfo && <p className="success-message">{passwordInfo}</p>}
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="store-app-home">
       <header className="store-app-header">
@@ -1527,7 +1581,7 @@ function StoreHomeView({ city, store, profile, onLogout }) {
         </button>
         {menuOpen && (
           <nav className="store-mobile-menu" aria-label="Menu lojista">
-            <button type="button">Meus dados</button>
+            <button type="button" onClick={() => { setActivePanel('data'); setMenuOpen(false); }}>Meus dados</button>
             <button type="button">Minhas entregas</button>
             <button type="button">Relatorios</button>
             <button type="button" onClick={onLogout}>Sair</button>
