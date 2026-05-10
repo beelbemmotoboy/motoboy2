@@ -448,6 +448,54 @@ button, a {
   overflow-wrap: anywhere;
 }
 
+.store-data-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.store-data-form-grid label {
+  display: grid;
+  gap: 7px;
+  color: rgba(255, 255, 255, 0.72);
+  font-weight: 800;
+}
+
+.store-data-form-grid label.wide {
+  grid-column: 1 / -1;
+}
+
+.store-data-form-grid input,
+.store-data-form-grid select {
+  min-height: 48px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  padding: 0 13px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+}
+
+.store-data-form-grid .lookup-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.store-data-form-grid .lookup-field button {
+  min-height: 48px;
+  border: 0;
+  border-radius: 12px;
+  padding: 0 15px;
+  background: #ffcc00;
+  color: #050505;
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+
 .store-data-actions {
   display: flex;
   gap: 10px;
@@ -457,6 +505,80 @@ button, a {
 .store-data-actions .primary-action,
 .store-data-actions .secondary-action {
   margin: 0;
+}
+
+.store-deliveries-card {
+  width: min(1060px, 100%);
+}
+
+.store-deliveries-table {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.store-deliveries-head,
+.store-deliveries-row {
+  display: grid;
+  grid-template-columns: 1.3fr 1.2fr 0.8fr 0.8fr 0.9fr 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.store-deliveries-head {
+  padding: 0 12px 8px;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.store-deliveries-row {
+  min-height: 58px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.store-deliveries-row > span,
+.store-deliveries-row > strong {
+  overflow-wrap: anywhere;
+}
+
+.store-deliveries-row button {
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 204, 0, 0.16);
+  color: #ffcc00;
+  cursor: pointer;
+}
+
+.delivery-status {
+  width: fit-content;
+  border-radius: 999px;
+  padding: 6px 10px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.delivery-status.done {
+  background: rgba(20, 241, 58, 0.18);
+  color: #21f33e;
+}
+
+.delivery-status.route {
+  background: rgba(255, 204, 0, 0.18);
+  color: #ffcc00;
+}
+
+.delivery-status.issue {
+  background: rgba(255, 70, 79, 0.18);
+  color: #ff464f;
 }
 
 .store-status-message {

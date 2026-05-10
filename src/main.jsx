@@ -1477,6 +1477,20 @@ function StoreHomeView({ city, store, profile, onLogout }) {
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [activePanel, setActivePanel] = React.useState('home');
   const [passwordInfo, setPasswordInfo] = React.useState('');
+  const [storeDataForm, setStoreDataForm] = React.useState(() => ({
+    email: store?.email || profile?.email || '',
+    whatsapp: store?.whatsapp ? maskPhone(store.whatsapp) : '',
+    landline: store?.landline ? maskPhone(store.landline) : '',
+    address: store?.address || '',
+    number: store?.number || '',
+    district: store?.district || '',
+    zipCode: store?.zipCode ? maskCep(store.zipCode) : '',
+    locationReceived: store?.locationReceived || '',
+  }));
+  const [dataMessage, setDataMessage] = React.useState('');
+  const [savingStoreData, setSavingStoreData] = React.useState(false);
+  const [deliverySearch, setDeliverySearch] = React.useState('');
+  const [deliveryFilter, setDeliveryFilter] = React.useState('all');
   const [storeOpen, setStoreOpen] = React.useState(store?.isOpen ?? true);
   const [showOpenPrompt, setShowOpenPrompt] = React.useState(store?.isOpen === false);
   const [statusMessage, setStatusMessage] = React.useState('');
@@ -1490,7 +1504,30 @@ function StoreHomeView({ city, store, profile, onLogout }) {
     setStoreOpen(store?.isOpen ?? true);
     setShowOpenPrompt(store?.isOpen === false);
     setStatusMessage('');
+    setStoreDataForm({
+      email: store?.email || profile?.email || '',
+      whatsapp: store?.whatsapp ? maskPhone(store.whatsapp) : '',
+      landline: store?.landline ? maskPhone(store.landline) : '',
+      address: store?.address || '',
+      number: store?.number || '',
+      district: store?.district || '',
+      zipCode: store?.zipCode ? maskCep(store.zipCode) : '',
+      locationReceived: store?.locationReceived || '',
+    });
   }, [store?.id, store?.isOpen]);
+
+  const storeDeliveries = [
+    { courier: 'Carlos Silva', customer: 'Ana Beatriz', order: '#1234', fee: 12.5, date: '10/05/2026', status: 'A caminho' },
+    { courier: 'Juliana Santos', customer: 'Rafael Souza', order: '#1233', fee: 10, date: '10/05/2026', status: 'Entregue' },
+    { courier: 'Paulo Oliveira', customer: 'Mariana Alves', order: '#1232', fee: 14, date: '09/05/2026', status: 'Ocorrencia' },
+  ];
+  const normalizedDeliverySearch = deliverySearch.trim().toLowerCase();
+  const visibleStoreDeliveries = storeDeliveries.filter((delivery) => {
+    const searchable = [delivery.courier, delivery.customer, delivery.order, delivery.status].join(' ').toLowerCase();
+    const matchesSearch = !normalizedDeliverySearch || searchable.includes(normalizedDeliverySearch);
+    const matchesFilter = deliveryFilter === 'all' || delivery.status === deliveryFilter;
+    return matchesSearch && matchesFilter;
+  });
 
   async function toggleStoreStatus() {
     const nextStatus = !storeOpen;
@@ -1514,6 +1551,77 @@ function StoreHomeView({ city, store, profile, onLogout }) {
     if (nextStatus) setShowOpenPrompt(false);
   }
 
+  function storeGeoErrorMessage(error) {
+    if (error?.code === 1) return 'Permissao de localizacao negada. Autorize no navegador ou cole o link do Google Maps.';
+    if (error?.code === 2) return 'Localizacao indisponivel. Verifique GPS/Wi-Fi/dados moveis.';
+    if (error?.code === 3) return 'Tempo esgotado para obter a localizacao. Tente novamente.';
+    return 'Nao foi possivel obter a localizacao.';
+  }
+
+  function sendStoreLocation() {
+    setDataMessage('');
+    if (!navigator.geolocation) {
+      setDataMessage('Este navegador nao permite enviar localizacao.');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        setStoreDataForm((current) => ({
+          ...current,
+          locationReceived: `${latitude.toFixed(7)}, ${longitude.toFixed(7)}`,
+        }));
+        setDataMessage('Localizacao atualizada. Clique em Salvar dados para gravar.');
+      },
+      (geoError) => setDataMessage(storeGeoErrorMessage(geoError)),
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  }
+
+  async function saveStoreData(event) {
+    event.preventDefault();
+    setDataMessage('');
+
+    if (!isValidEmail(storeDataForm.email)) {
+      setDataMessage('Informe um e-mail valido.');
+      return;
+    }
+    if (!isValidPhone(storeDataForm.whatsapp)) {
+      setDataMessage('Informe um WhatsApp valido.');
+      return;
+    }
+    if (!storeDataForm.address.trim() || !storeDataForm.number.trim() || !storeDataForm.district.trim()) {
+      setDataMessage('Endereco, numero e bairro sao obrigatorios.');
+      return;
+    }
+    if (storeDataForm.zipCode && !isValidCep(storeDataForm.zipCode)) {
+      setDataMessage('Informe um CEP valido.');
+      return;
+    }
+    if (!supabase || !store?.id) {
+      setDataMessage('Dados prontos para salvar. Supabase nao disponivel nesta sessao.');
+      return;
+    }
+
+    setSavingStoreData(true);
+    const { error } = await supabase
+      .from('stores')
+      .update({
+        email: storeDataForm.email.trim().toLowerCase(),
+        whatsapp: onlyDigits(storeDataForm.whatsapp),
+        landline: onlyDigits(storeDataForm.landline),
+        address: storeDataForm.address.trim(),
+        address_number: storeDataForm.number.trim(),
+        district: storeDataForm.district.trim(),
+        zip_code: onlyDigits(storeDataForm.zipCode),
+        location_received: storeDataForm.locationReceived.trim(),
+      })
+      .eq('id', store.id);
+    setSavingStoreData(false);
+
+    setDataMessage(error ? `Nao foi possivel salvar: ${error.message}` : 'Dados atualizados.');
+  }
+
   if (activePanel === 'data') {
     return (
       <main className="store-app-home store-data-page">
@@ -1527,7 +1635,7 @@ function StoreHomeView({ city, store, profile, onLogout }) {
           </button>
         </header>
 
-        <section className="store-data-card">
+        <form className="store-data-card" onSubmit={saveStoreData}>
           <div className="store-data-identity">
             <div className="store-data-logo">
               {storeLogo ? <img src={storeLogo} alt="" /> : <Store size={34} />}
@@ -1541,18 +1649,30 @@ function StoreHomeView({ city, store, profile, onLogout }) {
 
           <div className="store-data-grid">
             <article><span>Responsavel</span><strong>{store?.responsible || profile?.name || 'Nao informado'}</strong></article>
-            <article><span>E-mail</span><strong>{store?.email || profile?.email || 'Nao informado'}</strong></article>
-            <article><span>WhatsApp</span><strong>{store?.whatsapp ? maskPhone(store.whatsapp) : 'Nao informado'}</strong></article>
-            <article><span>Telefone fixo</span><strong>{store?.landline ? maskPhone(store.landline) : 'Nao informado'}</strong></article>
             <article><span>Cidade</span><strong>{city.name} - {city.state}</strong></article>
             <article><span>Status no sistema</span><strong>{storeOpen ? 'Aberta' : 'Fechada'}</strong></article>
-            <article className="wide"><span>Endereco</span><strong>{[store?.address, store?.number, store?.district].filter(Boolean).join(', ') || 'Nao informado'}</strong></article>
-            <article className="wide"><span>Localizacao</span><strong>{store?.locationReceived || 'Nao informada'}</strong></article>
+          </div>
+          <div className="store-data-form-grid">
+            <label>E-mail da loja<input type="email" value={storeDataForm.email} onChange={(event) => setStoreDataForm((current) => ({ ...current, email: event.target.value }))} /></label>
+            <label>WhatsApp<input value={storeDataForm.whatsapp} onChange={(event) => setStoreDataForm((current) => ({ ...current, whatsapp: maskPhone(event.target.value) }))} /></label>
+            <label>Telefone fixo<input value={storeDataForm.landline} onChange={(event) => setStoreDataForm((current) => ({ ...current, landline: maskPhone(event.target.value) }))} /></label>
+            <label>CEP<input value={storeDataForm.zipCode} onChange={(event) => setStoreDataForm((current) => ({ ...current, zipCode: maskCep(event.target.value) }))} /></label>
+            <label className="wide">Endereco<input value={storeDataForm.address} onChange={(event) => setStoreDataForm((current) => ({ ...current, address: event.target.value }))} /></label>
+            <label>Numero<input value={storeDataForm.number} onChange={(event) => setStoreDataForm((current) => ({ ...current, number: event.target.value }))} /></label>
+            <label>Bairro<input value={storeDataForm.district} onChange={(event) => setStoreDataForm((current) => ({ ...current, district: event.target.value }))} /></label>
+            <label className="wide">
+              Localizacao da loja
+              <div className="lookup-field">
+                <input value={storeDataForm.locationReceived} onChange={(event) => setStoreDataForm((current) => ({ ...current, locationReceived: event.target.value }))} placeholder="Cole o link do Google Maps ou envie novamente" />
+                <button type="button" onClick={sendStoreLocation}>Enviar localizacao</button>
+              </div>
+            </label>
           </div>
 
           <div className="store-data-actions">
+            <button className="primary-action" type="submit" disabled={savingStoreData}>{savingStoreData ? 'Salvando...' : 'Salvar dados'}</button>
             <button
-              className="primary-action"
+              className="secondary-action"
               type="button"
               onClick={() => setPasswordInfo('Solicitacao de alteracao de senha registrada. O envio por e-mail sera implementado depois.')}
             >
@@ -1561,6 +1681,65 @@ function StoreHomeView({ city, store, profile, onLogout }) {
             <button className="secondary-action" type="button" onClick={() => setActivePanel('home')}>Voltar</button>
           </div>
           {passwordInfo && <p className="success-message">{passwordInfo}</p>}
+          {dataMessage && <p className={dataMessage.includes('atualizad') || dataMessage.includes('prontos') ? 'success-message' : 'field-error'}>{dataMessage}</p>}
+        </form>
+      </main>
+    );
+  }
+
+  if (activePanel === 'deliveries') {
+    return (
+      <main className="store-app-home store-data-page">
+        <header className="store-app-header">
+          <button className="store-menu-button store-logo-menu" type="button" aria-label="Voltar" onClick={() => setActivePanel('home')}>
+            <ArrowRight size={24} className="back-icon" />
+          </button>
+          <h1>Minhas entregas</h1>
+          <button className={`store-connected-pill ${storeOpen ? 'open' : 'closed'}`} type="button" onClick={toggleStoreStatus}>
+            <span />{storeOpen ? 'Aberto' : 'Fechado'}
+          </button>
+        </header>
+
+        <section className="store-data-card store-deliveries-card">
+          <div className="courier-center-toolbar">
+            <label className="search-field">
+              <Search size={18} />
+              <input value={deliverySearch} onChange={(event) => setDeliverySearch(event.target.value)} placeholder="Buscar por entregador, cliente ou pedido" />
+            </label>
+            <label className="filter-field">
+              Status
+              <select value={deliveryFilter} onChange={(event) => setDeliveryFilter(event.target.value)}>
+                <option value="all">Todos</option>
+                <option value="Entregue">Entregue</option>
+                <option value="A caminho">A caminho</option>
+                <option value="Ocorrencia">Ocorrencia</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="store-deliveries-table" role="table" aria-label="Minhas entregas">
+            <div className="store-deliveries-head" role="row">
+              <span>Entregador</span>
+              <span>Cliente</span>
+              <span>Pedido</span>
+              <span>Taxa</span>
+              <span>Data</span>
+              <span>Status</span>
+              <span>Mensagem</span>
+            </div>
+            {visibleStoreDeliveries.map((delivery) => (
+              <article className="store-deliveries-row" role="row" key={delivery.order}>
+                <strong>{delivery.courier}</strong>
+                <span>{delivery.customer}</span>
+                <span>{delivery.order}</span>
+                <span>{formatCurrency(delivery.fee)}</span>
+                <span>{delivery.date}</span>
+                <mark className={`delivery-status ${delivery.status === 'Entregue' ? 'done' : delivery.status === 'Ocorrencia' ? 'issue' : 'route'}`}>{delivery.status}</mark>
+                <button type="button" aria-label={`Enviar mensagem para ${delivery.courier}`}><Mail size={18} /></button>
+              </article>
+            ))}
+            {visibleStoreDeliveries.length === 0 && <p className="empty-state">Nenhuma entrega encontrada.</p>}
+          </div>
         </section>
       </main>
     );
@@ -1582,7 +1761,7 @@ function StoreHomeView({ city, store, profile, onLogout }) {
         {menuOpen && (
           <nav className="store-mobile-menu" aria-label="Menu lojista">
             <button type="button" onClick={() => { setActivePanel('data'); setMenuOpen(false); }}>Meus dados</button>
-            <button type="button">Minhas entregas</button>
+            <button type="button" onClick={() => { setActivePanel('deliveries'); setMenuOpen(false); }}>Minhas entregas</button>
             <button type="button">Relatorios</button>
             <button type="button" onClick={onLogout}>Sair</button>
           </nav>
