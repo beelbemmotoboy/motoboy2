@@ -213,6 +213,17 @@ create table if not exists public.delivery_events (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.delivery_rejections (
+  id uuid primary key default gen_random_uuid(),
+  city_id uuid not null references public.cities(id),
+  delivery_id uuid not null references public.deliveries(id) on delete cascade,
+  courier_id uuid not null references public.couriers(id) on delete cascade,
+  reason text,
+  created_by uuid references auth.users(id),
+  created_at timestamptz not null default now(),
+  unique (delivery_id, courier_id)
+);
+
 create table if not exists public.system_settings (
   id uuid not null default gen_random_uuid(),
   key text primary key,
@@ -245,6 +256,7 @@ alter table public.customers add column if not exists updated_by uuid references
 alter table public.deliveries add column if not exists created_by uuid references auth.users(id);
 alter table public.deliveries add column if not exists updated_by uuid references auth.users(id);
 alter table public.delivery_events add column if not exists created_by uuid references auth.users(id);
+alter table public.delivery_rejections add column if not exists created_by uuid references auth.users(id);
 alter table public.system_settings add column if not exists id uuid not null default gen_random_uuid();
 alter table public.system_settings add column if not exists created_by uuid references auth.users(id);
 alter table public.system_settings add column if not exists updated_by uuid references auth.users(id);
@@ -282,6 +294,9 @@ create index if not exists deliveries_store_id_idx on public.deliveries(store_id
 create index if not exists deliveries_courier_id_idx on public.deliveries(courier_id);
 create index if not exists delivery_events_city_id_idx on public.delivery_events(city_id);
 create index if not exists delivery_events_delivery_id_idx on public.delivery_events(delivery_id);
+create index if not exists delivery_rejections_city_id_idx on public.delivery_rejections(city_id);
+create index if not exists delivery_rejections_delivery_id_idx on public.delivery_rejections(delivery_id);
+create index if not exists delivery_rejections_courier_id_idx on public.delivery_rejections(courier_id);
 create index if not exists audit_logs_table_record_idx on public.audit_logs(table_name, record_id);
 create index if not exists audit_logs_actor_id_idx on public.audit_logs(actor_id);
 
@@ -374,6 +389,10 @@ drop trigger if exists set_delivery_events_created_by on public.delivery_events;
 create trigger set_delivery_events_created_by before insert on public.delivery_events
 for each row execute function public.set_created_by();
 
+drop trigger if exists set_delivery_rejections_created_by on public.delivery_rejections;
+create trigger set_delivery_rejections_created_by before insert on public.delivery_rejections
+for each row execute function public.set_created_by();
+
 drop trigger if exists set_system_settings_updated_at on public.system_settings;
 create trigger set_system_settings_updated_at before insert or update on public.system_settings
 for each row execute function public.set_updated_at();
@@ -412,6 +431,10 @@ for each row execute function public.write_audit_log();
 
 drop trigger if exists audit_delivery_events on public.delivery_events;
 create trigger audit_delivery_events after insert or update or delete on public.delivery_events
+for each row execute function public.write_audit_log();
+
+drop trigger if exists audit_delivery_rejections on public.delivery_rejections;
+create trigger audit_delivery_rejections after insert or update or delete on public.delivery_rejections
 for each row execute function public.write_audit_log();
 
 drop trigger if exists audit_system_settings on public.system_settings;
@@ -498,6 +521,7 @@ alter table public.access_invites enable row level security;
 alter table public.customers enable row level security;
 alter table public.deliveries enable row level security;
 alter table public.delivery_events enable row level security;
+alter table public.delivery_rejections enable row level security;
 alter table public.audit_logs enable row level security;
 alter table public.system_settings enable row level security;
 
@@ -521,6 +545,8 @@ drop policy if exists "deliveries_insert_by_scope" on public.deliveries;
 drop policy if exists "deliveries_update_by_scope" on public.deliveries;
 drop policy if exists "delivery_events_read_by_scope" on public.delivery_events;
 drop policy if exists "delivery_events_insert_by_scope" on public.delivery_events;
+drop policy if exists "delivery_rejections_read_by_scope" on public.delivery_rejections;
+drop policy if exists "delivery_rejections_insert_by_courier" on public.delivery_rejections;
 drop policy if exists "audit_logs_read_by_system_or_city_admin" on public.audit_logs;
 drop policy if exists "system_settings_read_by_authenticated" on public.system_settings;
 drop policy if exists "system_settings_manage_by_system_admin" on public.system_settings;
@@ -651,6 +677,10 @@ create policy "access_invites_manage_by_system_or_city_admin" on public.access_i
 create policy "customers_read_by_scope" on public.customers
   for select to authenticated using (
     public.can_manage_city(city_id)
+    or (
+      public.current_profile_role() = 'courier_admin'
+      and city_id = public.current_profile_city_id()
+    )
     or exists (
       select 1 from public.deliveries d
       where d.customer_id = customers.id
@@ -678,6 +708,12 @@ create policy "deliveries_read_by_scope" on public.deliveries
     public.can_manage_city(city_id)
     or store_id = public.current_profile_store_id()
     or courier_id = public.current_profile_courier_id()
+    or (
+      public.current_profile_role() = 'courier_admin'
+      and city_id = public.current_profile_city_id()
+      and status = 'pending'
+      and courier_id is null
+    )
   );
 
 create policy "deliveries_insert_by_scope" on public.deliveries
@@ -695,6 +731,12 @@ create policy "deliveries_update_by_scope" on public.deliveries
     public.can_manage_city(city_id)
     or store_id = public.current_profile_store_id()
     or courier_id = public.current_profile_courier_id()
+    or (
+      public.current_profile_role() = 'courier_admin'
+      and city_id = public.current_profile_city_id()
+      and status = 'pending'
+      and courier_id is null
+    )
   ) with check (
     public.can_manage_city(city_id)
     or store_id = public.current_profile_store_id()
@@ -717,6 +759,10 @@ create policy "delivery_events_read_by_scope" on public.delivery_events
 create policy "delivery_events_insert_by_scope" on public.delivery_events
   for insert to authenticated with check (
     public.can_manage_city(city_id)
+    or (
+      public.current_profile_role() = 'courier_admin'
+      and city_id = public.current_profile_city_id()
+    )
     or exists (
       select 1 from public.deliveries d
       where d.id = delivery_events.delivery_id
@@ -725,6 +771,24 @@ create policy "delivery_events_insert_by_scope" on public.delivery_events
         or d.courier_id = public.current_profile_courier_id()
       )
     )
+  );
+
+create policy "delivery_rejections_read_by_scope" on public.delivery_rejections
+  for select to authenticated using (
+    public.can_manage_city(city_id)
+    or courier_id = public.current_profile_courier_id()
+    or exists (
+      select 1 from public.deliveries d
+      where d.id = delivery_rejections.delivery_id
+      and d.store_id = public.current_profile_store_id()
+    )
+  );
+
+create policy "delivery_rejections_insert_by_courier" on public.delivery_rejections
+  for insert to authenticated with check (
+    public.current_profile_role() = 'courier_admin'
+    and city_id = public.current_profile_city_id()
+    and courier_id = public.current_profile_courier_id()
   );
 
 create policy "audit_logs_read_by_system_or_city_admin" on public.audit_logs

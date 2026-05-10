@@ -306,6 +306,12 @@ function App() {
     if (!currentProfile && !publicPages.includes(page)) {
       setPage('login');
     }
+    if (currentProfile?.role !== 'store_admin' && page === 'store-home') {
+      setPage(resolveHomeByRole(currentProfile.role));
+    }
+    if (currentProfile?.role !== 'courier_admin' && page === 'courier-home') {
+      setPage(resolveHomeByRole(currentProfile.role));
+    }
   }, [authReady, currentProfile, page]);
 
   React.useEffect(() => {
@@ -625,8 +631,8 @@ function App() {
         {page === 'store-center' && <StoreCenterView city={selectedCity} stores={storeList} onChangeStores={setStoreList} onEditStore={(store) => { setStoreToEdit(store); setPage('stores'); }} />}
         {page === 'couriers' && <CouriersView city={selectedCity} cities={cityList} couriers={courierList} onChangeCouriers={setCourierList} courierToEdit={courierToEdit} onEditLoaded={() => setCourierToEdit(null)} />}
         {page === 'courier-center' && <CourierCenterView city={selectedCity} couriers={courierList} onChangeCouriers={setCourierList} onEditCourier={(courier) => { setCourierToEdit(courier); setPage('couriers'); }} />}
-        {page === 'store-home' && <StoreHomeView city={selectedCity} store={selectedStore} profile={currentProfile} onLogout={handleLogout} />}
-        {page === 'courier-home' && <CourierHomeView city={selectedCity} profile={currentProfile} onLogout={handleLogout} />}
+        {page === 'store-home' && currentProfile?.role === 'store_admin' && <StoreHomeView city={selectedCity} store={selectedStore} profile={currentProfile} onLogout={handleLogout} />}
+        {page === 'courier-home' && currentProfile?.role === 'courier_admin' && <CourierHomeView city={selectedCity} profile={currentProfile} onLogout={handleLogout} />}
         {page === 'overview' && <Overview city={selectedCity} />}
       </main>
     </div>
@@ -1503,6 +1509,16 @@ function StoreHomeView({ city, store, profile, onLogout }) {
   const [storeOpen, setStoreOpen] = React.useState(store?.isOpen ?? true);
   const [showOpenPrompt, setShowOpenPrompt] = React.useState(store?.isOpen === false);
   const [statusMessage, setStatusMessage] = React.useState('');
+  const [requestModalOpen, setRequestModalOpen] = React.useState(false);
+  const [requestSaving, setRequestSaving] = React.useState(false);
+  const [requestMessage, setRequestMessage] = React.useState('');
+  const [requestForm, setRequestForm] = React.useState({
+    orderCode: '',
+    customerName: '',
+    customerPhone: '',
+    deliveryAddress: '',
+    deliveryFee: '',
+  });
   const deliveryStats = [
     { label: 'A caminho da loja', value: '01', tone: 'green', icon: <Bike size={32} /> },
     { label: 'A caminho do cliente', value: '00', tone: 'yellow', icon: <Bike size={32} /> },
@@ -1678,6 +1694,79 @@ function StoreHomeView({ city, store, profile, onLogout }) {
     setSavingStoreData(false);
 
     setDataMessage(error ? `Nao foi possivel salvar: ${error.message}` : 'Dados atualizados.');
+  }
+
+  function openDeliveryRequest() {
+    setRequestMessage('');
+    setRequestForm({
+      orderCode: `PED-${Date.now().toString().slice(-6)}`,
+      customerName: '',
+      customerPhone: '',
+      deliveryAddress: '',
+      deliveryFee: '',
+    });
+    setRequestModalOpen(true);
+  }
+
+  async function createDeliveryRequest(event) {
+    event.preventDefault();
+    setRequestMessage('');
+
+    if (!store?.id || !city?.id) {
+      setRequestMessage('Loja ou cidade nao encontrada para criar a entrega.');
+      return;
+    }
+    if (!requestForm.orderCode.trim() || !requestForm.customerName.trim() || !requestForm.deliveryAddress.trim()) {
+      setRequestMessage('Pedido, cliente e endereco de entrega sao obrigatorios.');
+      return;
+    }
+    if (!supabase) {
+      setRequestMessage('Supabase nao disponivel nesta sessao.');
+      return;
+    }
+
+    setRequestSaving(true);
+    const { data: customer, error: customerError } = await supabase
+      .from('customers')
+      .insert({
+        city_id: city.id,
+        name: requestForm.customerName.trim(),
+        phone: onlyDigits(requestForm.customerPhone),
+        address: requestForm.deliveryAddress.trim(),
+      })
+      .select('id')
+      .single();
+
+    if (customerError) {
+      setRequestSaving(false);
+      setRequestMessage(`Nao foi possivel cadastrar o cliente: ${customerError.message}`);
+      return;
+    }
+
+    const deliveryFee = Number(String(requestForm.deliveryFee).replace(',', '.')) || 0;
+    const { error: deliveryError } = await supabase
+      .from('deliveries')
+      .insert({
+        city_id: city.id,
+        order_code: requestForm.orderCode.trim(),
+        store_id: store.id,
+        customer_id: customer.id,
+        pickup_address: [store.address, store.number, store.district].filter(Boolean).join(', '),
+        delivery_address: requestForm.deliveryAddress.trim(),
+        delivery_fee: deliveryFee,
+        status: 'pending',
+      });
+
+    setRequestSaving(false);
+    if (deliveryError) {
+      setRequestMessage(`Nao foi possivel criar a entrega: ${deliveryError.message}`);
+      return;
+    }
+
+    setRequestMessage('Entrega criada e enviada para os motoboys disponiveis.');
+    setRequestModalOpen(false);
+    setActivePanel('deliveries');
+    setDeliveryDate(todayIso);
   }
 
   if (activePanel === 'data') {
@@ -1890,7 +1979,7 @@ function StoreHomeView({ city, store, profile, onLogout }) {
       </section>
 
       <section className="store-request-actions" aria-label="Solicitar entrega">
-        <button className="store-request-card photo" type="button">
+        <button className="store-request-card photo" type="button" onClick={openDeliveryRequest}>
           <span className="request-icon"><Camera size={52} /></span>
           <span>
             <strong>Solicitar por foto</strong>
@@ -1898,7 +1987,7 @@ function StoreHomeView({ city, store, profile, onLogout }) {
           </span>
           <ArrowRight size={42} />
         </button>
-        <button className="store-request-card manual" type="button">
+        <button className="store-request-card manual" type="button" onClick={openDeliveryRequest}>
           <span className="request-icon"><PencilLine size={52} /></span>
           <span>
             <strong>Solicitar manualmente</strong>
@@ -1907,6 +1996,24 @@ function StoreHomeView({ city, store, profile, onLogout }) {
           <ArrowRight size={42} />
         </button>
       </section>
+      {requestMessage && <p className={requestMessage.includes('criada') ? 'success-message' : 'field-error'}>{requestMessage}</p>}
+      {requestModalOpen && (
+        <div className="store-open-prompt delivery-request-modal" role="dialog" aria-modal="true" aria-labelledby="delivery-request-title">
+          <form onSubmit={createDeliveryRequest}>
+            <h2 id="delivery-request-title">Nova entrega</h2>
+            <label>Numero do pedido<input value={requestForm.orderCode} onChange={(event) => setRequestForm((current) => ({ ...current, orderCode: event.target.value }))} /></label>
+            <label>Nome do cliente<input value={requestForm.customerName} onChange={(event) => setRequestForm((current) => ({ ...current, customerName: event.target.value }))} /></label>
+            <label>Telefone do cliente<input value={requestForm.customerPhone} onChange={(event) => setRequestForm((current) => ({ ...current, customerPhone: maskPhone(event.target.value) }))} /></label>
+            <label>Endereco de entrega<input value={requestForm.deliveryAddress} onChange={(event) => setRequestForm((current) => ({ ...current, deliveryAddress: event.target.value }))} /></label>
+            <label>Taxa da entrega<input inputMode="decimal" value={requestForm.deliveryFee} onChange={(event) => setRequestForm((current) => ({ ...current, deliveryFee: event.target.value }))} placeholder="18,50" /></label>
+            {requestMessage && <p className="field-error">{requestMessage}</p>}
+            <div>
+              <button className="primary-action" type="submit" disabled={requestSaving}>{requestSaving ? 'Criando...' : 'Criar entrega'}</button>
+              <button className="secondary-action" type="button" onClick={() => setRequestModalOpen(false)}>Cancelar</button>
+            </div>
+          </form>
+        </div>
+      )}
     </main>
   );
 }
@@ -1922,16 +2029,99 @@ function CourierHomeView({ city, profile, onLogout }) {
   const [courierPoints, setCourierPoints] = React.useState(0);
   const [acceptTimeoutSeconds, setAcceptTimeoutSeconds] = React.useState(25);
   const [menuOpen, setMenuOpen] = React.useState(false);
-  const currentDelivery = {
+  const fallbackDelivery = {
+    id: '',
     code: 'E12789',
     customer: 'Carlos Henrique',
     store: 'Pizzaria Bella Roma',
     fee: 'R$ 18,50',
+    numericFee: 18.5,
     xp: '+250',
     refusals: '1/3',
+    status: 'pending',
   };
+  const [currentDelivery, setCurrentDelivery] = React.useState(fallbackDelivery);
+  const [deliveryLoading, setDeliveryLoading] = React.useState(false);
   const [actionMessage, setActionMessage] = React.useState('');
   const countdownLabel = `${String(Math.floor(acceptTimeoutSeconds / 60)).padStart(2, '0')}:${String(acceptTimeoutSeconds % 60).padStart(2, '0')}`;
+
+  const mapDeliveryStatus = (status) => {
+    if (status === 'assigned') return 'A caminho da loja';
+    if (['picked_up', 'on_route'].includes(status)) return 'A caminho do cliente';
+    return 'Aguardando aceite';
+  };
+
+  const normalizeDelivery = (delivery) => ({
+    id: delivery.id,
+    code: delivery.order_code || delivery.id,
+    customer: delivery.customers?.name || 'Cliente nao informado',
+    store: delivery.stores?.fantasy_name || delivery.stores?.name || 'Loja nao informada',
+    fee: formatCurrency(Number(delivery.delivery_fee || 0)),
+    numericFee: Number(delivery.delivery_fee || 0),
+    xp: '+250',
+    refusals: '1/3',
+    status: delivery.status,
+  });
+
+  const loadCurrentDelivery = React.useCallback(async () => {
+    if (!supabase || !profile?.courier_id || !city?.id) return;
+    setDeliveryLoading(true);
+    setActionMessage('');
+
+    const baseSelect = 'id, order_code, delivery_fee, status, created_at, customers(name), stores(name, fantasy_name)';
+    const { data: assignedData, error: assignedError } = await supabase
+      .from('deliveries')
+      .select(baseSelect)
+      .eq('courier_id', profile.courier_id)
+      .in('status', ['assigned', 'picked_up', 'on_route'])
+      .order('created_at', { ascending: true })
+      .limit(1);
+
+    if (assignedError) {
+      setDeliveryLoading(false);
+      setActionMessage(`Nao foi possivel buscar entrega: ${assignedError.message}`);
+      return;
+    }
+
+    if (assignedData?.length) {
+      setCurrentDelivery(normalizeDelivery(assignedData[0]));
+      setDeliveryLoading(false);
+      return;
+    }
+
+    const { data: rejectedData } = await supabase
+      .from('delivery_rejections')
+      .select('delivery_id')
+      .eq('courier_id', profile.courier_id);
+    const rejectedIds = (rejectedData ?? []).map((item) => item.delivery_id).filter(Boolean);
+
+    let pendingQuery = supabase
+      .from('deliveries')
+      .select(baseSelect)
+      .eq('city_id', city.id)
+      .eq('status', 'pending')
+      .is('courier_id', null)
+      .order('created_at', { ascending: true })
+      .limit(5);
+
+    if (rejectedIds.length) {
+      pendingQuery = pendingQuery.not('id', 'in', `(${rejectedIds.join(',')})`);
+    }
+
+    const { data: pendingData, error: pendingError } = await pendingQuery;
+    setDeliveryLoading(false);
+    if (pendingError) {
+      setActionMessage(`Nao foi possivel buscar pedidos pendentes: ${pendingError.message}`);
+      return;
+    }
+
+    if (pendingData?.length) {
+      setCurrentDelivery(normalizeDelivery(pendingData[0]));
+      return;
+    }
+
+    setCurrentDelivery({ ...fallbackDelivery, id: '', code: 'Sem pedido', customer: 'Nenhum pedido pendente', store: 'Aguardando loja', fee: 'R$ 0,00', numericFee: 0, xp: '+0', status: 'empty' });
+  }, [city?.id, profile?.courier_id]);
 
   React.useEffect(() => {
     let mounted = true;
@@ -1962,11 +2152,71 @@ function CourierHomeView({ city, profile, onLogout }) {
     }
 
     loadCourierConfig();
+    loadCurrentDelivery();
 
     return () => {
       mounted = false;
     };
-  }, [profile?.courier_id]);
+  }, [profile?.courier_id, loadCurrentDelivery]);
+
+  async function acceptDelivery() {
+    if (!currentDelivery.id || !profile?.courier_id || !supabase) {
+      setActionMessage('Nenhuma entrega disponivel para aceitar.');
+      return;
+    }
+
+    setActionMessage('');
+    const { error } = await supabase
+      .from('deliveries')
+      .update({ courier_id: profile.courier_id, status: 'assigned' })
+      .eq('id', currentDelivery.id)
+      .eq('status', 'pending');
+
+    if (error) {
+      setActionMessage(`Nao foi possivel aceitar: ${error.message}`);
+      return;
+    }
+
+    await supabase.from('delivery_events').insert({
+      city_id: city.id,
+      delivery_id: currentDelivery.id,
+      status: 'assigned',
+      note: `${courierName} aceitou a entrega.`,
+    });
+    await supabase.from('couriers').update({ availability_status: 'on_delivery' }).eq('id', profile.courier_id);
+    setActionMessage('Entrega aceita.');
+    loadCurrentDelivery();
+  }
+
+  async function rejectDelivery() {
+    if (!currentDelivery.id || !profile?.courier_id || !supabase) {
+      setActionMessage('Nenhuma entrega disponivel para recusar.');
+      return;
+    }
+
+    const { error } = await supabase
+      .from('delivery_rejections')
+      .upsert({
+        city_id: city.id,
+        delivery_id: currentDelivery.id,
+        courier_id: profile.courier_id,
+        reason: 'Recusada pelo motoboy',
+      }, { onConflict: 'delivery_id,courier_id' });
+
+    if (error) {
+      setActionMessage(`Nao foi possivel recusar: ${error.message}`);
+      return;
+    }
+
+    await supabase.from('delivery_events').insert({
+      city_id: city.id,
+      delivery_id: currentDelivery.id,
+      status: 'pending',
+      note: `${courierName} recusou a entrega.`,
+    });
+    setActionMessage('Entrega recusada. Buscando outra disponivel.');
+    loadCurrentDelivery();
+  }
 
   return (
     <main className="courier-app-home">
@@ -2024,11 +2274,11 @@ function CourierHomeView({ city, profile, onLogout }) {
         </div>
         <article className="courier-map-callout you">
           <strong>Voce</strong>
-          <span>A caminho do cliente</span>
+          <span>{mapDeliveryStatus(currentDelivery.status)}</span>
         </article>
         <article className="courier-map-callout destiny">
           <strong>Destino</strong>
-          <span>Loja Bella Roma</span>
+          <span>{currentDelivery.store}</span>
         </article>
         <div className="courier-map-actions">
           <button type="button" aria-label="Pesquisar"><Search size={31} /></button>
@@ -2080,12 +2330,12 @@ function CourierHomeView({ city, profile, onLogout }) {
       {actionMessage && <p className="courier-action-message">{actionMessage}</p>}
 
       <section className="courier-decision-grid">
-        <button type="button" className="accept" onClick={() => setActionMessage('Entrega aceita. A integracao real sera conectada ao banco na proxima etapa.')}>
+        <button type="button" className="accept" onClick={acceptDelivery} disabled={deliveryLoading || !currentDelivery.id}>
           <span>✓</span>
           <strong>Aceitar entrega</strong>
           <small>{currentDelivery.fee}</small>
         </button>
-        <button type="button" className="decline" onClick={() => setActionMessage('Recusa registrada apenas na interface por enquanto.')}>
+        <button type="button" className="decline" onClick={rejectDelivery} disabled={deliveryLoading || !currentDelivery.id}>
           <span>×</span>
           <strong>Recusar entrega</strong>
           <small>({currentDelivery.refusals})</small>

@@ -868,6 +868,46 @@ button, a {
   gap: 10px;
 }
 
+.delivery-request-modal form {
+  width: min(520px, 100%);
+  padding: 26px;
+  border: 1px solid rgba(255, 196, 0, 0.38);
+  border-radius: 16px;
+  display: grid;
+  gap: 12px;
+  background: #07100a;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+}
+
+.delivery-request-modal h2 {
+  margin: 0 0 6px;
+  color: #fff;
+}
+
+.delivery-request-modal label {
+  display: grid;
+  gap: 7px;
+  color: rgba(255, 255, 255, 0.76);
+  font-weight: 850;
+}
+
+.delivery-request-modal input {
+  min-height: 46px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  padding: 0 13px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #fff;
+  font: inherit;
+  font-weight: 750;
+}
+
+.delivery-request-modal div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .store-request-actions {
   display: grid;
   gap: 20px;
