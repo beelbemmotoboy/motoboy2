@@ -1,11 +1,17 @@
 import React from 'react';
-import { ArrowRight, AlertTriangle, Bike, Camera, MapPin, Minus, Navigation, PencilLine, Plus, Search, Store } from 'lucide-react';
+import { ArrowLeft, ArrowRight, AlertTriangle, Bike, Camera, Clock3, MapPin, Minus, Navigation, PencilLine, Phone, Plus, Search, Store, UserRound, WalletCards } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { createDeliveryWithQueue } from '../../cadastra_entrega';
 import { isValidCep, isValidEmail, isValidPhone, maskCep, maskCnpj, maskPhone, onlyDigits } from '../../utils/validators';
 
 function formatCurrency(value) {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function maskDeliveryTime(value) {
+  const digits = onlyDigits(value).slice(0, 4);
+  if (digits.length <= 2) return digits;
+  return `${digits.slice(0, 2)}:${digits.slice(2)}`;
 }
 
 export function InicioLojista({ city, store, profile, onLogout }) {
@@ -50,6 +56,7 @@ export function InicioLojista({ city, store, profile, onLogout }) {
     deliveryDistrict: '',
     deliveryComplement: '',
     estimatedMinutes: '45',
+    estimatedTime: '',
     customerLatitude: '',
     customerLongitude: '',
     deliveryFee: '',
@@ -241,6 +248,7 @@ export function InicioLojista({ city, store, profile, onLogout }) {
       deliveryDistrict: '',
       deliveryComplement: '',
       estimatedMinutes: '45',
+      estimatedTime: '',
       customerLatitude: '',
       customerLongitude: '',
       deliveryFee: '',
@@ -513,20 +521,73 @@ export function InicioLojista({ city, store, profile, onLogout }) {
       {requestMessage && <p className={requestMessage.includes('criada') ? 'success-message' : 'field-error'}>{requestMessage}</p>}
       {requestModalOpen && (
         <div className="store-open-prompt delivery-request-modal" role="dialog" aria-modal="true" aria-labelledby="delivery-request-title">
-          <form onSubmit={createDeliveryRequest}>
-            <h2 id="delivery-request-title">Nova entrega</h2>
-            <label>Numero do pedido<input value={requestForm.orderCode} onChange={(event) => setRequestForm((current) => ({ ...current, orderCode: event.target.value }))} /></label>
-            <label>Nome do cliente<input value={requestForm.customerName} onChange={(event) => setRequestForm((current) => ({ ...current, customerName: event.target.value }))} /></label>
-            <label>Telefone do cliente<input value={requestForm.customerPhone} onChange={(event) => setRequestForm((current) => ({ ...current, customerPhone: maskPhone(event.target.value) }))} /></label>
-            <label>Endereco de entrega<input value={requestForm.deliveryAddress} onChange={(event) => setRequestForm((current) => ({ ...current, deliveryAddress: event.target.value }))} /></label>
-            <label>Bairro<input value={requestForm.deliveryDistrict} onChange={(event) => setRequestForm((current) => ({ ...current, deliveryDistrict: event.target.value }))} /></label>
-            <label>Complemento<input value={requestForm.deliveryComplement} onChange={(event) => setRequestForm((current) => ({ ...current, deliveryComplement: event.target.value }))} /></label>
-            <label>Tempo limite ate o cliente (min)<input inputMode="numeric" value={requestForm.estimatedMinutes} onChange={(event) => setRequestForm((current) => ({ ...current, estimatedMinutes: event.target.value }))} /></label>
-            <label>Latitude do cliente (opcional)<input inputMode="decimal" value={requestForm.customerLatitude} onChange={(event) => setRequestForm((current) => ({ ...current, customerLatitude: event.target.value }))} /></label>
-            <label>Longitude do cliente (opcional)<input inputMode="decimal" value={requestForm.customerLongitude} onChange={(event) => setRequestForm((current) => ({ ...current, customerLongitude: event.target.value }))} /></label>
-            <label>Taxa da entrega<input inputMode="decimal" value={requestForm.deliveryFee} onChange={(event) => setRequestForm((current) => ({ ...current, deliveryFee: event.target.value }))} placeholder="18,50" /></label>
+          <form className="delivery-request-form" onSubmit={createDeliveryRequest}>
+            <button className="delivery-request-back" type="button" aria-label="Voltar" onClick={() => setRequestModalOpen(false)}>
+              <ArrowLeft size={26} />
+            </button>
+            <div className="delivery-request-hero">
+              <span className="delivery-request-brand"><Store size={28} /> BEELBEM MOTOBOY</span>
+              <h2 id="delivery-request-title">Nova entrega</h2>
+              <p>Preencha os dados do pedido para enviar aos motoboys disponiveis.</p>
+            </div>
+
+            <section className="delivery-request-section">
+              <h3><Store size={22} /> Dados do pedido</h3>
+              <div className="delivery-request-grid">
+                <label className="request-field wide">
+                  <span>Numero do pedido</span>
+                  <span className="request-input"><Store size={20} /><input value={requestForm.orderCode} onChange={(event) => setRequestForm((current) => ({ ...current, orderCode: event.target.value }))} /></span>
+                </label>
+                <label className="request-field">
+                  <span>Nome do cliente</span>
+                  <span className="request-input"><UserRound size={20} /><input value={requestForm.customerName} onChange={(event) => setRequestForm((current) => ({ ...current, customerName: event.target.value }))} /></span>
+                </label>
+                <label className="request-field">
+                  <span>Telefone do cliente</span>
+                  <span className="request-input"><Phone size={20} /><input value={requestForm.customerPhone} onChange={(event) => setRequestForm((current) => ({ ...current, customerPhone: maskPhone(event.target.value) }))} /></span>
+                </label>
+                <label className="request-field">
+                  <span>Horario previsto</span>
+                  <span className="request-input"><Clock3 size={20} /><input inputMode="numeric" maxLength={5} placeholder="00:00" value={requestForm.estimatedTime} onChange={(event) => setRequestForm((current) => ({ ...current, estimatedTime: maskDeliveryTime(event.target.value) }))} /></span>
+                </label>
+                <label className="request-field">
+                  <span>Taxa da entrega</span>
+                  <span className="request-input"><WalletCards size={20} /><input inputMode="decimal" value={requestForm.deliveryFee} onChange={(event) => setRequestForm((current) => ({ ...current, deliveryFee: event.target.value }))} placeholder="18,50" /></span>
+                </label>
+              </div>
+            </section>
+
+            <section className="delivery-request-section">
+              <h3><MapPin size={22} /> Endereco de entrega</h3>
+              <div className="delivery-request-grid">
+                <label className="request-field wide">
+                  <span>Endereco completo</span>
+                  <span className="request-input"><MapPin size={20} /><input value={requestForm.deliveryAddress} onChange={(event) => setRequestForm((current) => ({ ...current, deliveryAddress: event.target.value }))} placeholder="Rua, numero, complemento" /></span>
+                </label>
+                <label className="request-field">
+                  <span>Bairro</span>
+                  <span className="request-input"><Navigation size={20} /><input value={requestForm.deliveryDistrict} onChange={(event) => setRequestForm((current) => ({ ...current, deliveryDistrict: event.target.value }))} /></span>
+                </label>
+                <label className="request-field">
+                  <span>Complemento</span>
+                  <span className="request-input"><PencilLine size={20} /><input value={requestForm.deliveryComplement} onChange={(event) => setRequestForm((current) => ({ ...current, deliveryComplement: event.target.value }))} /></span>
+                </label>
+                <label className="request-field">
+                  <span>Tempo limite ate o cliente (min)</span>
+                  <span className="request-input"><Clock3 size={20} /><input inputMode="numeric" value={requestForm.estimatedMinutes} onChange={(event) => setRequestForm((current) => ({ ...current, estimatedMinutes: event.target.value }))} /></span>
+                </label>
+                <label className="request-field">
+                  <span>Latitude do cliente (opcional)</span>
+                  <span className="request-input"><MapPin size={20} /><input inputMode="decimal" value={requestForm.customerLatitude} onChange={(event) => setRequestForm((current) => ({ ...current, customerLatitude: event.target.value }))} /></span>
+                </label>
+                <label className="request-field">
+                  <span>Longitude do cliente (opcional)</span>
+                  <span className="request-input"><MapPin size={20} /><input inputMode="decimal" value={requestForm.customerLongitude} onChange={(event) => setRequestForm((current) => ({ ...current, customerLongitude: event.target.value }))} /></span>
+                </label>
+              </div>
+            </section>
             {requestMessage && <p className="field-error">{requestMessage}</p>}
-            <div>
+            <div className="delivery-request-actions">
               <button className="primary-action" type="submit" disabled={requestSaving}>{requestSaving ? 'Criando...' : 'Criar entrega'}</button>
               <button className="secondary-action" type="button" onClick={() => setRequestModalOpen(false)}>Cancelar</button>
             </div>
