@@ -2018,6 +2018,7 @@ function CourierHomeView({ city, profile, onLogout }) {
     todayDeliveries: 0,
   });
   const [xpAnimation, setXpAnimation] = React.useState(null);
+  const deliveryPollingRef = React.useRef(false);
   const hasPendingOffer = Boolean(currentDelivery.id && currentDelivery.status === 'pending');
   const hasAcceptedDelivery = Boolean(currentDelivery.id && ['assigned', 'picked_up', 'on_route'].includes(currentDelivery.status));
   const showDeliveryData = hasAcceptedDelivery;
@@ -2033,17 +2034,22 @@ function CourierHomeView({ city, profile, onLogout }) {
     return 'Aguardando aceite';
   };
 
-  const loadCurrentDelivery = React.useCallback(async () => {
+  const loadCurrentDelivery = React.useCallback(async ({ silent = false } = {}) => {
     if (!supabase || !profile?.courier_id || !city?.id) return;
-    setDeliveryLoading(true);
-    setActionMessage('');
+    if (deliveryPollingRef.current) return;
+    deliveryPollingRef.current = true;
+    if (!silent) {
+      setDeliveryLoading(true);
+      setActionMessage('');
+    }
     try {
       const nextDelivery = await getNextDeliveryForCourier({ supabase, cityId: city.id, courierId: profile.courier_id });
       setCurrentDelivery(nextDelivery);
     } catch (error) {
-      setActionMessage(error.message);
+      if (!silent) setActionMessage(error.message);
     } finally {
-      setDeliveryLoading(false);
+      deliveryPollingRef.current = false;
+      if (!silent) setDeliveryLoading(false);
     }
   }, [city?.id, profile?.courier_id]);
 
@@ -2145,6 +2151,48 @@ function CourierHomeView({ city, profile, onLogout }) {
     const intervalId = window.setInterval(updateCountdown, 1000);
     return () => window.clearInterval(intervalId);
   }, [acceptTimeoutSeconds, currentDelivery.id, currentDelivery.offeredAt, hasPendingOffer]);
+
+  React.useEffect(() => {
+    if (!supabase || !profile?.courier_id || !city?.id || !courierAvailable || hasPendingOffer || hasAcceptedDelivery) {
+      return undefined;
+    }
+
+    let stopped = false;
+    const refreshQueue = () => {
+      if (!stopped) loadCurrentDelivery({ silent: true });
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') refreshQueue();
+    };
+
+    const intervalId = window.setInterval(refreshQueue, 4000);
+    window.addEventListener('focus', refreshQueue);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    const queueChannel = supabase
+      .channel(`courier-queue-${profile.courier_id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'delivery_queue', filter: `courier_id=eq.${profile.courier_id}` },
+        refreshQueue,
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'deliveries', filter: `city_id=eq.${city.id}` },
+        refreshQueue,
+      )
+      .subscribe();
+
+    refreshQueue();
+
+    return () => {
+      stopped = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshQueue);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      supabase.removeChannel(queueChannel);
+    };
+  }, [city?.id, courierAvailable, hasAcceptedDelivery, hasPendingOffer, loadCurrentDelivery, profile?.courier_id]);
 
   async function acceptDelivery() {
     if (!currentDelivery.id || !profile?.courier_id || !supabase) {
