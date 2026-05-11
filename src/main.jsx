@@ -2000,6 +2000,38 @@ function deliveryStatusLabel(status) {
   return 'Ocorrencia';
 }
 
+function triggerCourierOfferAlert() {
+  if (typeof window === 'undefined') return;
+
+  if (navigator.vibrate) {
+    navigator.vibrate([450, 160, 450, 160, 700]);
+  }
+
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return;
+
+  try {
+    const audioContext = new AudioContextClass();
+    const now = audioContext.currentTime;
+    [0, 0.34, 0.68].forEach((offset) => {
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(880, now + offset);
+      oscillator.frequency.exponentialRampToValueAtTime(1320, now + offset + 0.12);
+      gain.gain.setValueAtTime(0.0001, now + offset);
+      gain.gain.exponentialRampToValueAtTime(0.24, now + offset + 0.025);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.22);
+      oscillator.connect(gain).connect(audioContext.destination);
+      oscillator.start(now + offset);
+      oscillator.stop(now + offset + 0.24);
+    });
+    window.setTimeout(() => audioContext.close(), 1200);
+  } catch {
+    // Mobile browsers may block audio until there is user interaction; vibration still runs when supported.
+  }
+}
+
 function CourierHomeView({ city, profile, onLogout }) {
   const [courierName, setCourierName] = React.useState(profile?.name || 'Motoboy');
   const [courierPoints, setCourierPoints] = React.useState(0);
@@ -2011,7 +2043,6 @@ function CourierHomeView({ city, profile, onLogout }) {
   const [deliveryLoading, setDeliveryLoading] = React.useState(false);
   const [actionMessage, setActionMessage] = React.useState('');
   const [courierAvailable, setCourierAvailableState] = React.useState(profile?.availabilityStatus === 'available');
-  const [statsLabel, setStatsLabel] = React.useState('');
   const [courierStats, setCourierStats] = React.useState({
     onlineCouriers: 0,
     openStores: 0,
@@ -2019,6 +2050,7 @@ function CourierHomeView({ city, profile, onLogout }) {
   });
   const [xpAnimation, setXpAnimation] = React.useState(null);
   const deliveryPollingRef = React.useRef(false);
+  const lastAlertedDeliveryRef = React.useRef('');
   const hasPendingOffer = Boolean(currentDelivery.id && currentDelivery.status === 'pending');
   const hasAcceptedDelivery = Boolean(currentDelivery.id && ['assigned', 'picked_up', 'on_route'].includes(currentDelivery.status));
   const showDeliveryData = hasAcceptedDelivery;
@@ -2153,6 +2185,13 @@ function CourierHomeView({ city, profile, onLogout }) {
   }, [acceptTimeoutSeconds, currentDelivery.id, currentDelivery.offeredAt, hasPendingOffer]);
 
   React.useEffect(() => {
+    if (!hasPendingOffer || !currentDelivery.id) return;
+    if (lastAlertedDeliveryRef.current === currentDelivery.id) return;
+    lastAlertedDeliveryRef.current = currentDelivery.id;
+    triggerCourierOfferAlert();
+  }, [currentDelivery.id, hasPendingOffer]);
+
+  React.useEffect(() => {
     if (!supabase || !profile?.courier_id || !city?.id || !courierAvailable || hasPendingOffer || hasAcceptedDelivery) {
       return undefined;
     }
@@ -2275,6 +2314,24 @@ function CourierHomeView({ city, profile, onLogout }) {
 
       {xpAnimation && <div className="courier-xp-animation">{xpAnimation}</div>}
 
+      <section className="courier-mini-stats" aria-label="Indicadores do motoboy">
+        <article>
+          <UserRound size={30} />
+          <strong>{courierStats.onlineCouriers}</strong>
+          <span>Motoboys on-line</span>
+        </article>
+        <article>
+          <Store size={30} />
+          <strong>{courierStats.openStores}</strong>
+          <span>Lojas abertas</span>
+        </article>
+        <article>
+          <WalletCards size={30} />
+          <strong>{courierStats.todayDeliveries}</strong>
+          <span>Suas entregas de hoje</span>
+        </article>
+      </section>
+
       <section className="courier-xp-grid" aria-label="Resumo de XP">
         <article className="courier-xp-card positive">
           <span>XP</span>
@@ -2382,25 +2439,6 @@ function CourierHomeView({ city, profile, onLogout }) {
           <button type="button" aria-label="Minha localizacao"><Navigation size={28} /></button>
         </div>
       </section>
-
-      <section className="courier-mini-stats" aria-label="Indicadores do motoboy">
-        <article role="button" tabIndex="0" onClick={() => setStatsLabel('Motoboys on-line')}>
-          <UserRound size={30} />
-          <strong>{courierStats.onlineCouriers}</strong>
-          <span>Motoboys on-line</span>
-        </article>
-        <article role="button" tabIndex="0" onClick={() => setStatsLabel('Lojas abertas')}>
-          <Store size={30} />
-          <strong>{courierStats.openStores}</strong>
-          <span>Lojas abertas</span>
-        </article>
-        <article role="button" tabIndex="0" onClick={() => setStatsLabel('Suas entregas de hoje')}>
-          <WalletCards size={30} />
-          <strong>{courierStats.todayDeliveries}</strong>
-          <span>Suas entregas de hoje</span>
-        </article>
-      </section>
-      {statsLabel && <p className="courier-stats-label">{statsLabel}</p>}
 
       {showDeliveryData && (
       <section className="courier-delivery-card" aria-label="Dados da entrega">
