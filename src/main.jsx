@@ -35,8 +35,8 @@ import {
   WalletCards,
 } from 'lucide-react';
 import { supabase, supabaseConfigStatus } from './supabaseClient';
-import { acceptQueuedDelivery, createDeliveryWithQueue, emptyDelivery, getNextDeliveryForCourier, rejectQueuedDelivery, setCourierAvailable } from './cadastra_entrega';
-import { awardAcceptXp } from './xp_motoboy';
+import { acceptQueuedDelivery, createDeliveryWithQueue, emptyDelivery, getNextDeliveryForCourier, markDeliveryPickedUp, rejectQueuedDelivery, setCourierAvailable } from './cadastra_entrega';
+import { awardAcceptXp, awardPickupXp } from './xp_motoboy';
 import { isValidCep, isValidCnpj, isValidCpf, isValidEmail, isValidPhone, maskCep, maskCnpj, maskCpf, maskPhone, onlyDigits, passwordStrength, validateAccessUserForm, validateCourierForm, validateStoreForm } from './utils/validators';
 import loginLogo from '../imagem/logo.png';
 import beeIcon from '../imagem/icone.png';
@@ -2268,6 +2268,29 @@ function CourierHomeView({ city, profile, onLogout }) {
     }
   }
 
+  async function confirmPickupAtStore() {
+    if (!currentDelivery.id || !profile?.courier_id || !supabase) {
+      setActionMessage('Nenhuma entrega aceita para retirar na loja.');
+      return;
+    }
+
+    setActionMessage('');
+    setDeliveryLoading(true);
+    try {
+      await markDeliveryPickedUp({ supabase, cityId: city.id, delivery: currentDelivery, courierId: profile.courier_id, courierName });
+      const xpGained = await awardPickupXp({ supabase, courierId: profile.courier_id, deliveryId: currentDelivery.id, cityId: city.id });
+      setCourierPoints((current) => Number(current || 0) + xpGained);
+      setXpAnimation(`+${xpGained} XP`);
+      setTimeout(() => setXpAnimation(null), 3000);
+      setActionMessage(`Pedido retirado na loja. +${xpGained} XP`);
+      loadCurrentDelivery();
+    } catch (error) {
+      setActionMessage(error.message);
+    } finally {
+      setDeliveryLoading(false);
+    }
+  }
+
   async function confirmAvailability(available) {
     setAvailabilityPromptOpen(false);
     await setCourierAvailable({ supabase, courierId: profile?.courier_id, available });
@@ -2378,14 +2401,17 @@ function CourierHomeView({ city, profile, onLogout }) {
                 <strong className="money">{currentDelivery.fee}</strong>
               </article>
               <article>
-                <span className="xp-dot">XP</span>
-                <span>Ao aceitar agora</span>
-                <strong className="xp-value">+{formatXpValue(acceptXpPreview)}</strong>
+                <MapPin size={28} />
+                <span>Endereco</span>
+                <strong>{currentDelivery.address}</strong>
               </article>
               <article>
-                <span className="xp-dot">XP</span>
-                <span>Ao finalizar no prazo</span>
-                <strong className="xp-value">{currentDelivery.xp}</strong>
+                <Navigation size={28} />
+                <span>Bairro</span>
+                <strong>{currentDelivery.district}</strong>
+                {currentDelivery.locationUrl && (
+                  <a className="location-link" href={currentDelivery.locationUrl} target="_blank" rel="noreferrer">Ver localizacao</a>
+                )}
               </article>
             </div>
             <div className="courier-countdown offer-countdown">
@@ -2458,10 +2484,23 @@ function CourierHomeView({ city, profile, onLogout }) {
           <strong className="money">{currentDelivery.fee}</strong>
         </article>
         <article>
-          <span className="xp-dot">XP</span>
-          <span>XP da corrida</span>
-          <strong className="xp-value">{currentDelivery.xp}</strong>
+          <MapPin size={34} />
+          <span>Endereco</span>
+          <strong>{currentDelivery.address}</strong>
         </article>
+        <article>
+          <Navigation size={34} />
+          <span>Bairro</span>
+          <strong>{currentDelivery.district}</strong>
+        </article>
+        {currentDelivery.locationUrl && (
+          <a className="courier-location-button" href={currentDelivery.locationUrl} target="_blank" rel="noreferrer">Ver localizacao</a>
+        )}
+        {currentDelivery.status === 'assigned' && (
+          <button className="courier-pickup-button" type="button" onClick={confirmPickupAtStore} disabled={deliveryLoading}>
+            Cheguei na loja para pegar o pedido
+          </button>
+        )}
       </section>
       )}
 

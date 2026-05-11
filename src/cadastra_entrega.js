@@ -9,6 +9,9 @@ export function emptyDelivery() {
     fee: 'R$ 0,00',
     numericFee: 0,
     xp: '+0',
+    address: 'Endereco nao informado',
+    district: 'Bairro nao informado',
+    locationUrl: '',
     refusals: '1/3',
     status: 'empty',
     queueId: '',
@@ -17,6 +20,9 @@ export function emptyDelivery() {
 }
 
 export function formatDeliveryForCourier(delivery, queueId = '') {
+  const deliveryAddress = delivery.delivery_address || delivery.customers?.address || 'Endereco nao informado';
+  const deliveryDistrict = inferDistrictFromAddress(deliveryAddress);
+
   return {
     id: delivery.id,
     code: delivery.order_code || delivery.id,
@@ -25,6 +31,11 @@ export function formatDeliveryForCourier(delivery, queueId = '') {
     fee: formatCurrency(Number(delivery.delivery_fee || 0)),
     numericFee: Number(delivery.delivery_fee || 0),
     xp: '+50',
+    address: deliveryAddress,
+    district: deliveryDistrict,
+    locationUrl: deliveryAddress && deliveryAddress !== 'Endereco nao informado'
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(deliveryAddress)}`
+      : '',
     refusals: '1/3',
     status: delivery.status,
     queueId,
@@ -127,7 +138,7 @@ export async function buildDeliveryQueue({ supabase, cityId, deliveryId }) {
 export async function getNextDeliveryForCourier({ supabase, cityId, courierId }) {
   if (!supabase || !cityId || !courierId) return emptyDelivery();
 
-  const baseSelect = 'id, order_code, delivery_fee, status, created_at, customers(name), stores(name, fantasy_name)';
+  const baseSelect = 'id, order_code, delivery_address, delivery_fee, status, created_at, customers(name, address), stores(name, fantasy_name)';
   const { data: assignedData, error: assignedError } = await supabase
     .from('deliveries')
     .select(baseSelect)
@@ -141,7 +152,7 @@ export async function getNextDeliveryForCourier({ supabase, cityId, courierId })
 
   const { data: queueRows, error: queueError } = await supabase
     .from('delivery_queue')
-    .select('id, delivery_id, queue_position, offered_at, deliveries!inner(id, order_code, delivery_fee, status, created_at, customers(name), stores(name, fantasy_name))')
+    .select('id, delivery_id, queue_position, offered_at, deliveries!inner(id, order_code, delivery_address, delivery_fee, status, created_at, customers(name, address), stores(name, fantasy_name))')
     .eq('city_id', cityId)
     .eq('courier_id', courierId)
     .eq('status', 'waiting')
@@ -194,6 +205,28 @@ export async function acceptQueuedDelivery({ supabase, cityId, delivery, courier
     note: `${courierName} aceitou a entrega.`,
   });
   await supabase.from('couriers').update({ availability_status: 'on_delivery' }).eq('id', courierId);
+}
+
+export async function markDeliveryPickedUp({ supabase, cityId, delivery, courierId, courierName }) {
+  if (!delivery?.id || !courierId) throw new Error('Nenhuma entrega aceita para retirar na loja.');
+
+  const { error } = await supabase
+    .from('deliveries')
+    .update({ status: 'picked_up' })
+    .eq('id', delivery.id)
+    .eq('courier_id', courierId)
+    .eq('status', 'assigned')
+    .select('id')
+    .single();
+
+  if (error) throw new Error(`Nao foi possivel confirmar retirada: ${error.message}`);
+
+  await supabase.from('delivery_events').insert({
+    city_id: cityId,
+    delivery_id: delivery.id,
+    status: 'picked_up',
+    note: `${courierName} retirou o pedido na loja.`,
+  });
 }
 
 export async function rejectQueuedDelivery({ supabase, cityId, delivery, courierId, courierName }) {
@@ -250,4 +283,14 @@ async function hasEarlierQueueCandidate({ supabase, deliveryId, queuePosition })
 
 function formatCurrency(value) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
+}
+
+function inferDistrictFromAddress(address) {
+  if (!address || address === 'Endereco nao informado') return 'Bairro nao informado';
+  const parts = String(address)
+    .split(/\s[-|]\s|,/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length < 2) return 'Bairro nao informado';
+  return parts[parts.length - 1];
 }
