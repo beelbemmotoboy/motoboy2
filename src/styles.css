@@ -1347,6 +1347,53 @@ button, a {
   font-size: clamp(24px, 4.5vw, 35px);
 }
 
+.courier-score-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(8px);
+}
+
+.courier-score-modal section {
+  width: min(420px, 100%);
+  padding: 22px;
+  border: 1px solid rgba(139, 57, 255, 0.7);
+  border-radius: 20px;
+  color: #fff;
+  background: radial-gradient(circle at top, rgba(139, 57, 255, 0.28), rgba(10, 10, 10, 0.96) 62%);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+}
+
+.courier-score-modal h2 {
+  margin: 0 0 16px;
+  font-size: 24px;
+}
+
+.courier-score-modal article {
+  min-height: 50px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.courier-score-modal article span {
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.courier-score-modal article strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #8b39ff;
+  font-size: 22px;
+}
+
 .courier-xp-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1611,6 +1658,33 @@ button, a {
   font-weight: 800;
 }
 
+.courier-deadline-card {
+  min-height: 72px;
+  margin-top: 14px;
+  padding: 13px 16px;
+  border: 1px solid rgba(139, 57, 255, 0.45);
+  border-radius: 16px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  background: linear-gradient(145deg, rgba(117, 39, 245, 0.16), rgba(255, 255, 255, 0.02));
+}
+
+.courier-deadline-card svg,
+.courier-deadline-card strong {
+  color: #8b39ff;
+}
+
+.courier-deadline-card span {
+  color: rgba(255, 255, 255, 0.72);
+  font-weight: 800;
+}
+
+.courier-deadline-card strong {
+  font-size: clamp(24px, 5vw, 34px);
+}
+
 .courier-stats-label {
   margin: 10px 0 0;
   color: #ffcc00;
@@ -1630,11 +1704,11 @@ button, a {
 }
 
 .courier-delivery-card article {
-  min-height: 70px;
+  min-height: 54px;
   display: grid;
   grid-template-columns: 48px 1fr auto;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
@@ -1669,6 +1743,15 @@ button, a {
   place-items: center;
   text-align: center;
   font-weight: 950;
+}
+
+.courier-inline-link {
+  width: fit-content;
+  justify-self: end;
+  color: #ffcc00;
+  font-weight: 950;
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
 
 .courier-location-button {
@@ -1941,18 +2024,35 @@ button, a {
     font-size: 12px;
   }
 
+  .courier-deadline-card {
+    min-height: 60px;
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .courier-deadline-card strong {
+    grid-column: 2;
+    font-size: 28px;
+  }
+
   .courier-delivery-card {
     padding: 12px;
   }
 
   .courier-delivery-card article {
-    min-height: 58px;
+    min-height: 48px;
     grid-template-columns: 35px 1fr;
-    gap: 10px;
+    gap: 7px;
   }
 
   .courier-delivery-card article strong {
     grid-column: 2;
+  }
+
+  .courier-inline-link {
+    grid-column: 2;
+    justify-self: start;
   }
 
   .courier-decision-grid button {

@@ -11,7 +11,14 @@ export function emptyDelivery() {
     xp: '+0',
     address: 'Endereco nao informado',
     district: 'Bairro nao informado',
+    complement: '',
+    deadlineAt: '',
+    estimatedMinutes: null,
+    customerLatitude: null,
+    customerLongitude: null,
     locationUrl: '',
+    storeWhatsapp: '',
+    storeMessageUrl: '',
     refusals: '1/3',
     status: 'empty',
     queueId: '',
@@ -21,7 +28,16 @@ export function emptyDelivery() {
 
 export function formatDeliveryForCourier(delivery, queueId = '') {
   const deliveryAddress = delivery.delivery_address || delivery.customers?.address || 'Endereco nao informado';
-  const deliveryDistrict = inferDistrictFromAddress(deliveryAddress);
+  const deliveryDistrict = delivery.delivery_district || inferDistrictFromAddress(deliveryAddress);
+  const deliveryComplement = delivery.delivery_complement || '';
+  const customerLatitude = parseNullableNumber(delivery.customer_latitude);
+  const customerLongitude = parseNullableNumber(delivery.customer_longitude);
+  const storeWhatsapp = delivery.stores?.whatsapp || '';
+  const locationUrl = customerLatitude !== null && customerLongitude !== null
+    ? `https://www.google.com/maps/search/?api=1&query=${customerLatitude},${customerLongitude}`
+    : deliveryAddress && deliveryAddress !== 'Endereco nao informado'
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(deliveryAddress)}`
+      : '';
 
   return {
     id: delivery.id,
@@ -33,9 +49,14 @@ export function formatDeliveryForCourier(delivery, queueId = '') {
     xp: '+50',
     address: deliveryAddress,
     district: deliveryDistrict,
-    locationUrl: deliveryAddress && deliveryAddress !== 'Endereco nao informado'
-      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(deliveryAddress)}`
-      : '',
+    complement: deliveryComplement,
+    deadlineAt: delivery.delivery_deadline_at || '',
+    estimatedMinutes: delivery.estimated_minutes ?? null,
+    customerLatitude,
+    customerLongitude,
+    locationUrl,
+    storeWhatsapp,
+    storeMessageUrl: buildStoreMessageUrl(storeWhatsapp, delivery),
     refusals: '1/3',
     status: delivery.status,
     queueId,
@@ -50,13 +71,20 @@ export async function createDeliveryWithQueue({ supabase, city, store, requestFo
     throw new Error('Pedido, cliente e endereco de entrega sao obrigatorios.');
   }
 
+  const deliveryDistrict = requestForm.deliveryDistrict?.trim() || '';
+  const deliveryComplement = requestForm.deliveryComplement?.trim() || '';
+  const customerLatitude = parseNullableNumber(requestForm.customerLatitude);
+  const customerLongitude = parseNullableNumber(requestForm.customerLongitude);
+  const estimatedMinutes = Math.max(1, Number.parseInt(requestForm.estimatedMinutes, 10) || 45);
+  const deliveryDeadlineAt = new Date(Date.now() + estimatedMinutes * 60 * 1000).toISOString();
+
   const { data: customer, error: customerError } = await supabase
     .from('customers')
     .insert({
       city_id: city.id,
       name: requestForm.customerName.trim(),
       phone: onlyDigits(requestForm.customerPhone),
-      address: requestForm.deliveryAddress.trim(),
+      address: [requestForm.deliveryAddress.trim(), deliveryComplement, deliveryDistrict].filter(Boolean).join(' - '),
     })
     .select('id')
     .single();
@@ -73,6 +101,12 @@ export async function createDeliveryWithQueue({ supabase, city, store, requestFo
       customer_id: customer.id,
       pickup_address: [store.address, store.number, store.district].filter(Boolean).join(', '),
       delivery_address: requestForm.deliveryAddress.trim(),
+      delivery_district: deliveryDistrict,
+      delivery_complement: deliveryComplement,
+      customer_latitude: customerLatitude,
+      customer_longitude: customerLongitude,
+      estimated_minutes: estimatedMinutes,
+      delivery_deadline_at: deliveryDeadlineAt,
       delivery_fee: deliveryFee,
       status: 'pending',
     })
@@ -138,7 +172,7 @@ export async function buildDeliveryQueue({ supabase, cityId, deliveryId }) {
 export async function getNextDeliveryForCourier({ supabase, cityId, courierId }) {
   if (!supabase || !cityId || !courierId) return emptyDelivery();
 
-  const baseSelect = 'id, order_code, delivery_address, delivery_fee, status, created_at, customers(name, address), stores(name, fantasy_name)';
+  const baseSelect = 'id, order_code, delivery_address, delivery_district, delivery_complement, customer_latitude, customer_longitude, delivery_deadline_at, estimated_minutes, delivery_fee, status, created_at, customers(name, address), stores(name, fantasy_name, whatsapp)';
   const { data: assignedData, error: assignedError } = await supabase
     .from('deliveries')
     .select(baseSelect)
@@ -152,7 +186,7 @@ export async function getNextDeliveryForCourier({ supabase, cityId, courierId })
 
   const { data: queueRows, error: queueError } = await supabase
     .from('delivery_queue')
-    .select('id, delivery_id, queue_position, offered_at, deliveries!inner(id, order_code, delivery_address, delivery_fee, status, created_at, customers(name, address), stores(name, fantasy_name))')
+    .select('id, delivery_id, queue_position, offered_at, deliveries!inner(id, order_code, delivery_address, delivery_district, delivery_complement, customer_latitude, customer_longitude, delivery_deadline_at, estimated_minutes, delivery_fee, status, created_at, customers(name, address), stores(name, fantasy_name, whatsapp))')
     .eq('city_id', cityId)
     .eq('courier_id', courierId)
     .eq('status', 'waiting')
@@ -179,6 +213,23 @@ export async function getNextDeliveryForCourier({ supabase, cityId, courierId })
   }
 
   return emptyDelivery();
+}
+
+function parseNullableNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const normalized = Number(String(value).replace(',', '.'));
+  return Number.isFinite(normalized) ? normalized : null;
+}
+
+function buildStoreMessageUrl(phone, delivery) {
+  const digits = onlyDigits(phone);
+  if (!digits) return '';
+  const message = [
+    'Ola, preciso falar sobre a entrega.',
+    `Pedido: ${delivery.order_code || delivery.id || ''}`,
+    `Cliente: ${delivery.customers?.name || 'Cliente nao informado'}`,
+  ].join('\n');
+  return `https://wa.me/55${digits}?text=${encodeURIComponent(message)}`;
 }
 
 export async function acceptQueuedDelivery({ supabase, cityId, delivery, courierId, courierName }) {

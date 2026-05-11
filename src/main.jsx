@@ -1519,6 +1519,11 @@ function StoreHomeView({ city, store, profile, onLogout }) {
     customerName: '',
     customerPhone: '',
     deliveryAddress: '',
+    deliveryDistrict: '',
+    deliveryComplement: '',
+    estimatedMinutes: '45',
+    customerLatitude: '',
+    customerLongitude: '',
     deliveryFee: '',
   });
   const deliveryStats = [
@@ -1705,6 +1710,11 @@ function StoreHomeView({ city, store, profile, onLogout }) {
       customerName: '',
       customerPhone: '',
       deliveryAddress: '',
+      deliveryDistrict: '',
+      deliveryComplement: '',
+      estimatedMinutes: '45',
+      customerLatitude: '',
+      customerLongitude: '',
       deliveryFee: '',
     });
     setRequestModalOpen(true);
@@ -1981,6 +1991,11 @@ function StoreHomeView({ city, store, profile, onLogout }) {
             <label>Nome do cliente<input value={requestForm.customerName} onChange={(event) => setRequestForm((current) => ({ ...current, customerName: event.target.value }))} /></label>
             <label>Telefone do cliente<input value={requestForm.customerPhone} onChange={(event) => setRequestForm((current) => ({ ...current, customerPhone: maskPhone(event.target.value) }))} /></label>
             <label>Endereco de entrega<input value={requestForm.deliveryAddress} onChange={(event) => setRequestForm((current) => ({ ...current, deliveryAddress: event.target.value }))} /></label>
+            <label>Bairro<input value={requestForm.deliveryDistrict} onChange={(event) => setRequestForm((current) => ({ ...current, deliveryDistrict: event.target.value }))} /></label>
+            <label>Complemento<input value={requestForm.deliveryComplement} onChange={(event) => setRequestForm((current) => ({ ...current, deliveryComplement: event.target.value }))} /></label>
+            <label>Tempo limite ate o cliente (min)<input inputMode="numeric" value={requestForm.estimatedMinutes} onChange={(event) => setRequestForm((current) => ({ ...current, estimatedMinutes: event.target.value }))} /></label>
+            <label>Latitude do cliente (opcional)<input inputMode="decimal" value={requestForm.customerLatitude} onChange={(event) => setRequestForm((current) => ({ ...current, customerLatitude: event.target.value }))} /></label>
+            <label>Longitude do cliente (opcional)<input inputMode="decimal" value={requestForm.customerLongitude} onChange={(event) => setRequestForm((current) => ({ ...current, customerLongitude: event.target.value }))} /></label>
             <label>Taxa da entrega<input inputMode="decimal" value={requestForm.deliveryFee} onChange={(event) => setRequestForm((current) => ({ ...current, deliveryFee: event.target.value }))} placeholder="18,50" /></label>
             {requestMessage && <p className="field-error">{requestMessage}</p>}
             <div>
@@ -2037,7 +2052,9 @@ function CourierHomeView({ city, profile, onLogout }) {
   const [courierPoints, setCourierPoints] = React.useState(0);
   const [acceptTimeoutSeconds, setAcceptTimeoutSeconds] = React.useState(50);
   const [countdownRemaining, setCountdownRemaining] = React.useState(50);
+  const [deadlineRemainingLabel, setDeadlineRemainingLabel] = React.useState('--:--');
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const [scoreModalOpen, setScoreModalOpen] = React.useState(false);
   const [availabilityPromptOpen, setAvailabilityPromptOpen] = React.useState(true);
   const [currentDelivery, setCurrentDelivery] = React.useState(emptyDelivery());
   const [deliveryLoading, setDeliveryLoading] = React.useState(false);
@@ -2047,6 +2064,7 @@ function CourierHomeView({ city, profile, onLogout }) {
     onlineCouriers: 0,
     openStores: 0,
     todayDeliveries: 0,
+    todayXp: 0,
   });
   const [xpAnimation, setXpAnimation] = React.useState(null);
   const deliveryPollingRef = React.useRef(false);
@@ -2055,7 +2073,8 @@ function CourierHomeView({ city, profile, onLogout }) {
   const hasAcceptedDelivery = Boolean(currentDelivery.id && ['assigned', 'picked_up', 'on_route'].includes(currentDelivery.status));
   const showDeliveryData = hasAcceptedDelivery;
   const countdownLabel = `${String(Math.floor(countdownRemaining / 60)).padStart(2, '0')}:${String(countdownRemaining % 60).padStart(2, '0')}`;
-  const acceptXpPreview = Math.max(0, Number((countdownRemaining * 0.5).toFixed(1)));
+  const courierLevel = Math.max(1, Math.floor(Number(courierPoints || 0) / 500) + 1);
+  const courierStars = Math.min(5, Math.max(1, Math.floor(Number(courierPoints || 0) / 250) + 1));
   const formatXpValue = (value) => (
     Number.isInteger(Number(value)) ? Number(value).toFixed(0) : Number(value).toFixed(1).replace('.', ',')
   );
@@ -2128,7 +2147,7 @@ function CourierHomeView({ city, profile, onLogout }) {
         const dayStart = new Date();
         dayStart.setHours(0, 0, 0, 0);
 
-        const [onlineResult, storesResult, deliveriesResult] = await Promise.all([
+        const [onlineResult, storesResult, deliveriesResult, xpTodayResult] = await Promise.all([
           supabase
             .from('couriers')
             .select('id', { count: 'exact', head: true })
@@ -2147,6 +2166,12 @@ function CourierHomeView({ city, profile, onLogout }) {
             .eq('city_id', city.id)
             .eq('courier_id', profile.courier_id)
             .gte('created_at', dayStart.toISOString()),
+          supabase
+            .from('courier_xp_events')
+            .select('points')
+            .eq('city_id', city.id)
+            .eq('courier_id', profile.courier_id)
+            .gte('created_at', dayStart.toISOString()),
         ]);
 
         if (mounted) {
@@ -2154,6 +2179,7 @@ function CourierHomeView({ city, profile, onLogout }) {
             onlineCouriers: onlineResult.count ?? 0,
             openStores: storesResult.count ?? 0,
             todayDeliveries: deliveriesResult.count ?? 0,
+            todayXp: (xpTodayResult.data ?? []).reduce((total, item) => total + Number(item.points || 0), 0),
           });
         }
       }
@@ -2183,6 +2209,25 @@ function CourierHomeView({ city, profile, onLogout }) {
     const intervalId = window.setInterval(updateCountdown, 1000);
     return () => window.clearInterval(intervalId);
   }, [acceptTimeoutSeconds, currentDelivery.id, currentDelivery.offeredAt, hasPendingOffer]);
+
+  React.useEffect(() => {
+    if (!hasAcceptedDelivery || !currentDelivery.deadlineAt) {
+      setDeadlineRemainingLabel(currentDelivery.estimatedMinutes ? `${currentDelivery.estimatedMinutes} min` : '--:--');
+      return undefined;
+    }
+
+    function updateDeliveryDeadline() {
+      const deadlineTime = new Date(currentDelivery.deadlineAt).getTime();
+      const remainingSeconds = Math.max(0, Math.ceil((deadlineTime - Date.now()) / 1000));
+      const minutes = Math.floor(remainingSeconds / 60);
+      const seconds = remainingSeconds % 60;
+      setDeadlineRemainingLabel(`${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`);
+    }
+
+    updateDeliveryDeadline();
+    const intervalId = window.setInterval(updateDeliveryDeadline, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [currentDelivery.deadlineAt, currentDelivery.estimatedMinutes, hasAcceptedDelivery]);
 
   React.useEffect(() => {
     if (!hasPendingOffer || !currentDelivery.id) return;
@@ -2244,6 +2289,7 @@ function CourierHomeView({ city, profile, onLogout }) {
       await acceptQueuedDelivery({ supabase, cityId: city.id, delivery: currentDelivery, courierId: profile.courier_id, courierName });
       const xpGained = await awardAcceptXp({ supabase, courierId: profile.courier_id, delivery: currentDelivery, cityId: city.id });
       setCourierPoints((current) => Number(current || 0) + xpGained);
+      setCourierStats((current) => ({ ...current, todayXp: Number(current.todayXp || 0) + xpGained }));
       setXpAnimation(`+${xpGained} XP`);
       setTimeout(() => setXpAnimation(null), 3000);
       setActionMessage(`Entrega aceita. +${xpGained} XP`);
@@ -2280,6 +2326,7 @@ function CourierHomeView({ city, profile, onLogout }) {
       await markDeliveryPickedUp({ supabase, cityId: city.id, delivery: currentDelivery, courierId: profile.courier_id, courierName });
       const xpGained = await awardPickupXp({ supabase, courierId: profile.courier_id, deliveryId: currentDelivery.id, cityId: city.id });
       setCourierPoints((current) => Number(current || 0) + xpGained);
+      setCourierStats((current) => ({ ...current, todayXp: Number(current.todayXp || 0) + xpGained }));
       setXpAnimation(`+${xpGained} XP`);
       setTimeout(() => setXpAnimation(null), 3000);
       setActionMessage(`Pedido retirado na loja. +${xpGained} XP`);
@@ -2328,7 +2375,7 @@ function CourierHomeView({ city, profile, onLogout }) {
             <button type="button" onClick={onLogout}>Sair</button>
           </nav>
         )}
-        <button className="courier-score-pill" type="button" aria-label="Pontuacao">
+        <button className="courier-score-pill" type="button" aria-label="Pontuacao" onClick={() => setScoreModalOpen(true)}>
           <span />
           <strong>{courierPoints}</strong>
           <Star size={22} />
@@ -2336,6 +2383,31 @@ function CourierHomeView({ city, profile, onLogout }) {
       </header>
 
       {xpAnimation && <div className="courier-xp-animation">{xpAnimation}</div>}
+
+      {scoreModalOpen && (
+        <div className="courier-score-modal" role="dialog" aria-modal="true" aria-labelledby="courier-score-title">
+          <section>
+            <h2 id="courier-score-title">Pontuacao do motoboy</h2>
+            <article>
+              <span>Nivel</span>
+              <strong>{courierLevel}</strong>
+            </article>
+            <article>
+              <span>Estrelas</span>
+              <strong>{Array.from({ length: courierStars }).map((_, index) => <Star key={index} size={22} fill="currentColor" />)}</strong>
+            </article>
+            <article>
+              <span>XP ganho hoje</span>
+              <strong>{formatXpValue(courierStats.todayXp)}</strong>
+            </article>
+            <article>
+              <span>XP total</span>
+              <strong>{formatXpValue(courierPoints)}</strong>
+            </article>
+            <button className="primary-action" type="button" onClick={() => setScoreModalOpen(false)}>Fechar</button>
+          </section>
+        </div>
+      )}
 
       <section className="courier-mini-stats" aria-label="Indicadores do motoboy">
         <article>
@@ -2355,15 +2427,10 @@ function CourierHomeView({ city, profile, onLogout }) {
         </article>
       </section>
 
-      <section className="courier-xp-grid" aria-label="Resumo de XP">
-        <article className="courier-xp-card positive">
-          <span>XP</span>
-          <strong>+{formatXpValue(hasPendingOffer ? acceptXpPreview : 0)}</strong>
-        </article>
-        <article className="courier-xp-card negative">
-          <span>XP</span>
-          <strong>-30</strong>
-        </article>
+      <section className="courier-deadline-card" aria-label="Tempo limite da entrega">
+        <Clock3 size={28} />
+        <span>{hasAcceptedDelivery ? 'Tempo limite para finalizar no cliente' : 'Sem entrega em andamento'}</span>
+        <strong>{hasAcceptedDelivery ? deadlineRemainingLabel : '--:--'}</strong>
       </section>
 
       {availabilityPromptOpen && (
@@ -2486,7 +2553,7 @@ function CourierHomeView({ city, profile, onLogout }) {
         <article>
           <MapPin size={34} />
           <span>Endereco</span>
-          <strong>{currentDelivery.address}</strong>
+          <strong>{[currentDelivery.address, currentDelivery.complement].filter(Boolean).join(' - ')}</strong>
         </article>
         <article>
           <Navigation size={34} />
@@ -2494,11 +2561,22 @@ function CourierHomeView({ city, profile, onLogout }) {
           <strong>{currentDelivery.district}</strong>
         </article>
         {currentDelivery.locationUrl && (
-          <a className="courier-location-button" href={currentDelivery.locationUrl} target="_blank" rel="noreferrer">Ver localizacao</a>
+          <article>
+            <MapPin size={34} />
+            <span>Localizacao</span>
+            <a className="courier-inline-link" href={currentDelivery.locationUrl} target="_blank" rel="noreferrer">Ver localizacao</a>
+          </article>
+        )}
+        {currentDelivery.storeMessageUrl && (
+          <article>
+            <Mail size={34} />
+            <span>Comunicacao com a loja</span>
+            <a className="courier-inline-link" href={currentDelivery.storeMessageUrl} target="_blank" rel="noreferrer">Enviar mensagem</a>
+          </article>
         )}
         {currentDelivery.status === 'assigned' && (
           <button className="courier-pickup-button" type="button" onClick={confirmPickupAtStore} disabled={deliveryLoading}>
-            Cheguei na loja para pegar o pedido
+            Peguei o pedido.
           </button>
         )}
       </section>

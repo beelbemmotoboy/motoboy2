@@ -188,6 +188,11 @@ create table if not exists public.deliveries (
   courier_id uuid references public.couriers(id),
   pickup_address text,
   delivery_address text not null,
+  delivery_district text,
+  delivery_complement text,
+  customer_latitude numeric(10,7),
+  customer_longitude numeric(10,7),
+  delivery_deadline_at timestamptz,
   status text not null default 'pending',
   distance_km numeric(6,2),
   estimated_minutes integer,
@@ -290,6 +295,11 @@ alter table public.customers add column if not exists created_by uuid references
 alter table public.customers add column if not exists updated_by uuid references auth.users(id);
 alter table public.deliveries add column if not exists created_by uuid references auth.users(id);
 alter table public.deliveries add column if not exists updated_by uuid references auth.users(id);
+alter table public.deliveries add column if not exists delivery_district text;
+alter table public.deliveries add column if not exists delivery_complement text;
+alter table public.deliveries add column if not exists customer_latitude numeric(10,7);
+alter table public.deliveries add column if not exists customer_longitude numeric(10,7);
+alter table public.deliveries add column if not exists delivery_deadline_at timestamptz;
 alter table public.delivery_events add column if not exists created_by uuid references auth.users(id);
 alter table public.delivery_rejections add column if not exists created_by uuid references auth.users(id);
 alter table public.delivery_queue add column if not exists created_by uuid references auth.users(id);
