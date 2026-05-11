@@ -946,6 +946,81 @@ button, a {
   gap: 10px;
 }
 
+.courier-offer-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 62;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(9px);
+}
+
+.courier-offer-panel {
+  width: min(560px, 100%);
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+  padding: 22px;
+  border: 1px solid rgba(117, 39, 245, 0.78);
+  border-radius: 24px;
+  color: #fff;
+  background: radial-gradient(circle at top, rgba(117, 39, 245, 0.24), rgba(8, 8, 8, 0.98) 58%);
+  box-shadow: 0 0 45px rgba(117, 39, 245, 0.42), 0 30px 100px rgba(0, 0, 0, 0.76);
+}
+
+.courier-offer-kicker {
+  margin: 0 0 6px;
+  color: #ffcc00;
+  font-weight: 900;
+}
+
+.courier-offer-panel h2 {
+  margin: 0 0 14px;
+  font-size: clamp(24px, 5vw, 34px);
+}
+
+.courier-offer-details {
+  display: grid;
+  gap: 8px;
+}
+
+.courier-offer-details article {
+  min-height: 54px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.courier-offer-details svg {
+  color: #ffcc00;
+}
+
+.courier-offer-details span {
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.courier-offer-details strong {
+  overflow-wrap: anywhere;
+}
+
+.courier-offer-details .money {
+  color: #15e83a;
+}
+
+.offer-countdown {
+  margin-top: 14px;
+}
+
+.offer-actions {
+  width: 100%;
+}
+
 .store-request-actions {
   display: grid;
   gap: 20px;

@@ -2020,8 +2020,12 @@ function CourierHomeView({ city, profile, onLogout }) {
   const [xpAnimation, setXpAnimation] = React.useState(null);
   const hasPendingOffer = Boolean(currentDelivery.id && currentDelivery.status === 'pending');
   const hasAcceptedDelivery = Boolean(currentDelivery.id && ['assigned', 'picked_up', 'on_route'].includes(currentDelivery.status));
-  const showDeliveryData = hasPendingOffer || hasAcceptedDelivery;
+  const showDeliveryData = hasAcceptedDelivery;
   const countdownLabel = `${String(Math.floor(countdownRemaining / 60)).padStart(2, '0')}:${String(countdownRemaining % 60).padStart(2, '0')}`;
+  const acceptXpPreview = Math.max(0, Number((countdownRemaining * 0.5).toFixed(1)));
+  const formatXpValue = (value) => (
+    Number.isInteger(Number(value)) ? Number(value).toFixed(0) : Number(value).toFixed(1).replace('.', ',')
+  );
 
   const mapDeliveryStatus = (status) => {
     if (status === 'assigned') return 'A caminho da loja';
@@ -2226,7 +2230,7 @@ function CourierHomeView({ city, profile, onLogout }) {
       <section className="courier-xp-grid" aria-label="Resumo de XP">
         <article className="courier-xp-card positive">
           <span>XP</span>
-          <strong>{currentDelivery.xp}</strong>
+          <strong>+{formatXpValue(hasPendingOffer ? acceptXpPreview : 0)}</strong>
         </article>
         <article className="courier-xp-card negative">
           <span>XP</span>
@@ -2244,6 +2248,59 @@ function CourierHomeView({ city, profile, onLogout }) {
               <button type="button" className="secondary-action" onClick={() => confirmAvailability(false)}>Nao</button>
             </span>
           </div>
+        </div>
+      )}
+
+      {hasPendingOffer && (
+        <div className="courier-offer-modal" role="dialog" aria-modal="true" aria-labelledby="courier-offer-title">
+          <section className="courier-offer-panel">
+            <p className="courier-offer-kicker">Nova entrega disponivel</p>
+            <h2 id="courier-offer-title">{currentDelivery.code}</h2>
+            <div className="courier-offer-details">
+              <article>
+                <UserRound size={28} />
+                <span>Cliente</span>
+                <strong>{currentDelivery.customer}</strong>
+              </article>
+              <article>
+                <Store size={28} />
+                <span>Loja</span>
+                <strong>{currentDelivery.store}</strong>
+              </article>
+              <article>
+                <WalletCards size={28} />
+                <span>Taxa</span>
+                <strong className="money">{currentDelivery.fee}</strong>
+              </article>
+              <article>
+                <span className="xp-dot">XP</span>
+                <span>Ao aceitar agora</span>
+                <strong className="xp-value">+{formatXpValue(acceptXpPreview)}</strong>
+              </article>
+              <article>
+                <span className="xp-dot">XP</span>
+                <span>Ao finalizar no prazo</span>
+                <strong className="xp-value">{currentDelivery.xp}</strong>
+              </article>
+            </div>
+            <div className="courier-countdown offer-countdown">
+              <Clock3 size={28} />
+              <strong>{countdownLabel}</strong>
+              <span>Tempo para aceitar</span>
+            </div>
+            <div className="courier-decision-grid offer-actions">
+              <button type="button" className="accept" onClick={acceptDelivery} disabled={deliveryLoading}>
+                <span>&#10003;</span>
+                <strong>Aceitar entrega</strong>
+                <small>{currentDelivery.fee}</small>
+              </button>
+              <button type="button" className="decline" onClick={rejectDelivery} disabled={deliveryLoading}>
+                <span>&#215;</span>
+                <strong>Recusar entrega</strong>
+                <small>({currentDelivery.refusals})</small>
+              </button>
+            </div>
+          </section>
         </div>
       )}
 
@@ -2323,29 +2380,6 @@ function CourierHomeView({ city, profile, onLogout }) {
       )}
 
       {actionMessage && <p className="courier-action-message">{actionMessage}</p>}
-
-      {hasPendingOffer && (
-      <section className="courier-decision-grid">
-        <button type="button" className="accept" onClick={acceptDelivery} disabled={deliveryLoading}>
-          <span>✓</span>
-          <strong>Aceitar entrega</strong>
-          <small>{currentDelivery.fee}</small>
-        </button>
-        <button type="button" className="decline" onClick={rejectDelivery} disabled={deliveryLoading}>
-          <span>×</span>
-          <strong>Recusar entrega</strong>
-          <small>({currentDelivery.refusals})</small>
-        </button>
-      </section>
-      )}
-
-      {hasPendingOffer && (
-      <div className="courier-countdown">
-        <Clock3 size={28} />
-        <strong>{countdownLabel}</strong>
-        <span>Tempo para aceitar</span>
-      </div>
-      )}
 
       <button className="courier-logout" type="button" onClick={onLogout}>
         <LogOut size={18} />Sair

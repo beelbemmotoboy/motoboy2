@@ -24,7 +24,7 @@ export function formatDeliveryForCourier(delivery, queueId = '') {
     store: delivery.stores?.fantasy_name || delivery.stores?.name || 'Loja nao informada',
     fee: formatCurrency(Number(delivery.delivery_fee || 0)),
     numericFee: Number(delivery.delivery_fee || 0),
-    xp: '+250',
+    xp: '+50',
     refusals: '1/3',
     status: delivery.status,
     queueId,
