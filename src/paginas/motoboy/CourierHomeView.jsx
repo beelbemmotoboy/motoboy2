@@ -1,8 +1,8 @@
 import React from 'react';
 import { Bike, Clock3, LogOut, Mail, MapPin, Navigation, Search, Star, Store, UserRound, WalletCards } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
-import { acceptQueuedDelivery, emptyDelivery, getNextDeliveryForCourier, markDeliveryPickedUp, rejectQueuedDelivery, setCourierAvailable } from '../../cadastra_entrega';
-import { awardAcceptXp, awardPickupXp } from '../../xp_motoboy';
+import { acceptQueuedDelivery, emptyDelivery, getNextDeliveryForCourier, markDeliveryDelivered, markDeliveryPickedUp, rejectQueuedDelivery, setCourierAvailable } from '../../cadastra_entrega';
+import { awardAcceptXp, awardOnTimeDeliveryXp, awardPickupXp } from '../../xp_motoboy';
 import { LayoutMotoboy } from '../../layouts/LayoutMotoboy';
 
 function triggerCourierOfferAlert() {
@@ -57,6 +57,7 @@ export function CourierHomeView({ city, profile, onLogout }) {
     todayXp: 0,
   });
   const [xpAnimation, setXpAnimation] = React.useState(null);
+  const [courierCoords, setCourierCoords] = React.useState(null);
   const deliveryPollingRef = React.useRef(false);
   const lastAlertedDeliveryRef = React.useRef('');
   const hasPendingOffer = Boolean(currentDelivery.id && currentDelivery.status === 'pending');
@@ -74,6 +75,67 @@ export function CourierHomeView({ city, profile, onLogout }) {
     if (['picked_up', 'on_route'].includes(status)) return 'A caminho do cliente';
     return 'Aguardando aceite';
   };
+
+  const deliveryMapPoints = React.useMemo(() => {
+    const points = [
+      {
+        key: 'courier',
+        label: 'Voce',
+        detail: mapDeliveryStatus(currentDelivery.status),
+        icon: 'courier',
+        coords: courierCoords,
+        fallback: { x: 36, y: 70 },
+      },
+      {
+        key: 'store',
+        label: 'Loja',
+        detail: currentDelivery.store,
+        icon: 'store',
+        coords: currentDelivery.storeLatitude !== null && currentDelivery.storeLongitude !== null
+          ? { latitude: currentDelivery.storeLatitude, longitude: currentDelivery.storeLongitude }
+          : null,
+        fallback: { x: 64, y: 35 },
+      },
+      {
+        key: 'customer',
+        label: 'Cliente',
+        detail: currentDelivery.customer,
+        icon: 'customer',
+        coords: currentDelivery.customerLatitude !== null && currentDelivery.customerLongitude !== null
+          ? { latitude: currentDelivery.customerLatitude, longitude: currentDelivery.customerLongitude }
+          : null,
+        fallback: { x: 78, y: 68 },
+      },
+    ];
+
+    const locatedPoints = points.filter((point) => point.coords);
+    if (locatedPoints.length < 2) return points.map((point) => ({ ...point, position: point.fallback }));
+
+    const latitudes = locatedPoints.map((point) => point.coords.latitude);
+    const longitudes = locatedPoints.map((point) => point.coords.longitude);
+    const minLat = Math.min(...latitudes);
+    const maxLat = Math.max(...latitudes);
+    const minLng = Math.min(...longitudes);
+    const maxLng = Math.max(...longitudes);
+    const latRange = maxLat - minLat || 0.01;
+    const lngRange = maxLng - minLng || 0.01;
+
+    return points.map((point) => {
+      if (!point.coords) return { ...point, position: point.fallback };
+      return {
+        ...point,
+        position: {
+          x: 12 + ((point.coords.longitude - minLng) / lngRange) * 76,
+          y: 18 + ((maxLat - point.coords.latitude) / latRange) * 64,
+        },
+      };
+    });
+  }, [courierCoords, currentDelivery.customer, currentDelivery.customerLatitude, currentDelivery.customerLongitude, currentDelivery.status, currentDelivery.store, currentDelivery.storeLatitude, currentDelivery.storeLongitude]);
+
+  const routePoints = deliveryMapPoints
+    .filter((point) => point.position)
+    .map((point) => `${point.position.x},${point.position.y}`)
+    .join(' ');
 
   const loadCurrentDelivery = React.useCallback(async ({ silent = false } = {}) => {
     if (!supabase || !profile?.courier_id || !city?.id) return;
@@ -268,6 +330,28 @@ export function CourierHomeView({ city, profile, onLogout }) {
     };
   }, [city?.id, courierAvailable, hasAcceptedDelivery, hasPendingOffer, loadCurrentDelivery, profile?.courier_id]);
 
+  React.useEffect(() => {
+    if (!hasAcceptedDelivery || !navigator.geolocation) return undefined;
+
+    let stopped = false;
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        if (stopped) return;
+        setCourierCoords({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+      },
+      () => undefined,
+      { enableHighAccuracy: true, maximumAge: 15000, timeout: 10000 },
+    );
+
+    return () => {
+      stopped = true;
+      navigator.geolocation.clearWatch(watchId);
+    };
+  }, [hasAcceptedDelivery]);
+
   async function acceptDelivery() {
     if (!currentDelivery.id || !profile?.courier_id || !supabase) {
       setActionMessage('Nenhuma entrega disponivel para aceitar.');
@@ -320,6 +404,36 @@ export function CourierHomeView({ city, profile, onLogout }) {
       setXpAnimation(`+${xpGained} XP`);
       setTimeout(() => setXpAnimation(null), 3000);
       setActionMessage(`Pedido retirado na loja. +${xpGained} XP`);
+      loadCurrentDelivery();
+    } catch (error) {
+      setActionMessage(error.message);
+    } finally {
+      setDeliveryLoading(false);
+    }
+  }
+
+  async function confirmDeliveryFinished() {
+    if (!currentDelivery.id || !profile?.courier_id || !supabase) {
+      setActionMessage('Nenhuma entrega em andamento para finalizar.');
+      return;
+    }
+
+    setActionMessage('');
+    setDeliveryLoading(true);
+    try {
+      await markDeliveryDelivered({ supabase, cityId: city.id, delivery: currentDelivery, courierId: profile.courier_id, courierName });
+      const xpGained = await awardOnTimeDeliveryXp({ supabase, courierId: profile.courier_id, deliveryId: currentDelivery.id, cityId: city.id });
+      setCourierPoints((current) => Number(current || 0) + xpGained);
+      setCourierStats((current) => ({
+        ...current,
+        todayXp: Number(current.todayXp || 0) + xpGained,
+        todayDeliveries: Number(current.todayDeliveries || 0) + 1,
+      }));
+      setCourierAvailableState(true);
+      setXpAnimation(`+${xpGained} XP`);
+      setTimeout(() => setXpAnimation(null), 3000);
+      setActionMessage(`Entrega finalizada. +${xpGained} XP`);
+      setCurrentDelivery(emptyDelivery());
       loadCurrentDelivery();
     } catch (error) {
       setActionMessage(error.message);
@@ -502,21 +616,27 @@ export function CourierHomeView({ city, profile, onLogout }) {
         <span className="courier-map-street street-a">R. Silva Jatahy</span>
         <span className="courier-map-street street-b">Av. Santos Dumont</span>
         <span className="courier-map-street street-c">Av. Sen. Virgilio Tavora</span>
-        <div className="courier-route-line" />
-        <div className="courier-position-pin">
-          <Bike size={33} />
-        </div>
-        <div className="courier-destination-pin">
-          <MapPin size={52} />
-        </div>
-        <article className="courier-map-callout you">
-          <strong>Voce</strong>
-          <span>{mapDeliveryStatus(currentDelivery.status)}</span>
-        </article>
-        <article className="courier-map-callout destiny">
-          <strong>Destino</strong>
-          <span>{currentDelivery.store}</span>
-        </article>
+        <svg className="courier-map-route-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          <polyline points={routePoints} />
+        </svg>
+        {deliveryMapPoints.map((point) => (
+          <React.Fragment key={point.key}>
+            <div
+              className={`courier-map-pin ${point.key}`}
+              style={{ left: `${point.position.x}%`, top: `${point.position.y}%` }}
+              title={point.label}
+            >
+              {point.icon === 'courier' ? <Bike size={27} /> : point.icon === 'store' ? <Store size={25} /> : <MapPin size={27} />}
+            </div>
+            <article
+              className={`courier-map-callout ${point.key}`}
+              style={{ left: `${Math.min(78, Math.max(4, point.position.x + 3))}%`, top: `${Math.min(78, Math.max(4, point.position.y - 5))}%` }}
+            >
+              <strong>{point.label}</strong>
+              <span>{point.detail}</span>
+            </article>
+          </React.Fragment>
+        ))}
         <div className="courier-map-actions">
           <button type="button" aria-label="Pesquisar"><Search size={31} /></button>
           <button type="button" aria-label="Minha localizacao"><Navigation size={28} /></button>
@@ -567,6 +687,11 @@ export function CourierHomeView({ city, profile, onLogout }) {
         {currentDelivery.status === 'assigned' && (
           <button className="courier-pickup-button" type="button" onClick={confirmPickupAtStore} disabled={deliveryLoading}>
             Peguei o pedido.
+          </button>
+        )}
+        {['picked_up', 'on_route'].includes(currentDelivery.status) && (
+          <button className="courier-finish-button" type="button" onClick={confirmDeliveryFinished} disabled={deliveryLoading}>
+            Entrega finalizada.
           </button>
         )}
       </section>

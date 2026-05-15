@@ -16,6 +16,9 @@ export function emptyDelivery() {
     estimatedMinutes: null,
     customerLatitude: null,
     customerLongitude: null,
+    storeLatitude: null,
+    storeLongitude: null,
+    storeAddress: '',
     locationUrl: '',
     storeWhatsapp: '',
     storeMessageUrl: '',
@@ -32,6 +35,13 @@ export function formatDeliveryForCourier(delivery, queueId = '') {
   const deliveryComplement = delivery.delivery_complement || '';
   const customerLatitude = parseNullableNumber(delivery.customer_latitude);
   const customerLongitude = parseNullableNumber(delivery.customer_longitude);
+  const storeLatitude = parseNullableNumber(delivery.stores?.latitude);
+  const storeLongitude = parseNullableNumber(delivery.stores?.longitude);
+  const storeAddress = [
+    delivery.stores?.address,
+    delivery.stores?.address_number,
+    delivery.stores?.district,
+  ].filter(Boolean).join(', ');
   const storeWhatsapp = delivery.stores?.whatsapp || '';
   const locationUrl = customerLatitude !== null && customerLongitude !== null
     ? `https://www.google.com/maps/search/?api=1&query=${customerLatitude},${customerLongitude}`
@@ -54,6 +64,9 @@ export function formatDeliveryForCourier(delivery, queueId = '') {
     estimatedMinutes: delivery.estimated_minutes ?? null,
     customerLatitude,
     customerLongitude,
+    storeLatitude,
+    storeLongitude,
+    storeAddress,
     locationUrl,
     storeWhatsapp,
     storeMessageUrl: buildStoreMessageUrl(storeWhatsapp, delivery),
@@ -172,7 +185,7 @@ export async function buildDeliveryQueue({ supabase, cityId, deliveryId }) {
 export async function getNextDeliveryForCourier({ supabase, cityId, courierId }) {
   if (!supabase || !cityId || !courierId) return emptyDelivery();
 
-  const baseSelect = 'id, order_code, delivery_address, delivery_district, delivery_complement, customer_latitude, customer_longitude, delivery_deadline_at, estimated_minutes, delivery_fee, status, created_at, customers(name, address), stores(name, fantasy_name, whatsapp)';
+  const baseSelect = 'id, order_code, delivery_address, delivery_district, delivery_complement, customer_latitude, customer_longitude, delivery_deadline_at, estimated_minutes, delivery_fee, status, created_at, customers(name, address), stores(name, fantasy_name, whatsapp, address, address_number, district, latitude, longitude)';
   const { data: assignedData, error: assignedError } = await supabase
     .from('deliveries')
     .select(baseSelect)
@@ -186,7 +199,7 @@ export async function getNextDeliveryForCourier({ supabase, cityId, courierId })
 
   const { data: queueRows, error: queueError } = await supabase
     .from('delivery_queue')
-    .select('id, delivery_id, queue_position, offered_at, deliveries!inner(id, order_code, delivery_address, delivery_district, delivery_complement, customer_latitude, customer_longitude, delivery_deadline_at, estimated_minutes, delivery_fee, status, created_at, customers(name, address), stores(name, fantasy_name, whatsapp))')
+    .select('id, delivery_id, queue_position, offered_at, deliveries!inner(id, order_code, delivery_address, delivery_district, delivery_complement, customer_latitude, customer_longitude, delivery_deadline_at, estimated_minutes, delivery_fee, status, created_at, customers(name, address), stores(name, fantasy_name, whatsapp, address, address_number, district, latitude, longitude))')
     .eq('city_id', cityId)
     .eq('courier_id', courierId)
     .eq('status', 'waiting')
@@ -278,6 +291,30 @@ export async function markDeliveryPickedUp({ supabase, cityId, delivery, courier
     status: 'picked_up',
     note: `${courierName} retirou o pedido na loja.`,
   });
+}
+
+export async function markDeliveryDelivered({ supabase, cityId, delivery, courierId, courierName }) {
+  if (!delivery?.id || !courierId) throw new Error('Nenhuma entrega em andamento para finalizar.');
+
+  const { error } = await supabase
+    .from('deliveries')
+    .update({ status: 'delivered', delivered_at: new Date().toISOString() })
+    .eq('id', delivery.id)
+    .eq('courier_id', courierId)
+    .in('status', ['picked_up', 'on_route'])
+    .select('id')
+    .single();
+
+  if (error) throw new Error(`Nao foi possivel finalizar a entrega: ${error.message}`);
+
+  await supabase.from('delivery_events').insert({
+    city_id: cityId,
+    delivery_id: delivery.id,
+    status: 'delivered',
+    note: `${courierName} finalizou a entrega.`,
+  });
+
+  await supabase.from('couriers').update({ availability_status: 'available', available: true }).eq('id', courierId);
 }
 
 export async function rejectQueuedDelivery({ supabase, cityId, delivery, courierId, courierName }) {

@@ -1675,6 +1675,55 @@ button, a {
   filter: drop-shadow(0 0 8px rgba(255, 204, 0, 0.8));
 }
 
+.courier-map-route-svg {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.courier-map-route-svg polyline {
+  fill: none;
+  stroke: #ffcc00;
+  stroke-width: 0.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 2 1.6;
+  filter: drop-shadow(0 0 6px rgba(255, 204, 0, 0.85));
+}
+
+.courier-map-pin {
+  position: absolute;
+  z-index: 6;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  transform: translate(-50%, -50%);
+  color: #050505;
+  border: 2px solid rgba(255, 255, 255, 0.72);
+}
+
+.courier-map-pin.courier {
+  background: #ffcc00;
+  box-shadow: 0 0 0 14px rgba(255, 204, 0, 0.16), 0 0 24px rgba(255, 204, 0, 0.56);
+}
+
+.courier-map-pin.store {
+  color: #fff;
+  background: #6f37ff;
+  box-shadow: 0 0 0 12px rgba(111, 55, 255, 0.18), 0 0 22px rgba(111, 55, 255, 0.58);
+}
+
+.courier-map-pin.customer {
+  color: #fff;
+  background: #ff3039;
+  box-shadow: 0 0 0 12px rgba(255, 48, 57, 0.16), 0 0 22px rgba(255, 48, 57, 0.54);
+}
+
 .courier-position-pin {
   position: absolute;
   left: 35%;
@@ -1732,6 +1781,22 @@ button, a {
 .courier-map-callout.destiny {
   right: 7%;
   top: 26%;
+}
+
+.courier-map-callout.courier,
+.courier-map-callout.store,
+.courier-map-callout.customer {
+  right: auto;
+  bottom: auto;
+  transform: translateY(-50%);
+}
+
+.courier-map-callout.store {
+  border-color: rgba(111, 55, 255, 0.56);
+}
+
+.courier-map-callout.customer {
+  border-color: rgba(255, 48, 57, 0.56);
 }
 
 .courier-map-actions {
@@ -1877,7 +1942,8 @@ button, a {
 }
 
 .courier-location-button,
-.courier-pickup-button {
+.courier-pickup-button,
+.courier-finish-button {
   width: 100%;
   min-height: 48px;
   margin-top: 12px;
@@ -1908,7 +1974,14 @@ button, a {
   box-shadow: 0 0 24px rgba(255, 204, 0, 0.26);
 }
 
-.courier-pickup-button:disabled {
+.courier-finish-button {
+  color: #021108;
+  background: linear-gradient(135deg, #18f052, #0fbf3f);
+  box-shadow: 0 0 24px rgba(24, 240, 82, 0.26);
+}
+
+.courier-pickup-button:disabled,
+.courier-finish-button:disabled {
   opacity: 0.72;
 }
 
