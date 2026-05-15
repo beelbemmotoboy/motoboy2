@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, Bike, CalendarDays, Camera, Clock3, MapPin, Navigation, PencilLine, Plus, Search, ShieldCheck, Star, Store, UserRound, WalletCards } from 'lucide-react';
+import { AlertTriangle, Bike, CalendarDays, Camera, Clock3, MapPin, Minus, Navigation, PencilLine, Plus, Search, ShieldCheck, Star, Store, UserRound, WalletCards } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { isValidCep, isValidCnpj, isValidCpf, isValidEmail, isValidPhone, maskCep, maskCnpj, maskCpf, maskPhone, onlyDigits, passwordStrength, validateAccessUserForm, validateCourierForm, validateStoreForm } from '../../utils/validators';
 
