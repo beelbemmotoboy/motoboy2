@@ -1,5 +1,6 @@
 import { onlyDigits } from './utils/validators.js';
 import { selecionar_entregas_compativeis_para_motoboy } from './regras_agrupamento_entregas.js';
+import { parseValorMonetarioPedidoLoja } from './ValidaPedidoLoja.js';
 
 const DELIVERY_RULES_SELECT = 'id, city_id, order_code, store_id, customer_id, courier_id, pickup_address, delivery_address, delivery_district, delivery_complement, customer_latitude, customer_longitude, delivery_deadline_at, estimated_minutes, delivery_fee, status, created_at, customers(id, name, phone, address), stores(id, name, fantasy_name, whatsapp, address, address_number, district, latitude, longitude)';
 
@@ -112,7 +113,7 @@ export async function createDeliveryWithQueue({ supabase, city, store, requestFo
 
   if (customerError) throw new Error(`Nao foi possivel cadastrar o cliente: ${customerError.message}`);
 
-  const deliveryFee = Number(String(requestForm.deliveryFee).replace(',', '.')) || 0;
+  const deliveryFee = parseValorMonetarioPedidoLoja(requestForm.deliveryFee) || 0;
   const { data: delivery, error: deliveryError } = await supabase
     .from('deliveries')
     .insert({

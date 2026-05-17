@@ -1,9 +1,14 @@
 const MINUTOS_MINIMOS_HORARIO_PREVISTO = 10;
 const MINUTOS_MAXIMOS_HORARIO_PREVISTO = 180;
+const VALOR_MINIMO_ENTREGA = 5;
+const VALOR_MAXIMO_ENTREGA = 100;
 
 export function validarPedidoLoja(pedido, agora = new Date()) {
   const validacaoHorario = validarHorarioPrevistoPedidoLoja(pedido?.estimatedTime, agora);
   if (!validacaoHorario.valido) return validacaoHorario;
+
+  const validacaoTaxa = validarTaxaEntregaPedidoLoja(pedido?.deliveryFee);
+  if (!validacaoTaxa.valido) return validacaoTaxa;
 
   return { valido: true, motivo: '', campo: '' };
 }
@@ -53,4 +58,40 @@ export function validarHorarioPrevistoPedidoLoja(horarioPrevisto, agora = new Da
   }
 
   return { valido: true, motivo: '', campo: 'estimatedTime' };
+}
+
+export function validarTaxaEntregaPedidoLoja(taxaEntrega) {
+  const valor = parseValorMonetarioPedidoLoja(taxaEntrega);
+  if (valor === null) {
+    return {
+      valido: false,
+      campo: 'deliveryFee',
+      motivo: 'Informe o valor da entrega.',
+    };
+  }
+
+  if (valor < VALOR_MINIMO_ENTREGA) {
+    return {
+      valido: false,
+      campo: 'deliveryFee',
+      motivo: 'Valor da entrega nao pode ser menor que R$ 5,00.',
+    };
+  }
+
+  if (valor > VALOR_MAXIMO_ENTREGA) {
+    return {
+      valido: false,
+      campo: 'deliveryFee',
+      motivo: 'Valor da entrega nao pode ser maior que R$ 100,00.',
+    };
+  }
+
+  return { valido: true, motivo: '', campo: 'deliveryFee' };
+}
+
+export function parseValorMonetarioPedidoLoja(valor) {
+  const texto = String(valor || '').replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.');
+  if (!texto) return null;
+  const numero = Number(texto);
+  return Number.isFinite(numero) ? numero : null;
 }

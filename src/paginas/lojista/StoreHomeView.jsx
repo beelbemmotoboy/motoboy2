@@ -4,7 +4,7 @@ import { supabase } from '../../supabaseClient';
 import { createDeliveryWithQueue } from '../../cadastra_entrega';
 import { isValidCep, isValidEmail, isValidPhone, maskCep, maskCnpj, maskPhone, onlyDigits } from '../../utils/validators';
 import { LayoutLojista } from '../../layouts/LayoutLojista';
-import { validarHorarioPrevistoPedidoLoja, validarPedidoLoja } from '../../ValidaPedidoLoja';
+import { validarHorarioPrevistoPedidoLoja, validarPedidoLoja, validarTaxaEntregaPedidoLoja } from '../../ValidaPedidoLoja';
 
 function formatCurrency(value) {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -14,6 +14,12 @@ function maskDeliveryTime(value) {
   const digits = onlyDigits(value).slice(0, 4);
   if (digits.length <= 2) return digits;
   return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+}
+
+function maskDeliveryFee(value) {
+  const digits = onlyDigits(value).slice(0, 5);
+  const amount = Number(digits || 0) / 100;
+  return amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
 export function StoreHomeView({ city, store, profile, onLogout }) {
@@ -272,6 +278,16 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     return true;
   }
 
+  function validateDeliveryFeeField() {
+    const validation = validarTaxaEntregaPedidoLoja(requestForm.deliveryFee);
+    if (!validation.valido) {
+      setRequestMessage(validation.motivo);
+      return false;
+    }
+    setRequestMessage('');
+    return true;
+  }
+
   async function createDeliveryRequest(event) {
     event.preventDefault();
     setRequestMessage('');
@@ -347,7 +363,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
             </label>
             <label className="request-field">
               <span>Taxa da entrega</span>
-              <span className="request-input"><WalletCards size={20} /><input inputMode="decimal" value={requestForm.deliveryFee} onChange={(event) => setRequestForm((current) => ({ ...current, deliveryFee: event.target.value }))} placeholder="18,50" /></span>
+              <span className="request-input"><WalletCards size={20} /><input inputMode="numeric" value={requestForm.deliveryFee} onBlur={validateDeliveryFeeField} onChange={(event) => setRequestForm((current) => ({ ...current, deliveryFee: maskDeliveryFee(event.target.value) }))} placeholder="R$ 18,50" /></span>
             </label>
           </div>
         </section>
