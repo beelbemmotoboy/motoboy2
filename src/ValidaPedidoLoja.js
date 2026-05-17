@@ -17,8 +17,8 @@ export function validarHorarioPrevistoPedidoLoja(horarioPrevisto, agora = new Da
   const horario = String(horarioPrevisto || '').trim();
   if (!horario) return { valido: true, motivo: '', campo: 'estimatedTime' };
 
-  const partes = horario.match(/^(\d{2}):(\d{2})$/);
-  if (!partes) {
+  const dataPrevista = calcularDataHorarioPrevistoPedidoLoja(horario, agora);
+  if (!dataPrevista) {
     return {
       valido: false,
       campo: 'estimatedTime',
@@ -26,9 +26,8 @@ export function validarHorarioPrevistoPedidoLoja(horarioPrevisto, agora = new Da
     };
   }
 
-  const horas = Number(partes[1]);
-  const minutos = Number(partes[2]);
-  if (horas > 23 || minutos > 59) {
+  const diferencaMinutos = calcularMinutosAteHorarioPrevistoPedidoLoja(horario, agora);
+  if (diferencaMinutos === null) {
     return {
       valido: false,
       campo: 'estimatedTime',
@@ -36,11 +35,6 @@ export function validarHorarioPrevistoPedidoLoja(horarioPrevisto, agora = new Da
     };
   }
 
-  const dataPrevista = new Date(agora);
-  dataPrevista.setHours(horas, minutos, 0, 0);
-  if (dataPrevista < agora) dataPrevista.setDate(dataPrevista.getDate() + 1);
-
-  const diferencaMinutos = (dataPrevista.getTime() - agora.getTime()) / 60000;
   if (diferencaMinutos < MINUTOS_MINIMOS_HORARIO_PREVISTO) {
     return {
       valido: false,
@@ -58,6 +52,26 @@ export function validarHorarioPrevistoPedidoLoja(horarioPrevisto, agora = new Da
   }
 
   return { valido: true, motivo: '', campo: 'estimatedTime' };
+}
+
+export function calcularMinutosAteHorarioPrevistoPedidoLoja(horarioPrevisto, agora = new Date()) {
+  const dataPrevista = calcularDataHorarioPrevistoPedidoLoja(horarioPrevisto, agora);
+  if (!dataPrevista) return null;
+  return Math.max(0, Math.round((dataPrevista.getTime() - agora.getTime()) / 60000));
+}
+
+function calcularDataHorarioPrevistoPedidoLoja(horarioPrevisto, agora = new Date()) {
+  const partes = String(horarioPrevisto || '').trim().match(/^(\d{2}):(\d{2})$/);
+  if (!partes) return null;
+
+  const horas = Number(partes[1]);
+  const minutos = Number(partes[2]);
+  if (horas > 23 || minutos > 59) return null;
+
+  const dataPrevista = new Date(agora);
+  dataPrevista.setHours(horas, minutos, 0, 0);
+  if (dataPrevista < agora) dataPrevista.setDate(dataPrevista.getDate() + 1);
+  return dataPrevista;
 }
 
 export function validarTaxaEntregaPedidoLoja(taxaEntrega) {

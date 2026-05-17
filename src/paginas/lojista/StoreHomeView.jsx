@@ -4,7 +4,7 @@ import { supabase } from '../../supabaseClient';
 import { createDeliveryWithQueue } from '../../cadastra_entrega';
 import { isValidCep, isValidEmail, isValidPhone, maskCep, maskCnpj, maskPhone, onlyDigits } from '../../utils/validators';
 import { LayoutLojista } from '../../layouts/LayoutLojista';
-import { validarHorarioPrevistoPedidoLoja, validarPedidoLoja, validarTaxaEntregaPedidoLoja } from '../../ValidaPedidoLoja';
+import { calcularMinutosAteHorarioPrevistoPedidoLoja, validarHorarioPrevistoPedidoLoja, validarPedidoLoja, validarTaxaEntregaPedidoLoja } from '../../ValidaPedidoLoja';
 
 function formatCurrency(value) {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -63,11 +63,12 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     deliveryAddress: '',
     deliveryDistrict: '',
     deliveryComplement: '',
-    estimatedMinutes: '45',
+    estimatedMinutes: '',
     estimatedTime: '',
     customerLocationUrl: '',
     deliveryFee: '',
   });
+
   const deliveryStats = [
     { label: 'A caminho da loja', value: '01', tone: 'green', icon: <Bike size={32} /> },
     { label: 'A caminho do cliente', value: '00', tone: 'yellow', icon: <Bike size={32} /> },
@@ -255,7 +256,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
       deliveryAddress: '',
       deliveryDistrict: '',
       deliveryComplement: '',
-      estimatedMinutes: '45',
+      estimatedMinutes: '',
       estimatedTime: '',
       customerLocationUrl: '',
       deliveryFee: '',
@@ -305,6 +306,11 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
       setRequestMessage(validation.motivo);
       return;
     }
+    const calculatedMinutes = calcularMinutosAteHorarioPrevistoPedidoLoja(requestForm.estimatedTime);
+    const requestPayload = {
+      ...requestForm,
+      estimatedMinutes: calculatedMinutes === null ? requestForm.estimatedMinutes : String(calculatedMinutes),
+    };
     if (!supabase) {
       setRequestMessage('Supabase nao disponivel nesta sessao.');
       return;
@@ -312,7 +318,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
 
     setRequestSaving(true);
     try {
-      const { queuedCount } = await createDeliveryWithQueue({ supabase, city, store, requestForm });
+      const { queuedCount } = await createDeliveryWithQueue({ supabase, city, store, requestForm: requestPayload });
       setRequestMessage(
         queuedCount > 0
           ? `Entrega criada e enviada para ${queuedCount} motoboy(s) na fila.`
@@ -359,7 +365,11 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
             </label>
             <label className="request-field">
               <span>Horario previsto</span>
-              <span className="request-input"><Clock3 size={20} /><input inputMode="numeric" maxLength={5} placeholder="00:00" value={requestForm.estimatedTime} onBlur={validateEstimatedTimeField} onChange={(event) => setRequestForm((current) => ({ ...current, estimatedTime: maskDeliveryTime(event.target.value) }))} /></span>
+              <span className="request-input"><Clock3 size={20} /><input inputMode="numeric" maxLength={5} placeholder="00:00" value={requestForm.estimatedTime} onBlur={validateEstimatedTimeField} onChange={(event) => setRequestForm((current) => {
+                const nextTime = maskDeliveryTime(event.target.value);
+                const calculatedMinutes = calcularMinutosAteHorarioPrevistoPedidoLoja(nextTime);
+                return { ...current, estimatedTime: nextTime, estimatedMinutes: calculatedMinutes === null ? '' : String(calculatedMinutes) };
+              })} /></span>
             </label>
             <label className="request-field">
               <span>Taxa da entrega</span>
@@ -385,7 +395,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
             </label>
             <label className="request-field">
               <span>Tempo limite ate o cliente (min)</span>
-              <span className="request-input"><Clock3 size={20} /><input inputMode="numeric" value={requestForm.estimatedMinutes} onChange={(event) => setRequestForm((current) => ({ ...current, estimatedMinutes: event.target.value }))} /></span>
+              <span className="request-input"><Clock3 size={20} /><input inputMode="numeric" value={requestForm.estimatedMinutes} disabled readOnly placeholder="Calculado pelo horario" /></span>
             </label>
             <label className="request-field wide">
               <span>Link da localizacao do cliente</span>
