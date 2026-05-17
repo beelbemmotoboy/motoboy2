@@ -1,12 +1,105 @@
 import React from 'react';
 import { Bike, Clock3, LogOut, Mail, MapPin, Navigation, Search, Star, Store, UserRound, WalletCards } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
-import { acceptQueuedDelivery, emptyDelivery, getNextDeliveryForCourier, markDeliveryDelivered, markDeliveryPickedUp, rejectQueuedDelivery, setCourierAvailable } from '../../cadastra_entrega';
+import { acceptQueuedDelivery, avaliarEntregasCompativeisParaMotoboy, emptyDelivery, getNextDeliveryForCourier, markDeliveryDelivered, markDeliveryPickedUp, rejectQueuedDelivery, setCourierAvailable, updateCourierLocation } from '../../cadastra_entrega';
 import { awardAcceptXp, awardOnTimeDeliveryXp, awardPickupXp } from '../../xp_motoboy';
 import { LayoutMotoboy } from '../../layouts/LayoutMotoboy';
 
-function triggerCourierOfferAlert() {
+const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || '';
+
+function base64UrlToUint8Array(value) {
+  const padding = '='.repeat((4 - (value.length % 4)) % 4);
+  const base64 = `${value}${padding}`.replace(/-/g, '+').replace(/_/g, '/');
+  const raw = window.atob(base64);
+  return Uint8Array.from([...raw].map((char) => char.charCodeAt(0)));
+}
+
+async function requestCourierNotificationPermission() {
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    return 'unsupported';
+  }
+
+  if (Notification.permission === 'default') {
+    return Notification.requestPermission();
+  }
+
+  return Notification.permission;
+}
+
+async function subscribeCourierPush({ supabase, courierId }) {
+  if (!supabase || !courierId || typeof window === 'undefined') return { ok: false, reason: 'missing-context' };
+  if (!('serviceWorker' in navigator) || !('PushManager' in window) || !VAPID_PUBLIC_KEY) {
+    return { ok: false, reason: 'unsupported' };
+  }
+  if (!('Notification' in window) || Notification.permission !== 'granted') {
+    return { ok: false, reason: 'permission' };
+  }
+
+  const registration = await navigator.serviceWorker.ready;
+  let subscription = await registration.pushManager.getSubscription();
+  if (!subscription) {
+    subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: base64UrlToUint8Array(VAPID_PUBLIC_KEY),
+    });
+  }
+
+  const payload = subscription.toJSON();
+  const { error } = await supabase
+    .from('courier_push_subscriptions')
+    .upsert({
+      courier_id: courierId,
+      endpoint: payload.endpoint,
+      p256dh: payload.keys?.p256dh,
+      auth: payload.keys?.auth,
+      user_agent: navigator.userAgent,
+      active: true,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'endpoint' });
+
+  if (error) return { ok: false, reason: error.message };
+  return { ok: true };
+}
+
+async function showCourierOfferNotification(delivery) {
+  if (typeof window === 'undefined' || !('Notification' in window) || Notification.permission !== 'granted') {
+    return;
+  }
+
+  const title = 'Nova entrega disponivel';
+  const body = [
+    delivery?.code,
+    delivery?.store ? `Loja: ${delivery.store}` : '',
+    delivery?.fee ? `Taxa: ${delivery.fee}` : '',
+  ].filter(Boolean).join(' - ');
+  const options = {
+    body: body || 'Abra o app para aceitar ou recusar o pedido.',
+    icon: '/beelbem-icon.png',
+    badge: '/beelbem-icon.png',
+    tag: `delivery-offer-${delivery?.id || 'new'}`,
+    renotify: true,
+    requireInteraction: true,
+    vibrate: [450, 160, 450, 160, 700],
+    data: { url: '/#login' },
+  };
+
+  try {
+    if ('serviceWorker' in navigator) {
+      const registration = await navigator.serviceWorker.ready;
+      await registration.showNotification(title, options);
+      return;
+    }
+
+    new Notification(title, options);
+  } catch {
+    // Notification support varies on mobile browsers; the in-page alert still runs below.
+  }
+}
+
+function triggerCourierOfferAlert(delivery) {
   if (typeof window === 'undefined') return;
+
+  showCourierOfferNotification(delivery);
 
   if (navigator.vibrate) {
     navigator.vibrate([450, 160, 450, 160, 700]);
@@ -37,6 +130,22 @@ function triggerCourierOfferAlert() {
   }
 }
 
+function formatCurrencyDisplay(value) {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value || 0));
+}
+
+function formatDistanceDisplay(value) {
+  const distance = Number(value);
+  if (!Number.isFinite(distance)) return '-- km';
+  return `${distance.toFixed(1).replace('.', ',')} km`;
+}
+
+function formatMinutesDisplay(value) {
+  const minutes = Number(value);
+  if (!Number.isFinite(minutes)) return '-- min';
+  return `${Math.max(0, Math.round(minutes))} min`;
+}
+
 export function CourierHomeView({ city, profile, onLogout }) {
   const [courierName, setCourierName] = React.useState(profile?.name || 'Motoboy');
   const [courierPoints, setCourierPoints] = React.useState(0);
@@ -47,8 +156,13 @@ export function CourierHomeView({ city, profile, onLogout }) {
   const [scoreModalOpen, setScoreModalOpen] = React.useState(false);
   const [availabilityPromptOpen, setAvailabilityPromptOpen] = React.useState(true);
   const [currentDelivery, setCurrentDelivery] = React.useState(emptyDelivery());
+  const [compatibleOffer, setCompatibleOffer] = React.useState(null);
+  const [compatibleOfferCountdown, setCompatibleOfferCountdown] = React.useState(50);
   const [deliveryLoading, setDeliveryLoading] = React.useState(false);
   const [actionMessage, setActionMessage] = React.useState('');
+  const [notificationPermission, setNotificationPermission] = React.useState(() => (
+    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'unsupported'
+  ));
   const [courierAvailable, setCourierAvailableState] = React.useState(profile?.availabilityStatus === 'available');
   const [courierStats, setCourierStats] = React.useState({
     onlineCouriers: 0,
@@ -59,11 +173,15 @@ export function CourierHomeView({ city, profile, onLogout }) {
   const [xpAnimation, setXpAnimation] = React.useState(null);
   const [courierCoords, setCourierCoords] = React.useState(null);
   const deliveryPollingRef = React.useRef(false);
+  const lastLocationSyncRef = React.useRef(0);
   const lastAlertedDeliveryRef = React.useRef('');
+  const compatibleOfferDismissedRef = React.useRef(new Set());
+  const compatibleOfferLoadingRef = React.useRef(false);
   const hasPendingOffer = Boolean(currentDelivery.id && currentDelivery.status === 'pending');
   const hasAcceptedDelivery = Boolean(currentDelivery.id && ['assigned', 'picked_up', 'on_route'].includes(currentDelivery.status));
   const showDeliveryData = hasAcceptedDelivery;
   const countdownLabel = `${String(Math.floor(countdownRemaining / 60)).padStart(2, '0')}:${String(countdownRemaining % 60).padStart(2, '0')}`;
+  const compatibleOfferCountdownLabel = `${String(Math.floor(compatibleOfferCountdown / 60)).padStart(2, '0')}:${String(compatibleOfferCountdown % 60).padStart(2, '0')}`;
   const courierLevel = Math.max(1, Math.floor(Number(courierPoints || 0) / 500) + 1);
   const courierStars = Math.min(5, Math.max(1, Math.floor(Number(courierPoints || 0) / 250) + 1));
   const formatXpValue = (value) => (
@@ -285,8 +403,75 @@ export function CourierHomeView({ city, profile, onLogout }) {
     if (!hasPendingOffer || !currentDelivery.id) return;
     if (lastAlertedDeliveryRef.current === currentDelivery.id) return;
     lastAlertedDeliveryRef.current = currentDelivery.id;
-    triggerCourierOfferAlert();
+    triggerCourierOfferAlert(currentDelivery);
   }, [currentDelivery.id, hasPendingOffer]);
+
+  React.useEffect(() => {
+    if (!compatibleOffer) {
+      setCompatibleOfferCountdown(acceptTimeoutSeconds);
+      return undefined;
+    }
+
+    function updateCompatibleOfferCountdown() {
+      const offeredAt = compatibleOffer.offeredAt || Date.now();
+      const elapsedSeconds = Math.max(0, Math.floor((Date.now() - offeredAt) / 1000));
+      setCompatibleOfferCountdown(Math.max(0, acceptTimeoutSeconds - elapsedSeconds));
+    }
+
+    updateCompatibleOfferCountdown();
+    const intervalId = window.setInterval(updateCompatibleOfferCountdown, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [acceptTimeoutSeconds, compatibleOffer]);
+
+  React.useEffect(() => {
+    if (compatibleOfferCountdown > 0 || !compatibleOffer?.id) return;
+    compatibleOfferDismissedRef.current.add(compatibleOffer.id);
+    setCompatibleOffer(null);
+  }, [compatibleOfferCountdown, compatibleOffer]);
+
+  React.useEffect(() => {
+    if (!supabase || !profile?.courier_id || !city?.id || !hasAcceptedDelivery || hasPendingOffer) {
+      setCompatibleOffer(null);
+      return undefined;
+    }
+
+    let stopped = false;
+    async function refreshCompatibleOffer() {
+      if (stopped || compatibleOfferLoadingRef.current) return;
+      compatibleOfferLoadingRef.current = true;
+      try {
+        const avaliacao = await avaliarEntregasCompativeisParaMotoboy({
+          supabase,
+          cityId: city.id,
+          courierId: profile.courier_id,
+          localizacaoAtualMotoboy: courierCoords,
+        });
+        if (stopped) return;
+        const nextOffer = avaliacao.corridas_compativeis
+          ?.find((item) => item?.corrida?.id && !compatibleOfferDismissedRef.current.has(item.corrida.id));
+        setCompatibleOffer((current) => {
+          if (!nextOffer) return null;
+          const nextId = nextOffer.corrida.id;
+          return {
+            ...nextOffer,
+            id: nextId,
+            offeredAt: current?.id === nextId ? current.offeredAt : Date.now(),
+          };
+        });
+      } catch {
+        if (!stopped) setCompatibleOffer(null);
+      } finally {
+        compatibleOfferLoadingRef.current = false;
+      }
+    }
+
+    refreshCompatibleOffer();
+    const intervalId = window.setInterval(refreshCompatibleOffer, 10000);
+    return () => {
+      stopped = true;
+      window.clearInterval(intervalId);
+    };
+  }, [city?.id, courierCoords, hasAcceptedDelivery, hasPendingOffer, profile?.courier_id]);
 
   React.useEffect(() => {
     if (!supabase || !profile?.courier_id || !city?.id || !courierAvailable || hasPendingOffer || hasAcceptedDelivery) {
@@ -331,16 +516,30 @@ export function CourierHomeView({ city, profile, onLogout }) {
   }, [city?.id, courierAvailable, hasAcceptedDelivery, hasPendingOffer, loadCurrentDelivery, profile?.courier_id]);
 
   React.useEffect(() => {
-    if (!hasAcceptedDelivery || !navigator.geolocation) return undefined;
+    const shouldTrackLocation = Boolean(profile?.courier_id && city?.id && (courierAvailable || hasPendingOffer || hasAcceptedDelivery));
+    if (!shouldTrackLocation || !navigator.geolocation) return undefined;
 
     let stopped = false;
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
         if (stopped) return;
-        setCourierCoords({
+        const nextCoords = {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
-        });
+        };
+        setCourierCoords(nextCoords);
+
+        const now = Date.now();
+        if (now - lastLocationSyncRef.current < 15000) return;
+        lastLocationSyncRef.current = now;
+        updateCourierLocation({
+          supabase,
+          courierId: profile.courier_id,
+          cityId: city.id,
+          latitude: nextCoords.latitude,
+          longitude: nextCoords.longitude,
+          accuracyMeters: position.coords.accuracy,
+        }).catch(() => undefined);
       },
       () => undefined,
       { enableHighAccuracy: true, maximumAge: 15000, timeout: 10000 },
@@ -350,7 +549,7 @@ export function CourierHomeView({ city, profile, onLogout }) {
       stopped = true;
       navigator.geolocation.clearWatch(watchId);
     };
-  }, [hasAcceptedDelivery]);
+  }, [city?.id, courierAvailable, hasAcceptedDelivery, hasPendingOffer, profile?.courier_id]);
 
   async function acceptDelivery() {
     if (!currentDelivery.id || !profile?.courier_id || !supabase) {
@@ -444,18 +643,61 @@ export function CourierHomeView({ city, profile, onLogout }) {
 
   async function confirmAvailability(available) {
     setAvailabilityPromptOpen(false);
+    let permission = notificationPermission;
+    let pushResult = { ok: false };
+    if (available) {
+      permission = await requestCourierNotificationPermission();
+      setNotificationPermission(permission);
+      if (permission === 'granted') {
+        pushResult = await subscribeCourierPush({ supabase, courierId: profile?.courier_id });
+      }
+    }
     await setCourierAvailable({ supabase, courierId: profile?.courier_id, available });
     setCourierAvailableState(available);
-    setActionMessage(available ? 'Status alterado para disponivel.' : 'Status mantido como offline.');
+    setActionMessage(
+      available && permission === 'denied'
+        ? 'Status alterado para disponivel. Ative as notificacoes do navegador para receber alerta com a tela desligada.'
+        : available && permission === 'granted' && !pushResult.ok
+          ? 'Status alterado para disponivel. Nao foi possivel ativar o push em segundo plano neste aparelho.'
+        : available
+          ? 'Status alterado para disponivel.'
+          : 'Status mantido como offline.'
+    );
     if (available) loadCurrentDelivery();
   }
 
   async function changeAvailability(available) {
+    let permission = notificationPermission;
+    let pushResult = { ok: false };
+    if (available) {
+      permission = await requestCourierNotificationPermission();
+      setNotificationPermission(permission);
+      if (permission === 'granted') {
+        pushResult = await subscribeCourierPush({ supabase, courierId: profile?.courier_id });
+      }
+    }
     await setCourierAvailable({ supabase, courierId: profile?.courier_id, available });
     setCourierAvailableState(available);
     setMenuOpen(false);
-    setActionMessage(available ? 'Voce esta disponivel para receber entregas.' : 'Voce ficou offline.');
+    setActionMessage(
+      available && permission === 'denied'
+        ? 'Voce esta disponivel, mas as notificacoes estao bloqueadas no navegador.'
+        : available && permission === 'granted' && !pushResult.ok
+          ? 'Voce esta disponivel, mas o push em segundo plano nao foi ativado neste aparelho.'
+        : available
+          ? 'Voce esta disponivel para receber entregas.'
+          : 'Voce ficou offline.'
+    );
     if (available) loadCurrentDelivery();
+  }
+
+  function rejectCompatibleOffer() {
+    if (compatibleOffer?.id) compatibleOfferDismissedRef.current.add(compatibleOffer.id);
+    setCompatibleOffer(null);
+  }
+
+  function acceptCompatibleOffer() {
+    setActionMessage('Aceite de entrega extra sera ativado no proximo passo.');
   }
 
   return (
@@ -600,6 +842,59 @@ export function CourierHomeView({ city, profile, onLogout }) {
                 <span>&#215;</span>
                 <strong>Recusar entrega</strong>
                 <small>({currentDelivery.refusals})</small>
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {compatibleOffer && !hasPendingOffer && (
+        <div className="courier-offer-modal compatible-offer-modal" role="dialog" aria-modal="true" aria-labelledby="compatible-offer-title">
+          <section className="courier-offer-panel compatible-offer-panel">
+            <p className="courier-offer-kicker">Nova entrega compativel com sua rota</p>
+            <h2 id="compatible-offer-title">{compatibleOffer.corrida?.code || compatibleOffer.corrida?.order_code || compatibleOffer.corrida?.id}</h2>
+            <div className="courier-offer-details">
+              <article>
+                <Store size={28} />
+                <span>Loja</span>
+                <strong>{compatibleOffer.corrida?.store || compatibleOffer.corrida?.stores?.fantasy_name || compatibleOffer.corrida?.stores?.name || 'Loja nao informada'}</strong>
+              </article>
+              <article>
+                <UserRound size={28} />
+                <span>Cliente</span>
+                <strong>{compatibleOffer.corrida?.customer || compatibleOffer.corrida?.customers?.name || 'Cliente nao informado'}</strong>
+              </article>
+              <article>
+                <WalletCards size={28} />
+                <span>Taxa</span>
+                <strong className="money">{compatibleOffer.corrida?.fee || formatCurrencyDisplay(compatibleOffer.valor_entrega)}</strong>
+              </article>
+              <article>
+                <Navigation size={28} />
+                <span>Distancia extra</span>
+                <strong>{formatDistanceDisplay(compatibleOffer.distancia_extra_estimada_km)}</strong>
+              </article>
+              <article>
+                <Clock3 size={28} />
+                <span>Tempo extra</span>
+                <strong>{formatMinutesDisplay(compatibleOffer.tempo_extra_estimado_minutos)}</strong>
+              </article>
+            </div>
+            <div className="courier-countdown offer-countdown">
+              <Clock3 size={28} />
+              <strong>{compatibleOfferCountdownLabel}</strong>
+              <span>Tempo para aceitar</span>
+            </div>
+            <div className="courier-decision-grid offer-actions">
+              <button type="button" className="accept" onClick={acceptCompatibleOffer}>
+                <span>&#10003;</span>
+                <strong>Aceitar entrega</strong>
+                <small>{formatDistanceDisplay(compatibleOffer.distancia_ate_rota_km)}</small>
+              </button>
+              <button type="button" className="decline" onClick={rejectCompatibleOffer}>
+                <span>&#215;</span>
+                <strong>Recusar entrega</strong>
+                <small>Sugestao</small>
               </button>
             </div>
           </section>
