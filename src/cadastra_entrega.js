@@ -1,4 +1,7 @@
-import { onlyDigits } from './utils/validators';
+import { onlyDigits } from './utils/validators.js';
+import { selecionar_entregas_compativeis_para_motoboy } from './regras_agrupamento_entregas.js';
+
+const DELIVERY_RULES_SELECT = 'id, city_id, order_code, store_id, customer_id, courier_id, pickup_address, delivery_address, delivery_district, delivery_complement, customer_latitude, customer_longitude, delivery_deadline_at, estimated_minutes, delivery_fee, status, created_at, customers(id, name, phone, address), stores(id, name, fantasy_name, whatsapp, address, address_number, district, latitude, longitude)';
 
 export function emptyDelivery() {
   return {
@@ -86,8 +89,13 @@ export async function createDeliveryWithQueue({ supabase, city, store, requestFo
 
   const deliveryDistrict = requestForm.deliveryDistrict?.trim() || '';
   const deliveryComplement = requestForm.deliveryComplement?.trim() || '';
-  const customerLatitude = parseNullableNumber(requestForm.customerLatitude);
-  const customerLongitude = parseNullableNumber(requestForm.customerLongitude);
+  const customerLocationUrl = requestForm.customerLocationUrl?.trim() || '';
+  const customerCoordinates = extrairCoordenadasDoLinkLocalizacao(customerLocationUrl);
+  if (customerLocationUrl && !customerCoordinates) {
+    throw new Error('Nao foi possivel extrair latitude e longitude do link da localizacao do cliente.');
+  }
+  const customerLatitude = customerCoordinates?.latitude ?? null;
+  const customerLongitude = customerCoordinates?.longitude ?? null;
   const estimatedMinutes = Math.max(1, Number.parseInt(requestForm.estimatedMinutes, 10) || 45);
   const deliveryDeadlineAt = new Date(Date.now() + estimatedMinutes * 60 * 1000).toISOString();
 
@@ -129,6 +137,9 @@ export async function createDeliveryWithQueue({ supabase, city, store, requestFo
   if (deliveryError) throw new Error(`Nao foi possivel criar a entrega: ${deliveryError.message}`);
 
   const queuedCount = await buildDeliveryQueue({ supabase, cityId: city.id, deliveryId: delivery.id });
+  if (queuedCount > 0) {
+    notifyCourierOffer({ supabase, deliveryId: delivery.id });
+  }
   return { deliveryId: delivery.id, queuedCount };
 }
 
@@ -228,10 +239,166 @@ export async function getNextDeliveryForCourier({ supabase, cityId, courierId })
   return emptyDelivery();
 }
 
+export async function buscarEntregasCompativeisParaMotoboy({
+  supabase,
+  cityId,
+  courierId,
+  localizacaoAtualMotoboy = null,
+  limiteCorridasDisponiveis = 25,
+} = {}) {
+  if (!supabase || !cityId || !courierId) {
+    return {
+      motoboy: null,
+      corrida_aceita: null,
+      corridas_ativas_do_motoboy: [],
+      lista_corridas_disponiveis: [],
+      localizacao_atual_motoboy: localizacaoAtualMotoboy,
+    };
+  }
+
+  const [{ data: courier, error: courierError }, { data: activeDeliveries, error: activeError }] = await Promise.all([
+    supabase
+      .from('couriers')
+      .select('id, city_id, name, availability_status, active, approval_status')
+      .eq('id', courierId)
+      .maybeSingle(),
+    supabase
+      .from('deliveries')
+      .select(DELIVERY_RULES_SELECT)
+      .eq('city_id', cityId)
+      .eq('courier_id', courierId)
+      .in('status', ['assigned', 'picked_up', 'on_route'])
+      .order('created_at', { ascending: true }),
+  ]);
+
+  if (courierError) throw new Error(`Nao foi possivel buscar o motoboy: ${courierError.message}`);
+  if (activeError) throw new Error(`Nao foi possivel buscar entregas ativas do motoboy: ${activeError.message}`);
+
+  const corridasAtivas = (activeDeliveries ?? []).map(formatDeliveryForRules);
+  const corridaAceita = corridasAtivas[0] ?? null;
+
+  if (!corridaAceita) {
+    return {
+      motoboy: formatCourierForRules(courier, corridasAtivas),
+      corrida_aceita: null,
+      corridas_ativas_do_motoboy: corridasAtivas,
+      lista_corridas_disponiveis: [],
+      localizacao_atual_motoboy: localizacaoAtualMotoboy,
+    };
+  }
+
+  const activeDeliveryIds = new Set(corridasAtivas.map((delivery) => delivery.id).filter(Boolean));
+  const { data: pendingDeliveries, error: pendingError } = await supabase
+    .from('deliveries')
+    .select(DELIVERY_RULES_SELECT)
+    .eq('city_id', cityId)
+    .eq('status', 'pending')
+    .is('courier_id', null)
+    .order('created_at', { ascending: true })
+    .limit(limiteCorridasDisponiveis);
+
+  if (pendingError) throw new Error(`Nao foi possivel buscar entregas disponiveis: ${pendingError.message}`);
+
+  const corridasDisponiveis = (pendingDeliveries ?? [])
+    .filter((delivery) => !activeDeliveryIds.has(delivery.id))
+    .map(formatDeliveryForRules);
+
+  return {
+    motoboy: formatCourierForRules(courier, corridasAtivas),
+    corrida_aceita: corridaAceita,
+    corridas_ativas_do_motoboy: corridasAtivas,
+    lista_corridas_disponiveis: corridasDisponiveis,
+    localizacao_atual_motoboy: localizacaoAtualMotoboy,
+  };
+}
+
+export async function avaliarEntregasCompativeisParaMotoboy({
+  supabase,
+  cityId,
+  courierId,
+  localizacaoAtualMotoboy = null,
+  rotaEstimativaAtual,
+  limiteCorridasDisponiveis,
+  configuracoes,
+} = {}) {
+  const contexto = await buscarEntregasCompativeisParaMotoboy({
+    supabase,
+    cityId,
+    courierId,
+    localizacaoAtualMotoboy,
+    limiteCorridasDisponiveis,
+  });
+
+  if (!contexto.corrida_aceita) {
+    return {
+      ...contexto,
+      corridas_compativeis: [],
+      corridas_rejeitadas: [],
+      sugestao_ordem_coleta_entrega: null,
+      impacto_estimado_tempo_total_minutos: 0,
+    };
+  }
+
+  const avaliacao = selecionar_entregas_compativeis_para_motoboy({
+    motoboy: contexto.motoboy,
+    corrida_aceita: contexto.corrida_aceita,
+    corridas_ativas_do_motoboy: contexto.corridas_ativas_do_motoboy,
+    lista_corridas_disponiveis: contexto.lista_corridas_disponiveis,
+    localizacao_atual_motoboy: contexto.localizacao_atual_motoboy,
+    rota_estimativa_atual: rotaEstimativaAtual,
+    configuracoes,
+  });
+
+  return {
+    ...contexto,
+    ...avaliacao,
+  };
+}
+
 function parseNullableNumber(value) {
   if (value === null || value === undefined || value === '') return null;
   const normalized = Number(String(value).replace(',', '.'));
   return Number.isFinite(normalized) ? normalized : null;
+}
+
+export function extrairCoordenadasDoLinkLocalizacao(linkLocalizacao = '') {
+  const texto = String(linkLocalizacao || '').trim();
+  if (!texto) return null;
+
+  const textoDecodificado = decodeUrlText(texto);
+  const patterns = [
+    /@(-?\d+(?:[.,]\d+)?),\s*(-?\d+(?:[.,]\d+)?)/,
+    /[?&](?:q|query|ll)=(-?\d+(?:[.,]\d+)?),\s*(-?\d+(?:[.,]\d+)?)/,
+    /!3d(-?\d+(?:[.,]\d+)?)!4d(-?\d+(?:[.,]\d+)?)/,
+    /(?:^|[^\d-])(-?\d{1,2}(?:[.,]\d+)?),\s*(-?\d{1,3}(?:[.,]\d+)?)(?:[^\d]|$)/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = textoDecodificado.match(pattern);
+    if (!match) continue;
+    const latitude = parseNullableNumber(match[1]);
+    const longitude = parseNullableNumber(match[2]);
+    if (coordenadasValidas(latitude, longitude)) return { latitude, longitude };
+  }
+
+  return null;
+}
+
+function decodeUrlText(texto) {
+  try {
+    return decodeURIComponent(texto);
+  } catch {
+    return texto;
+  }
+}
+
+function coordenadasValidas(latitude, longitude) {
+  return Number.isFinite(latitude)
+    && Number.isFinite(longitude)
+    && latitude >= -90
+    && latitude <= 90
+    && longitude >= -180
+    && longitude <= 180;
 }
 
 function buildStoreMessageUrl(phone, delivery) {
@@ -243,6 +410,49 @@ function buildStoreMessageUrl(phone, delivery) {
     `Cliente: ${delivery.customers?.name || 'Cliente nao informado'}`,
   ].join('\n');
   return `https://wa.me/55${digits}?text=${encodeURIComponent(message)}`;
+}
+
+function formatDeliveryForRules(delivery) {
+  const formatted = formatDeliveryForCourier(delivery);
+  return {
+    ...formatted,
+    city_id: delivery.city_id,
+    store_id: delivery.store_id,
+    storeId: delivery.store_id,
+    customer_id: delivery.customer_id,
+    customerId: delivery.customer_id,
+    courier_id: delivery.courier_id,
+    courierId: delivery.courier_id,
+    order_code: delivery.order_code,
+    delivery_fee: Number(delivery.delivery_fee || 0),
+    delivery_deadline_at: delivery.delivery_deadline_at || '',
+    estimated_minutes: delivery.estimated_minutes ?? null,
+    created_at: delivery.created_at || '',
+    localizacao_loja: {
+      latitude: parseNullableNumber(delivery.stores?.latitude),
+      longitude: parseNullableNumber(delivery.stores?.longitude),
+    },
+    localizacao_destino: {
+      latitude: parseNullableNumber(delivery.customer_latitude),
+      longitude: parseNullableNumber(delivery.customer_longitude),
+    },
+    stores: delivery.stores,
+    customers: delivery.customers,
+    raw: delivery,
+  };
+}
+
+function formatCourierForRules(courier, activeDeliveries = []) {
+  if (!courier) return null;
+  return {
+    id: courier.id,
+    city_id: courier.city_id,
+    name: courier.name,
+    availability_status: courier.availability_status,
+    active: courier.active,
+    approval_status: courier.approval_status,
+    quantidade_entregas_ativas: activeDeliveries.length,
+  };
 }
 
 export async function acceptQueuedDelivery({ supabase, cityId, delivery, courierId, courierName }) {
@@ -344,6 +554,15 @@ export async function rejectQueuedDelivery({ supabase, cityId, delivery, courier
     status: 'pending',
     note: `${courierName} recusou a entrega.`,
   });
+
+  notifyCourierOffer({ supabase, deliveryId: delivery.id });
+}
+
+function notifyCourierOffer({ supabase, deliveryId }) {
+  if (!supabase || !deliveryId || !supabase.functions?.invoke) return;
+  supabase.functions.invoke('notify-courier-offer', {
+    body: { deliveryId },
+  }).catch(() => undefined);
 }
 
 export async function setCourierAvailable({ supabase, courierId, available }) {

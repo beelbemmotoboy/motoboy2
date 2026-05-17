@@ -58,8 +58,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     deliveryComplement: '',
     estimatedMinutes: '45',
     estimatedTime: '',
-    customerLatitude: '',
-    customerLongitude: '',
+    customerLocationUrl: '',
     deliveryFee: '',
   });
   const deliveryStats = [
@@ -251,8 +250,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
       deliveryComplement: '',
       estimatedMinutes: '45',
       estimatedTime: '',
-      customerLatitude: '',
-      customerLongitude: '',
+      customerLocationUrl: '',
       deliveryFee: '',
     });
     setRequestModalOpen(requestMode === 'modal');
@@ -358,13 +356,9 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
               <span>Tempo limite ate o cliente (min)</span>
               <span className="request-input"><Clock3 size={20} /><input inputMode="numeric" value={requestForm.estimatedMinutes} onChange={(event) => setRequestForm((current) => ({ ...current, estimatedMinutes: event.target.value }))} /></span>
             </label>
-            <label className="request-field">
-              <span>Latitude do cliente (opcional)</span>
-              <span className="request-input"><MapPin size={20} /><input inputMode="decimal" value={requestForm.customerLatitude} onChange={(event) => setRequestForm((current) => ({ ...current, customerLatitude: event.target.value }))} /></span>
-            </label>
-            <label className="request-field">
-              <span>Longitude do cliente (opcional)</span>
-              <span className="request-input"><MapPin size={20} /><input inputMode="decimal" value={requestForm.customerLongitude} onChange={(event) => setRequestForm((current) => ({ ...current, customerLongitude: event.target.value }))} /></span>
+            <label className="request-field wide">
+              <span>Link da localizacao do cliente</span>
+              <span className="request-input"><MapPin size={20} /><input value={requestForm.customerLocationUrl} onChange={(event) => setRequestForm((current) => ({ ...current, customerLocationUrl: event.target.value }))} placeholder="Cole aqui o link do Google Maps ou Apple Maps" /></span>
             </label>
           </div>
         </section>
