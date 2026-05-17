@@ -239,7 +239,8 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     setDataMessage(error ? `Nao foi possivel salvar: ${error.message}` : 'Dados atualizados.');
   }
 
-  function openDeliveryRequest() {
+  function openDeliveryRequest(mode = 'modal') {
+    const requestMode = mode === 'page' ? 'page' : 'modal';
     setRequestMessage('');
     setRequestForm({
       orderCode: `PED-${Date.now().toString().slice(-6)}`,
@@ -254,7 +255,13 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
       customerLongitude: '',
       deliveryFee: '',
     });
-    setRequestModalOpen(true);
+    setRequestModalOpen(requestMode === 'modal');
+    if (requestMode === 'page') setActivePanel('request');
+  }
+
+  function closeDeliveryRequest() {
+    setRequestModalOpen(false);
+    if (activePanel === 'request') setActivePanel('home');
   }
 
   async function createDeliveryRequest(event) {
@@ -290,6 +297,84 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     } finally {
       setRequestSaving(false);
     }
+  }
+
+  function renderDeliveryRequestForm({ page = false } = {}) {
+    return (
+      <form className={`delivery-request-form${page ? ' delivery-request-page-form' : ''}`} onSubmit={createDeliveryRequest}>
+        {!page && (
+          <button className="delivery-request-back" type="button" aria-label="Voltar" onClick={closeDeliveryRequest}>
+            <ArrowLeft size={26} />
+          </button>
+        )}
+        <div className="delivery-request-hero">
+          <span className="delivery-request-brand"><Store size={28} /> BEELBEM MOTOBOY</span>
+          <h2 id="delivery-request-title">Nova entrega</h2>
+          <p>Preencha os dados do pedido para enviar aos motoboys disponiveis.</p>
+        </div>
+
+        <section className="delivery-request-section">
+          <h3><Store size={22} /> Dados do pedido</h3>
+          <div className="delivery-request-grid">
+            <label className="request-field wide">
+              <span>Numero do pedido</span>
+              <span className="request-input"><Store size={20} /><input value={requestForm.orderCode} onChange={(event) => setRequestForm((current) => ({ ...current, orderCode: event.target.value }))} /></span>
+            </label>
+            <label className="request-field">
+              <span>Nome do cliente</span>
+              <span className="request-input"><UserRound size={20} /><input value={requestForm.customerName} onChange={(event) => setRequestForm((current) => ({ ...current, customerName: event.target.value }))} /></span>
+            </label>
+            <label className="request-field">
+              <span>Telefone do cliente</span>
+              <span className="request-input"><Phone size={20} /><input value={requestForm.customerPhone} onChange={(event) => setRequestForm((current) => ({ ...current, customerPhone: maskPhone(event.target.value) }))} /></span>
+            </label>
+            <label className="request-field">
+              <span>Horario previsto</span>
+              <span className="request-input"><Clock3 size={20} /><input inputMode="numeric" maxLength={5} placeholder="00:00" value={requestForm.estimatedTime} onChange={(event) => setRequestForm((current) => ({ ...current, estimatedTime: maskDeliveryTime(event.target.value) }))} /></span>
+            </label>
+            <label className="request-field">
+              <span>Taxa da entrega</span>
+              <span className="request-input"><WalletCards size={20} /><input inputMode="decimal" value={requestForm.deliveryFee} onChange={(event) => setRequestForm((current) => ({ ...current, deliveryFee: event.target.value }))} placeholder="18,50" /></span>
+            </label>
+          </div>
+        </section>
+
+        <section className="delivery-request-section">
+          <h3><MapPin size={22} /> Endereco de entrega</h3>
+          <div className="delivery-request-grid">
+            <label className="request-field wide">
+              <span>Endereco completo</span>
+              <span className="request-input"><MapPin size={20} /><input value={requestForm.deliveryAddress} onChange={(event) => setRequestForm((current) => ({ ...current, deliveryAddress: event.target.value }))} placeholder="Rua, numero, complemento" /></span>
+            </label>
+            <label className="request-field">
+              <span>Bairro</span>
+              <span className="request-input"><Navigation size={20} /><input value={requestForm.deliveryDistrict} onChange={(event) => setRequestForm((current) => ({ ...current, deliveryDistrict: event.target.value }))} /></span>
+            </label>
+            <label className="request-field">
+              <span>Complemento</span>
+              <span className="request-input"><PencilLine size={20} /><input value={requestForm.deliveryComplement} onChange={(event) => setRequestForm((current) => ({ ...current, deliveryComplement: event.target.value }))} /></span>
+            </label>
+            <label className="request-field">
+              <span>Tempo limite ate o cliente (min)</span>
+              <span className="request-input"><Clock3 size={20} /><input inputMode="numeric" value={requestForm.estimatedMinutes} onChange={(event) => setRequestForm((current) => ({ ...current, estimatedMinutes: event.target.value }))} /></span>
+            </label>
+            <label className="request-field">
+              <span>Latitude do cliente (opcional)</span>
+              <span className="request-input"><MapPin size={20} /><input inputMode="decimal" value={requestForm.customerLatitude} onChange={(event) => setRequestForm((current) => ({ ...current, customerLatitude: event.target.value }))} /></span>
+            </label>
+            <label className="request-field">
+              <span>Longitude do cliente (opcional)</span>
+              <span className="request-input"><MapPin size={20} /><input inputMode="decimal" value={requestForm.customerLongitude} onChange={(event) => setRequestForm((current) => ({ ...current, customerLongitude: event.target.value }))} /></span>
+            </label>
+          </div>
+        </section>
+        {requestMessage && <p className="field-error">{requestMessage}</p>}
+        <div className="delivery-request-actions">
+          <button className="primary-action" type="submit" disabled={requestSaving}>{requestSaving ? 'Criando...' : 'Criar entrega'}</button>
+          <button className="secondary-action" type="button" onClick={closeDeliveryRequest}>Cancelar</button>
+        </div>
+      </form>
+    );
   }
 
   if (activePanel === 'data') {
@@ -413,12 +498,32 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
                 <mark className={`delivery-status ${delivery.status === 'Entregue' ? 'done' : delivery.status === 'Ocorrencia' ? 'issue' : 'route'}`}>{delivery.status}</mark>
                 <span className="store-delivery-links">
                   <a href={delivery.courierPhone ? `https://wa.me/55${onlyDigits(delivery.courierPhone)}` : '#'} target="_blank" rel="noreferrer">Mensagem</a>
-                  <a href={`#delivery-${delivery.id}`}>Detalhes</a>
+                  <button type="button" onClick={() => setDeliveriesMessage('Detalhes da entrega serao exibidos aqui na area do lojista.')}>Detalhes</button>
                 </span>
               </article>
             ))}
             {visibleStoreDeliveries.length === 0 && <p className="empty-state">Nenhuma entrega encontrada.</p>}
           </div>
+        </section>
+      </LayoutLojista>
+    );
+  }
+
+  if (activePanel === 'request') {
+    return (
+      <LayoutLojista dataPage>
+        <header className="store-app-header">
+          <button className="store-menu-button store-logo-menu" type="button" aria-label="Voltar" onClick={closeDeliveryRequest}>
+            <ArrowRight size={24} className="back-icon" />
+          </button>
+          <h1>Realizar pedido</h1>
+          <button className={`store-connected-pill ${storeOpen ? 'open' : 'closed'}`} type="button" onClick={toggleStoreStatus}>
+            <span />{storeOpen ? 'Aberto' : 'Fechado'}
+          </button>
+        </header>
+
+        <section className="delivery-request-page" aria-labelledby="delivery-request-title">
+          {renderDeliveryRequestForm({ page: true })}
         </section>
       </LayoutLojista>
     );
@@ -502,7 +607,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
       </section>
 
       <section className="store-request-actions" aria-label="Solicitar entrega">
-        <button className="store-request-card photo" type="button" onClick={openDeliveryRequest}>
+        <button className="store-request-card photo" type="button" onClick={() => openDeliveryRequest('modal')}>
           <span className="request-icon"><Camera size={52} /></span>
           <span>
             <strong>Solicitar por foto</strong>
@@ -510,7 +615,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
           </span>
           <ArrowRight size={42} />
         </button>
-        <button className="store-request-card manual" type="button" onClick={openDeliveryRequest}>
+        <button className="store-request-card manual" type="button" onClick={() => openDeliveryRequest('page')}>
           <span className="request-icon"><PencilLine size={52} /></span>
           <span>
             <strong>Solicitar manualmente</strong>
@@ -522,77 +627,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
       {requestMessage && <p className={requestMessage.includes('criada') ? 'success-message' : 'field-error'}>{requestMessage}</p>}
       {requestModalOpen && (
         <div className="store-open-prompt delivery-request-modal" role="dialog" aria-modal="true" aria-labelledby="delivery-request-title">
-          <form className="delivery-request-form" onSubmit={createDeliveryRequest}>
-            <button className="delivery-request-back" type="button" aria-label="Voltar" onClick={() => setRequestModalOpen(false)}>
-              <ArrowLeft size={26} />
-            </button>
-            <div className="delivery-request-hero">
-              <span className="delivery-request-brand"><Store size={28} /> BEELBEM MOTOBOY</span>
-              <h2 id="delivery-request-title">Nova entrega</h2>
-              <p>Preencha os dados do pedido para enviar aos motoboys disponiveis.</p>
-            </div>
-
-            <section className="delivery-request-section">
-              <h3><Store size={22} /> Dados do pedido</h3>
-              <div className="delivery-request-grid">
-                <label className="request-field wide">
-                  <span>Numero do pedido</span>
-                  <span className="request-input"><Store size={20} /><input value={requestForm.orderCode} onChange={(event) => setRequestForm((current) => ({ ...current, orderCode: event.target.value }))} /></span>
-                </label>
-                <label className="request-field">
-                  <span>Nome do cliente</span>
-                  <span className="request-input"><UserRound size={20} /><input value={requestForm.customerName} onChange={(event) => setRequestForm((current) => ({ ...current, customerName: event.target.value }))} /></span>
-                </label>
-                <label className="request-field">
-                  <span>Telefone do cliente</span>
-                  <span className="request-input"><Phone size={20} /><input value={requestForm.customerPhone} onChange={(event) => setRequestForm((current) => ({ ...current, customerPhone: maskPhone(event.target.value) }))} /></span>
-                </label>
-                <label className="request-field">
-                  <span>Horario previsto</span>
-                  <span className="request-input"><Clock3 size={20} /><input inputMode="numeric" maxLength={5} placeholder="00:00" value={requestForm.estimatedTime} onChange={(event) => setRequestForm((current) => ({ ...current, estimatedTime: maskDeliveryTime(event.target.value) }))} /></span>
-                </label>
-                <label className="request-field">
-                  <span>Taxa da entrega</span>
-                  <span className="request-input"><WalletCards size={20} /><input inputMode="decimal" value={requestForm.deliveryFee} onChange={(event) => setRequestForm((current) => ({ ...current, deliveryFee: event.target.value }))} placeholder="18,50" /></span>
-                </label>
-              </div>
-            </section>
-
-            <section className="delivery-request-section">
-              <h3><MapPin size={22} /> Endereco de entrega</h3>
-              <div className="delivery-request-grid">
-                <label className="request-field wide">
-                  <span>Endereco completo</span>
-                  <span className="request-input"><MapPin size={20} /><input value={requestForm.deliveryAddress} onChange={(event) => setRequestForm((current) => ({ ...current, deliveryAddress: event.target.value }))} placeholder="Rua, numero, complemento" /></span>
-                </label>
-                <label className="request-field">
-                  <span>Bairro</span>
-                  <span className="request-input"><Navigation size={20} /><input value={requestForm.deliveryDistrict} onChange={(event) => setRequestForm((current) => ({ ...current, deliveryDistrict: event.target.value }))} /></span>
-                </label>
-                <label className="request-field">
-                  <span>Complemento</span>
-                  <span className="request-input"><PencilLine size={20} /><input value={requestForm.deliveryComplement} onChange={(event) => setRequestForm((current) => ({ ...current, deliveryComplement: event.target.value }))} /></span>
-                </label>
-                <label className="request-field">
-                  <span>Tempo limite ate o cliente (min)</span>
-                  <span className="request-input"><Clock3 size={20} /><input inputMode="numeric" value={requestForm.estimatedMinutes} onChange={(event) => setRequestForm((current) => ({ ...current, estimatedMinutes: event.target.value }))} /></span>
-                </label>
-                <label className="request-field">
-                  <span>Latitude do cliente (opcional)</span>
-                  <span className="request-input"><MapPin size={20} /><input inputMode="decimal" value={requestForm.customerLatitude} onChange={(event) => setRequestForm((current) => ({ ...current, customerLatitude: event.target.value }))} /></span>
-                </label>
-                <label className="request-field">
-                  <span>Longitude do cliente (opcional)</span>
-                  <span className="request-input"><MapPin size={20} /><input inputMode="decimal" value={requestForm.customerLongitude} onChange={(event) => setRequestForm((current) => ({ ...current, customerLongitude: event.target.value }))} /></span>
-                </label>
-              </div>
-            </section>
-            {requestMessage && <p className="field-error">{requestMessage}</p>}
-            <div className="delivery-request-actions">
-              <button className="primary-action" type="submit" disabled={requestSaving}>{requestSaving ? 'Criando...' : 'Criar entrega'}</button>
-              <button className="secondary-action" type="button" onClick={() => setRequestModalOpen(false)}>Cancelar</button>
-            </div>
-          </form>
+          {renderDeliveryRequestForm()}
         </div>
       )}
     </LayoutLojista>

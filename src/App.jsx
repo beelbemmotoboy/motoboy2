@@ -116,11 +116,23 @@ export function App() {
       setPage('login');
       return;
     }
-    if (currentProfile?.role !== 'store_admin' && page === 'store-home') {
-      setPage(resolveHomeByRole(currentProfile.role));
+    if (!currentProfile || publicPages.includes(page)) return;
+
+    const homePage = resolveHomeByRole(currentProfile.role);
+    if (currentProfile.role === 'store_admin' && page !== 'store-home') {
+      setPage(homePage);
+      return;
     }
-    if (currentProfile?.role !== 'courier_admin' && page === 'courier-home') {
-      setPage(resolveHomeByRole(currentProfile.role));
+    if (currentProfile.role === 'courier_admin' && page !== 'courier-home') {
+      setPage(homePage);
+      return;
+    }
+    if (currentProfile.role !== 'store_admin' && page === 'store-home') {
+      setPage(homePage);
+      return;
+    }
+    if (currentProfile.role !== 'courier_admin' && page === 'courier-home') {
+      setPage(homePage);
     }
   }, [authReady, currentProfile, page]);
 
@@ -342,6 +354,18 @@ export function App() {
 
   if (page === 'courier-home' && currentProfile?.role === 'courier_admin') {
     return <CourierHomeView city={selectedCity} profile={currentProfile} onLogout={handleLogout} />;
+  }
+
+  if (currentProfile?.role === 'store_admin') {
+    return <StoreHomeView city={selectedCity} store={selectedStore} profile={currentProfile} onLogout={handleLogout} />;
+  }
+
+  if (currentProfile?.role === 'courier_admin') {
+    return <CourierHomeView city={selectedCity} profile={currentProfile} onLogout={handleLogout} />;
+  }
+
+  if (!['system_admin', 'city_admin'].includes(currentProfile?.role)) {
+    return <LoginView onLoginSuccess={handleLoginSuccess} />;
   }
 
   return (

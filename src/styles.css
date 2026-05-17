@@ -551,23 +551,33 @@ button, a {
   gap: 10px;
 }
 
-.store-delivery-links a {
+.store-delivery-links a,
+.store-delivery-links button {
+  border: 0;
+  padding: 0;
+  background: transparent;
   color: #ffcc00;
-  font-weight: 900;
+  cursor: pointer;
+  font: inherit;
+  font-size: inherit;
+  font-weight: 400;
+  line-height: inherit;
   text-decoration: none;
 }
 
-.store-delivery-links a:hover {
+.store-delivery-links a:hover,
+.store-delivery-links button:hover {
   text-decoration: underline;
 }
 
 .delivery-status {
   width: fit-content;
   border-radius: 999px;
-  padding: 6px 10px;
+  padding: 5px 9px;
   color: #fff;
-  font-size: 12px;
-  font-weight: 900;
+  font-size: inherit;
+  font-weight: 400;
+  line-height: inherit;
 }
 
 .delivery-status.done {
@@ -891,6 +901,25 @@ button, a {
   color: #fff;
 }
 
+.delivery-request-page {
+  width: min(880px, 100%);
+  margin: 0 auto;
+}
+
+.delivery-request-page-form {
+  padding: 26px;
+  border: 1px solid rgba(255, 196, 0, 0.28);
+  border-radius: 18px;
+  display: grid;
+  gap: 18px;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.74)),
+    radial-gradient(circle at 78% 0%, rgba(255, 196, 0, 0.22), transparent 34%),
+    #070807;
+  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.42);
+  color: #fff;
+}
+
 .delivery-request-form::-webkit-scrollbar {
   width: 8px;
 }
@@ -935,14 +964,14 @@ button, a {
   flex: none;
 }
 
-.delivery-request-modal h2 {
+.delivery-request-form h2 {
   margin: 0;
   color: #fff;
   font-size: clamp(30px, 6vw, 42px);
   line-height: 1.05;
 }
 
-.delivery-request-modal p {
+.delivery-request-form p {
   margin: 0;
   color: rgba(255, 255, 255, 0.74);
   font-size: 17px;
@@ -1039,6 +1068,10 @@ button, a {
     max-height: calc(100dvh - 20px);
     padding: 20px;
     border-radius: 18px;
+  }
+
+  .delivery-request-page-form {
+    padding: 20px;
   }
 
   .delivery-request-grid,
