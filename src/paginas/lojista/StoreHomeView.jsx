@@ -4,6 +4,7 @@ import { supabase } from '../../supabaseClient';
 import { createDeliveryWithQueue } from '../../cadastra_entrega';
 import { isValidCep, isValidEmail, isValidPhone, maskCep, maskCnpj, maskPhone, onlyDigits } from '../../utils/validators';
 import { LayoutLojista } from '../../layouts/LayoutLojista';
+import { validarHorarioPrevistoPedidoLoja, validarPedidoLoja } from '../../ValidaPedidoLoja';
 
 function formatCurrency(value) {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -262,6 +263,15 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     if (activePanel === 'request') setActivePanel('home');
   }
 
+  function validateEstimatedTimeField() {
+    const validation = validarHorarioPrevistoPedidoLoja(requestForm.estimatedTime);
+    if (!validation.valido) {
+      setRequestMessage(validation.motivo);
+      return false;
+    }
+    return true;
+  }
+
   async function createDeliveryRequest(event) {
     event.preventDefault();
     setRequestMessage('');
@@ -272,6 +282,11 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     }
     if (!requestForm.orderCode.trim() || !requestForm.customerName.trim() || !requestForm.deliveryAddress.trim()) {
       setRequestMessage('Pedido, cliente e endereco de entrega sao obrigatorios.');
+      return;
+    }
+    const validation = validarPedidoLoja(requestForm);
+    if (!validation.valido) {
+      setRequestMessage(validation.motivo);
       return;
     }
     if (!supabase) {
@@ -328,7 +343,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
             </label>
             <label className="request-field">
               <span>Horario previsto</span>
-              <span className="request-input"><Clock3 size={20} /><input inputMode="numeric" maxLength={5} placeholder="00:00" value={requestForm.estimatedTime} onChange={(event) => setRequestForm((current) => ({ ...current, estimatedTime: maskDeliveryTime(event.target.value) }))} /></span>
+              <span className="request-input"><Clock3 size={20} /><input inputMode="numeric" maxLength={5} placeholder="00:00" value={requestForm.estimatedTime} onBlur={validateEstimatedTimeField} onChange={(event) => setRequestForm((current) => ({ ...current, estimatedTime: maskDeliveryTime(event.target.value) }))} /></span>
             </label>
             <label className="request-field">
               <span>Taxa da entrega</span>
