@@ -165,12 +165,12 @@ export async function buildDeliveryQueue({ supabase, cityId, deliveryId }) {
   if (couriersError) throw new Error(`Nao foi possivel buscar motoboys: ${couriersError.message}`);
   if (!couriers?.length) return 0;
 
-  const couriersInRadius = await filtrarMotoboysNoRaioDaLoja({
+  const couriersByRadius = await selecionarMotoboysPorRaioDaLojaComFallback({
     supabase,
     couriers,
     localizacaoLoja: deliveryForQueue?.stores,
   });
-  if (!couriersInRadius.length) return 0;
+  if (!couriersByRadius.length) return 0;
 
   const dayStart = new Date();
   dayStart.setHours(0, 0, 0, 0);
@@ -190,7 +190,7 @@ export async function buildDeliveryQueue({ supabase, cityId, deliveryId }) {
     deliveryCountByCourier.set(item.courier_id, (deliveryCountByCourier.get(item.courier_id) ?? 0) + 1);
   }
 
-  const orderedCouriers = [...couriersInRadius].sort((a, b) => {
+  const orderedCouriers = [...couriersByRadius].sort((a, b) => {
     const deliveriesA = deliveryCountByCourier.get(a.id) ?? 0;
     const deliveriesB = deliveryCountByCourier.get(b.id) ?? 0;
     if (deliveriesA !== deliveriesB) return deliveriesA - deliveriesB;
@@ -211,7 +211,7 @@ export async function buildDeliveryQueue({ supabase, cityId, deliveryId }) {
   return queueRows.length;
 }
 
-async function filtrarMotoboysNoRaioDaLoja({ supabase, couriers, localizacaoLoja }) {
+async function selecionarMotoboysPorRaioDaLojaComFallback({ supabase, couriers, localizacaoLoja }) {
   const storeLatitude = parseNullableNumber(localizacaoLoja?.latitude);
   const storeLongitude = parseNullableNumber(localizacaoLoja?.longitude);
   if (storeLatitude === null || storeLongitude === null) {
@@ -234,20 +234,21 @@ async function filtrarMotoboysNoRaioDaLoja({ supabase, couriers, localizacaoLoja
   }
 
   const locationByCourier = new Map((locations ?? []).map((location) => [location.courier_id, location]));
-  return couriers
-    .map((courier) => {
-      const localizacaoMotoboy = locationByCourier.get(courier.id);
-      const resultado = verificar_motoboy_proximo_da_loja({
-        localizacao_motoboy: localizacaoMotoboy,
-        localizacao_loja: { latitude: storeLatitude, longitude: storeLongitude },
-      });
-      return {
-        ...courier,
-        distanceToStoreKm: resultado.distancia_km ?? Number.POSITIVE_INFINITY,
-        withinStoreRadius: resultado.permitido,
-      };
-    })
-    .filter((courier) => courier.withinStoreRadius);
+  const couriersWithDistance = couriers.map((courier) => {
+    const localizacaoMotoboy = locationByCourier.get(courier.id);
+    const resultado = verificar_motoboy_proximo_da_loja({
+      localizacao_motoboy: localizacaoMotoboy,
+      localizacao_loja: { latitude: storeLatitude, longitude: storeLongitude },
+    });
+    return {
+      ...courier,
+      distanceToStoreKm: resultado.distancia_km ?? Number.POSITIVE_INFINITY,
+      withinStoreRadius: resultado.permitido,
+    };
+  });
+
+  const couriersInRadius = couriersWithDistance.filter((courier) => courier.withinStoreRadius);
+  return couriersInRadius.length ? couriersInRadius : couriersWithDistance;
 }
 
 export async function getNextDeliveryForCourier({ supabase, cityId, courierId }) {
