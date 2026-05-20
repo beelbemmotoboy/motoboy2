@@ -1628,6 +1628,14 @@ button, a {
   margin-top: 24px;
 }
 
+.camera-capture-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .store-request-card {
   min-height: 132px;
   padding: 20px 24px;

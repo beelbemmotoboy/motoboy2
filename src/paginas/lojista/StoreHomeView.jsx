@@ -2,7 +2,7 @@ import React from 'react';
 import { ArrowLeft, ArrowRight, AlertTriangle, Bike, Camera, Clock3, MapPin, Minus, Navigation, PencilLine, Phone, Plus, Search, Star, Store, UserRound, WalletCards } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { createDeliveryWithQueue } from '../../cadastra_entrega';
-import { analisarComprovantePedidoTeste, transformarAnaliseEmPedidoLoja } from '../../analisa_comprovante_pedido';
+import { analisarComprovantePedidoComGemini, geminiConfigStatus, transformarAnaliseEmPedidoLoja } from '../../analisa_comprovante_pedido';
 import { isValidCep, isValidEmail, isValidPhone, maskCep, maskCnpj, maskPhone, onlyDigits } from '../../utils/validators';
 import { LayoutLojista } from '../../layouts/LayoutLojista';
 import { calcularMinutosAteHorarioPrevistoPedidoLoja, validarHorarioPrevistoPedidoLoja, validarPedidoLoja, validarTaxaEntregaPedidoLoja } from '../../ValidaPedidoLoja';
@@ -37,6 +37,7 @@ function courierStarsFromXp(value) {
 }
 
 export function StoreHomeView({ city, store, profile, onLogout }) {
+  const photoCaptureInputRef = React.useRef(null);
   const storeName = store?.fantasyName || store?.name || profile?.name || 'Minha loja';
   const storeWords = storeName.split(' ').filter(Boolean);
   const brandTop = storeWords[0] || 'Beelbem';
@@ -92,6 +93,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
   });
   const [photoAnalysis, setPhotoAnalysis] = React.useState(null);
   const [photoMessage, setPhotoMessage] = React.useState('');
+  const [photoAnalyzing, setPhotoAnalyzing] = React.useState(false);
 
   const liveDeliveryStats = React.useMemo(() => {
     const now = Date.now();
@@ -387,6 +389,14 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     setActivePanel('photo-request');
   }
 
+  function openPhotoCamera() {
+    setRequestModalOpen(false);
+    setPhotoMessage('');
+    setPhotoAnalysis(null);
+    setPhotoRequest((current) => ({ ...current, file: null, previewUrl: '', customerLocationUrl: '' }));
+    photoCaptureInputRef.current?.click();
+  }
+
   function closeDeliveryRequest() {
     setRequestModalOpen(false);
     if (activePanel === 'request') setActivePanel('home');
@@ -406,6 +416,13 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
       return;
     }
 
+    setPhotoRequestFile(file);
+    setActivePanel('photo-request');
+    analyzePhotoRequest(file);
+    event.target.value = '';
+  }
+
+  function setPhotoRequestFile(file) {
     setPhotoRequest((current) => ({
       ...current,
       file,
@@ -413,13 +430,17 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     }));
   }
 
-  function analyzePhotoRequest() {
-    const result = analisarComprovantePedidoTeste({
-      arquivo: photoRequest.file,
-      linkLocalizacao: photoRequest.customerLocationUrl,
+  async function analyzePhotoRequest(fileOverride = photoRequest.file, linkOverride = photoRequest.customerLocationUrl) {
+    setPhotoMessage('');
+    setPhotoAnalysis(null);
+    setPhotoAnalyzing(true);
+    const result = await analisarComprovantePedidoComGemini({
+      arquivo: fileOverride,
+      linkLocalizacao: linkOverride,
     });
+    setPhotoAnalyzing(false);
     setPhotoAnalysis(result.ok ? result : null);
-    setPhotoMessage(result.ok ? 'Analise de teste concluida. Nenhum dado foi gravado.' : result.motivo);
+    setPhotoMessage(result.ok ? 'Analise com Gemini concluida. Nenhum dado foi gravado.' : result.motivo);
   }
 
   function loadPhotoAnalysisIntoManualForm() {
@@ -745,19 +766,19 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
           <div className="photo-request-hero">
             <span className="delivery-request-brand"><Camera size={28} /> BEELBEM MOTOBOY</span>
             <h2 id="photo-request-title">Analise de comprovante</h2>
-            <p>Envie a foto da comanda e confira os dados lidos antes de criar a entrega.</p>
+            <p>Abra a camera, fotografe a comanda e confira os dados lidos pelo Gemini antes de criar a entrega.</p>
           </div>
 
           <div className="photo-request-shell">
             <section className="photo-request-upload" aria-label="Foto do comprovante">
               <label className="photo-dropzone">
-                <input type="file" accept="image/*" onChange={updatePhotoRequestFile} />
+                <input type="file" accept="image/*" capture="environment" onChange={updatePhotoRequestFile} />
                 {photoRequest.previewUrl ? (
                   <img src={photoRequest.previewUrl} alt="" />
                 ) : (
                   <span>
                     <Camera size={44} />
-                    Foto do comprovante
+                    Abrir camera
                   </span>
                 )}
               </label>
@@ -778,7 +799,9 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
               {photoMessage && <p className={photoAnalysis ? 'success-message' : 'field-error'}>{photoMessage}</p>}
 
               <div className="photo-request-actions">
-                <button className="primary-action" type="button" onClick={analyzePhotoRequest}>Analisar foto</button>
+                <button className="primary-action" type="button" onClick={() => analyzePhotoRequest()} disabled={photoAnalyzing}>
+                  {photoAnalyzing ? 'Analisando...' : 'Analisar com Gemini'}
+                </button>
                 <button className="secondary-action" type="button" onClick={closePhotoRequest}>Voltar</button>
               </div>
             </section>
@@ -787,8 +810,8 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
               {photoAnalysis ? (
                 <>
                   <div className="photo-analysis-title">
-                    <span>Retorno de teste</span>
-                    <strong>{values.origem || 'Comprovante'}</strong>
+                    <span>Retorno da IA</span>
+                    <strong>{photoAnalysis.modelo || geminiConfigStatus.model}</strong>
                   </div>
                   <div className="photo-analysis-list">
                     {analysisFields.map((field) => (
@@ -812,8 +835,9 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
               ) : (
                 <div className="photo-analysis-empty">
                   <Camera size={48} />
-                  <strong>Aguardando analise</strong>
-                  <span>Os valores extraidos aparecerao aqui.</span>
+                  <strong>{photoAnalyzing ? 'Analisando foto' : 'Aguardando analise'}</strong>
+                  <span>{photoAnalyzing ? 'Gemini esta extraindo os dados do comprovante.' : 'Os valores extraidos aparecerao aqui.'}</span>
+                  {!geminiConfigStatus.hasApiKey && <span>Configure VITE_GEMINI_API_KEY para liberar a analise real.</span>}
                 </div>
               )}
             </section>
@@ -990,7 +1014,17 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
       </section>
 
       <section className="store-request-actions" aria-label="Solicitar entrega">
-        <button className="store-request-card photo" type="button" onClick={openPhotoRequest}>
+        <input
+          ref={photoCaptureInputRef}
+          className="camera-capture-input"
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={updatePhotoRequestFile}
+          aria-hidden="true"
+          tabIndex={-1}
+        />
+        <button className="store-request-card photo" type="button" onClick={openPhotoCamera}>
           <span className="request-icon"><Camera size={52} /></span>
           <span>
             <strong>Solicitar por foto</strong>
