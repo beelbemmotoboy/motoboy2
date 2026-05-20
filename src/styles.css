@@ -1117,8 +1117,13 @@ button, a {
 }
 
 .delivery-request-section {
+  width: 100%;
+  min-width: 0;
+  height: auto;
   display: grid;
+  align-self: start;
   gap: 12px;
+  overflow: visible;
 }
 
 .delivery-request-section h3 {
@@ -1132,12 +1137,15 @@ button, a {
 
 .delivery-request-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr));
   gap: 12px;
+  align-items: start;
 }
 
 .request-field {
+  min-width: 0;
   display: grid;
+  align-content: start;
   gap: 7px;
   color: rgba(255, 255, 255, 0.72);
   font-weight: 800;
@@ -1148,6 +1156,8 @@ button, a {
 }
 
 .request-input {
+  width: 100%;
+  min-width: 0;
   min-height: 58px;
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 11px;
@@ -1167,6 +1177,7 @@ button, a {
   color: #fff;
   font: inherit;
   font-weight: 750;
+  text-overflow: ellipsis;
 }
 
 .request-input input::placeholder {
