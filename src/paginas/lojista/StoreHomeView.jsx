@@ -65,6 +65,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
   const [deliveriesMessage, setDeliveriesMessage] = React.useState('');
   const [liveDeliveries, setLiveDeliveries] = React.useState([]);
   const [liveDeliveriesMessage, setLiveDeliveriesMessage] = React.useState('');
+  const [dismissedAcceptedDeliveryId, setDismissedAcceptedDeliveryId] = React.useState('');
   const [storeOpen, setStoreOpen] = React.useState(store?.isOpen ?? true);
   const [showOpenPrompt, setShowOpenPrompt] = React.useState(store?.isOpen === false);
   const [statusMessage, setStatusMessage] = React.useState('');
@@ -99,6 +100,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
   }, [liveDeliveries]);
 
   const acceptedDelivery = liveDeliveries[0] ?? null;
+  const showAcceptedDeliveryPopup = Boolean(acceptedDelivery && acceptedDelivery.id !== dismissedAcceptedDeliveryId);
 
   React.useEffect(() => {
     setStoreOpen(store?.isOpen ?? true);
@@ -717,55 +719,70 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
 
       {liveDeliveriesMessage && <p className="store-status-message error">{liveDeliveriesMessage}</p>}
 
-      {acceptedDelivery && (
+      {showAcceptedDeliveryPopup && (
         <section className="store-accepted-delivery" aria-label="Motoboy aceitou a corrida">
-          <div className="accepted-courier-photo">
-            {acceptedDelivery.courierPhotoUrl ? (
-              <img src={acceptedDelivery.courierPhotoUrl} alt="" />
-            ) : (
-              <UserRound size={34} />
-            )}
-          </div>
-          <div className="accepted-delivery-main">
-            <span className="accepted-kicker">Motoboy aceitou a corrida</span>
-            <h2>{acceptedDelivery.courierName}</h2>
-            <div className="accepted-stars" aria-label={`${acceptedDelivery.courierStars} estrelas`}>
-              {Array.from({ length: 5 }, (_, index) => (
-                <Star key={index} size={18} fill={index < acceptedDelivery.courierStars ? 'currentColor' : 'none'} />
-              ))}
+          <div className="accepted-delivery-panel">
+            <div className="accepted-delivery-main">
+              <div className="accepted-courier-photo">
+                {acceptedDelivery.courierPhotoUrl ? (
+                  <img src={acceptedDelivery.courierPhotoUrl} alt="" />
+                ) : (
+                  <UserRound size={54} />
+                )}
+              </div>
+              <div>
+                <span className="accepted-kicker">Motoboy aceitou a corrida</span>
+                <h2>{acceptedDelivery.courierName}</h2>
+                <div className="accepted-stars" aria-label={`${acceptedDelivery.courierStars} estrelas`}>
+                  {Array.from({ length: 5 }, (_, index) => (
+                    <Star key={index} size={22} fill={index < acceptedDelivery.courierStars ? 'currentColor' : 'none'} />
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="accepted-delivery-details">
+              <article>
+                <PencilLine size={28} />
+                <span>Pedido</span>
+                <strong>{acceptedDelivery.order}</strong>
+              </article>
+              <article>
+                <UserRound size={28} />
+                <span>Cliente</span>
+                <strong>{acceptedDelivery.customer}</strong>
+              </article>
+              <article>
+                <Star size={28} />
+                <span>XP</span>
+                <strong>{formatXpValue(acceptedDelivery.courierXp)}</strong>
+              </article>
+              <article>
+                <Bike size={28} />
+                <span>Nivel</span>
+                <strong>{acceptedDelivery.courierLevel}</strong>
+              </article>
+              <article>
+                <Navigation size={28} />
+                <span>Status</span>
+                <strong>{storeDeliveryProgressLabel(acceptedDelivery.status)}</strong>
+              </article>
+              <article>
+                <WalletCards size={28} />
+                <span>Taxa</span>
+                <strong className="money">{formatCurrency(acceptedDelivery.fee)}</strong>
+              </article>
+            </div>
+            <div className="accepted-actions">
+              {acceptedDelivery.courierPhone && (
+                <a className="accepted-message-link" href={`https://wa.me/55${onlyDigits(acceptedDelivery.courierPhone)}?text=${encodeURIComponent(`Ola, preciso falar sobre o pedido ${acceptedDelivery.order}.`)}`} target="_blank" rel="noreferrer">
+                  Mensagem
+                </a>
+              )}
+              <button type="button" className="accepted-close-button" onClick={() => setDismissedAcceptedDeliveryId(acceptedDelivery.id)}>
+                Entendi
+              </button>
             </div>
           </div>
-          <div className="accepted-delivery-details">
-            <article>
-              <span>Pedido</span>
-              <strong>{acceptedDelivery.order}</strong>
-            </article>
-            <article>
-              <span>Cliente</span>
-              <strong>{acceptedDelivery.customer}</strong>
-            </article>
-            <article>
-              <span>XP</span>
-              <strong>{formatXpValue(acceptedDelivery.courierXp)}</strong>
-            </article>
-            <article>
-              <span>Nivel</span>
-              <strong>{acceptedDelivery.courierLevel}</strong>
-            </article>
-            <article>
-              <span>Status</span>
-              <strong>{storeDeliveryProgressLabel(acceptedDelivery.status)}</strong>
-            </article>
-            <article>
-              <span>Taxa</span>
-              <strong>{formatCurrency(acceptedDelivery.fee)}</strong>
-            </article>
-          </div>
-          {acceptedDelivery.courierPhone && (
-            <a className="accepted-message-link" href={`https://wa.me/55${onlyDigits(acceptedDelivery.courierPhone)}?text=${encodeURIComponent(`Ola, preciso falar sobre o pedido ${acceptedDelivery.order}.`)}`} target="_blank" rel="noreferrer">
-              Mensagem
-            </a>
-          )}
         </section>
       )}
 
