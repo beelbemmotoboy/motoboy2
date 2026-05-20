@@ -1121,9 +1121,17 @@ button, a {
   min-width: 0;
   height: auto;
   display: grid;
+  justify-self: stretch;
   align-self: start;
   gap: 12px;
   overflow: visible;
+  box-sizing: border-box;
+}
+
+.delivery-request-form > .delivery-request-section {
+  inline-size: 100%;
+  max-inline-size: 100%;
+  block-size: auto;
 }
 
 .delivery-request-section h3 {
@@ -1136,10 +1144,17 @@ button, a {
 }
 
 .delivery-request-grid {
+  width: 100%;
+  min-width: 0;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr));
   gap: 12px;
   align-items: start;
+  box-sizing: border-box;
+}
+
+.delivery-request-section > .delivery-request-grid {
+  justify-self: stretch;
 }
 
 .request-field {
