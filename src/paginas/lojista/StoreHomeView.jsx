@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft, ArrowRight, AlertTriangle, Bike, Camera, Clock3, MapPin, Minus, Navigation, PencilLine, Phone, Plus, Search, Store, UserRound, WalletCards } from 'lucide-react';
+import { ArrowLeft, ArrowRight, AlertTriangle, Bike, Camera, Clock3, MapPin, Minus, Navigation, PencilLine, Phone, Plus, Search, Star, Store, UserRound, WalletCards } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { createDeliveryWithQueue } from '../../cadastra_entrega';
 import { isValidCep, isValidEmail, isValidPhone, maskCep, maskCnpj, maskPhone, onlyDigits } from '../../utils/validators';
@@ -20,6 +20,19 @@ function maskDeliveryFee(value) {
   const digits = onlyDigits(value).slice(0, 5);
   const amount = Number(digits || 0) / 100;
   return amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function formatXpValue(value) {
+  const numeric = Number(value || 0);
+  return Number.isInteger(numeric) ? numeric.toFixed(0) : numeric.toFixed(1).replace('.', ',');
+}
+
+function courierLevelFromXp(value) {
+  return Math.max(1, Math.floor(Number(value || 0) / 500) + 1);
+}
+
+function courierStarsFromXp(value) {
+  return Math.min(5, Math.max(1, Math.floor(Number(value || 0) / 250) + 1));
 }
 
 export function StoreHomeView({ city, store, profile, onLogout }) {
@@ -50,6 +63,8 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
   const [storeDeliveries, setStoreDeliveries] = React.useState([]);
   const [deliveriesLoading, setDeliveriesLoading] = React.useState(false);
   const [deliveriesMessage, setDeliveriesMessage] = React.useState('');
+  const [liveDeliveries, setLiveDeliveries] = React.useState([]);
+  const [liveDeliveriesMessage, setLiveDeliveriesMessage] = React.useState('');
   const [storeOpen, setStoreOpen] = React.useState(store?.isOpen ?? true);
   const [showOpenPrompt, setShowOpenPrompt] = React.useState(store?.isOpen === false);
   const [statusMessage, setStatusMessage] = React.useState('');
@@ -69,11 +84,21 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     deliveryFee: '',
   });
 
-  const deliveryStats = [
-    { label: 'A caminho da loja', value: '01', tone: 'green', icon: <Bike size={32} /> },
-    { label: 'A caminho do cliente', value: '00', tone: 'yellow', icon: <Bike size={32} /> },
-    { label: 'Em atraso', value: '00', tone: 'red', icon: <AlertTriangle size={32} /> },
-  ];
+  const liveDeliveryStats = React.useMemo(() => {
+    const now = Date.now();
+    const toStore = liveDeliveries.filter((delivery) => delivery.status === 'assigned').length;
+    const toCustomer = liveDeliveries.filter((delivery) => ['picked_up', 'on_route'].includes(delivery.status)).length;
+    const late = liveDeliveries.filter((delivery) => (
+      delivery.deadlineAt && new Date(delivery.deadlineAt).getTime() < now && delivery.status !== 'delivered'
+    )).length;
+    return [
+      { label: 'A caminho da loja', value: String(toStore).padStart(2, '0'), tone: 'green', icon: <Bike size={32} /> },
+      { label: 'A caminho do cliente', value: String(toCustomer).padStart(2, '0'), tone: 'yellow', icon: <Bike size={32} /> },
+      { label: 'Em atraso', value: String(late).padStart(2, '0'), tone: 'red', icon: <AlertTriangle size={32} /> },
+    ];
+  }, [liveDeliveries]);
+
+  const acceptedDelivery = liveDeliveries[0] ?? null;
 
   React.useEffect(() => {
     setStoreOpen(store?.isOpen ?? true);
@@ -144,6 +169,81 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
       mounted = false;
     };
   }, [activePanel, deliveryDate, store?.id]);
+
+  React.useEffect(() => {
+    let mounted = true;
+
+    async function signedCourierPhoto(path) {
+      if (!path || /^https?:\/\//i.test(path)) return path || '';
+      if (!path.includes('/') || !supabase?.storage) return '';
+      const { data, error } = await supabase.storage.from('courier-documents').createSignedUrl(path, 600);
+      return error ? '' : data?.signedUrl || '';
+    }
+
+    async function loadLiveDeliveries() {
+      if (!supabase || !store?.id) {
+        setLiveDeliveries([]);
+        return;
+      }
+
+      setLiveDeliveriesMessage('');
+      const { data, error } = await supabase
+        .from('deliveries')
+        .select('id, order_code, delivery_fee, status, delivery_deadline_at, updated_at, customers(name), couriers(id, name, phone, face_photo_path, rating)')
+        .eq('store_id', store.id)
+        .in('status', ['assigned', 'picked_up', 'on_route'])
+        .order('updated_at', { ascending: false })
+        .limit(4);
+
+      if (!mounted) return;
+      if (error) {
+        setLiveDeliveries([]);
+        setLiveDeliveriesMessage(`Nao foi possivel buscar entregas em andamento: ${error.message}`);
+        return;
+      }
+
+      const courierIds = [...new Set((data ?? []).map((delivery) => delivery.couriers?.id).filter(Boolean))];
+      const pointsByCourier = new Map();
+      if (courierIds.length) {
+        const { data: pointsData } = await supabase
+          .from('courier_points')
+          .select('courier_id, total_points')
+          .in('courier_id', courierIds);
+        for (const item of pointsData ?? []) pointsByCourier.set(item.courier_id, Number(item.total_points || 0));
+      }
+
+      const mapped = await Promise.all((data ?? []).map(async (delivery) => {
+        const courierId = delivery.couriers?.id || '';
+        const xp = pointsByCourier.get(courierId) ?? 0;
+        return {
+          id: delivery.id,
+          order: delivery.order_code || delivery.id,
+          status: delivery.status,
+          fee: Number(delivery.delivery_fee || 0),
+          deadlineAt: delivery.delivery_deadline_at || '',
+          acceptedAt: delivery.updated_at || '',
+          customer: delivery.customers?.name || 'Cliente nao informado',
+          courierId,
+          courierName: delivery.couriers?.name || 'Motoboy',
+          courierPhone: delivery.couriers?.phone || '',
+          courierPhotoUrl: await signedCourierPhoto(delivery.couriers?.face_photo_path),
+          courierXp: xp,
+          courierLevel: courierLevelFromXp(xp),
+          courierStars: courierStarsFromXp(xp),
+          courierRating: Number(delivery.couriers?.rating || 0),
+        };
+      }));
+
+      if (mounted) setLiveDeliveries(mapped);
+    }
+
+    loadLiveDeliveries();
+    const intervalId = window.setInterval(loadLiveDeliveries, 10000);
+    return () => {
+      mounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, [store?.id]);
 
   const normalizedDeliverySearch = deliverySearch.trim().toLowerCase();
   const visibleStoreDeliveries = storeDeliveries.filter((delivery) => {
@@ -604,7 +704,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
       {statusMessage && <p className={`store-status-message ${statusMessage.startsWith('Nao') ? 'error' : 'success'}`}>{statusMessage}</p>}
 
       <section className="store-status-grid" aria-label="Resumo das entregas">
-        {deliveryStats.map((item) => (
+        {liveDeliveryStats.map((item) => (
           <article className={`store-status-card ${item.tone}`} key={item.label}>
             <div className="store-status-card-top">
               <div className="store-status-icon">{item.icon}</div>
@@ -614,6 +714,60 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
           </article>
         ))}
       </section>
+
+      {liveDeliveriesMessage && <p className="store-status-message error">{liveDeliveriesMessage}</p>}
+
+      {acceptedDelivery && (
+        <section className="store-accepted-delivery" aria-label="Motoboy aceitou a corrida">
+          <div className="accepted-courier-photo">
+            {acceptedDelivery.courierPhotoUrl ? (
+              <img src={acceptedDelivery.courierPhotoUrl} alt="" />
+            ) : (
+              <UserRound size={34} />
+            )}
+          </div>
+          <div className="accepted-delivery-main">
+            <span className="accepted-kicker">Motoboy aceitou a corrida</span>
+            <h2>{acceptedDelivery.courierName}</h2>
+            <div className="accepted-stars" aria-label={`${acceptedDelivery.courierStars} estrelas`}>
+              {Array.from({ length: 5 }, (_, index) => (
+                <Star key={index} size={18} fill={index < acceptedDelivery.courierStars ? 'currentColor' : 'none'} />
+              ))}
+            </div>
+          </div>
+          <div className="accepted-delivery-details">
+            <article>
+              <span>Pedido</span>
+              <strong>{acceptedDelivery.order}</strong>
+            </article>
+            <article>
+              <span>Cliente</span>
+              <strong>{acceptedDelivery.customer}</strong>
+            </article>
+            <article>
+              <span>XP</span>
+              <strong>{formatXpValue(acceptedDelivery.courierXp)}</strong>
+            </article>
+            <article>
+              <span>Nivel</span>
+              <strong>{acceptedDelivery.courierLevel}</strong>
+            </article>
+            <article>
+              <span>Status</span>
+              <strong>{storeDeliveryProgressLabel(acceptedDelivery.status)}</strong>
+            </article>
+            <article>
+              <span>Taxa</span>
+              <strong>{formatCurrency(acceptedDelivery.fee)}</strong>
+            </article>
+          </div>
+          {acceptedDelivery.courierPhone && (
+            <a className="accepted-message-link" href={`https://wa.me/55${onlyDigits(acceptedDelivery.courierPhone)}?text=${encodeURIComponent(`Ola, preciso falar sobre o pedido ${acceptedDelivery.order}.`)}`} target="_blank" rel="noreferrer">
+              Mensagem
+            </a>
+          )}
+        </section>
+      )}
 
       <section className="store-live-map" aria-label={`Mapa de entregas em ${city.name}`}>
         <div className="store-map-grid" />
@@ -673,4 +827,11 @@ function deliveryStatusLabel(status) {
   if (status === 'delivered') return 'Entregue';
   if (['pending', 'assigned', 'picked_up', 'on_route'].includes(status)) return 'A caminho';
   return 'Ocorrencia';
+}
+
+function storeDeliveryProgressLabel(status) {
+  if (status === 'assigned') return 'Indo para a loja';
+  if (status === 'picked_up') return 'Pedido retirado';
+  if (status === 'on_route') return 'Indo para o cliente';
+  return 'Em andamento';
 }

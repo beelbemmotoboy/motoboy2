@@ -687,6 +687,101 @@ button, a {
 .store-status-card.yellow strong { color: #ffc400; }
 .store-status-card.red strong { color: #ff3039; }
 
+.store-accepted-delivery {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(320px, 1.35fr) auto;
+  gap: 16px;
+  align-items: center;
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid rgba(19, 229, 50, 0.45);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(13, 44, 32, 0.94), rgba(7, 13, 15, 0.94)),
+    radial-gradient(circle at 5% 0%, rgba(19, 229, 50, 0.24), transparent 34%);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.35), inset 0 0 24px rgba(19, 229, 50, 0.08);
+}
+
+.accepted-courier-photo {
+  width: 78px;
+  height: 78px;
+  border: 2px solid rgba(255, 204, 0, 0.8);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #111;
+  color: #ffcc00;
+  box-shadow: 0 0 0 8px rgba(255, 204, 0, 0.08);
+}
+
+.accepted-courier-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.accepted-delivery-main {
+  min-width: 0;
+}
+
+.accepted-kicker,
+.accepted-delivery-details span {
+  display: block;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.accepted-delivery-main h2 {
+  margin: 4px 0 6px;
+  color: #fff;
+  font-size: clamp(20px, 3vw, 28px);
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+
+.accepted-stars {
+  display: flex;
+  gap: 3px;
+  color: #ffcc00;
+}
+
+.accepted-delivery-details {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.accepted-delivery-details article {
+  min-height: 58px;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.accepted-delivery-details strong {
+  display: block;
+  margin-top: 4px;
+  color: #fff;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.accepted-message-link {
+  min-height: 46px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 16px;
+  background: #ffcc00;
+  color: #060606;
+  font-weight: 900;
+  text-decoration: none;
+}
+
 .store-live-map {
   position: relative;
   height: min(68svh, 760px);
@@ -1324,6 +1419,26 @@ button, a {
   .store-status-card strong {
     margin-top: 11px;
     font-size: 24px;
+  }
+
+  .store-accepted-delivery {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .accepted-courier-photo {
+    width: 62px;
+    height: 62px;
+  }
+
+  .accepted-delivery-details,
+  .accepted-message-link {
+    grid-column: 1 / -1;
+  }
+
+  .accepted-delivery-details {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .store-live-map {
