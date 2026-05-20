@@ -1201,9 +1201,9 @@ button, a {
 
 .delivery-request-actions {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(160px, 220px);
   gap: 12px;
-  align-items: center;
+  align-items: stretch;
 }
 
 .delivery-request-actions .primary-action {
@@ -1218,12 +1218,15 @@ button, a {
 
 .delivery-request-actions .secondary-action {
   min-height: 58px;
+  width: 100%;
+  margin-top: 0;
   border-radius: 11px;
   border: 1px solid rgba(255, 255, 255, 0.18);
   background: rgba(255, 255, 255, 0.08);
   color: #fff;
   font-size: 18px;
   font-weight: 950;
+  white-space: nowrap;
 }
 
 .delivery-request-modal .delivery-request-actions .secondary-action,
