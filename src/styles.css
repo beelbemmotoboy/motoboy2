@@ -1193,8 +1193,24 @@ button, a {
 .delivery-request-actions .secondary-action {
   min-height: 58px;
   border-radius: 11px;
-  border-color: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
   color: #fff;
+  font-size: 18px;
+  font-weight: 950;
+}
+
+.delivery-request-modal .delivery-request-actions .secondary-action,
+.delivery-request-page-form .delivery-request-actions .secondary-action {
+  margin-top: 0;
+  border-color: rgba(255, 196, 0, 0.36);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.delivery-request-modal .delivery-request-actions .secondary-action:hover,
+.delivery-request-page-form .delivery-request-actions .secondary-action:hover {
+  background: rgba(255, 196, 0, 0.14);
 }
 
 @media (max-width: 680px) {
