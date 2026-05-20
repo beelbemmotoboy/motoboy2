@@ -2,6 +2,7 @@ import React from 'react';
 import { ArrowLeft, ArrowRight, AlertTriangle, Bike, Camera, Clock3, MapPin, Minus, Navigation, PencilLine, Phone, Plus, Search, Star, Store, UserRound, WalletCards } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { createDeliveryWithQueue } from '../../cadastra_entrega';
+import { analisarComprovantePedidoTeste, transformarAnaliseEmPedidoLoja } from '../../analisa_comprovante_pedido';
 import { isValidCep, isValidEmail, isValidPhone, maskCep, maskCnpj, maskPhone, onlyDigits } from '../../utils/validators';
 import { LayoutLojista } from '../../layouts/LayoutLojista';
 import { calcularMinutosAteHorarioPrevistoPedidoLoja, validarHorarioPrevistoPedidoLoja, validarPedidoLoja, validarTaxaEntregaPedidoLoja } from '../../ValidaPedidoLoja';
@@ -84,6 +85,13 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     customerLocationUrl: '',
     deliveryFee: '',
   });
+  const [photoRequest, setPhotoRequest] = React.useState({
+    file: null,
+    previewUrl: '',
+    customerLocationUrl: '',
+  });
+  const [photoAnalysis, setPhotoAnalysis] = React.useState(null);
+  const [photoMessage, setPhotoMessage] = React.useState('');
 
   const liveDeliveryStats = React.useMemo(() => {
     const now = Date.now();
@@ -117,6 +125,10 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
       locationReceived: store?.locationReceived || '',
     });
   }, [store?.id, store?.isOpen]);
+
+  React.useEffect(() => () => {
+    if (photoRequest.previewUrl) window.URL.revokeObjectURL(photoRequest.previewUrl);
+  }, [photoRequest.previewUrl]);
 
   React.useEffect(() => {
     let mounted = true;
@@ -367,9 +379,62 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     if (requestMode === 'page') setActivePanel('request');
   }
 
+  function openPhotoRequest() {
+    setRequestModalOpen(false);
+    setPhotoMessage('');
+    setPhotoAnalysis(null);
+    setPhotoRequest((current) => ({ ...current, file: null, previewUrl: '', customerLocationUrl: '' }));
+    setActivePanel('photo-request');
+  }
+
   function closeDeliveryRequest() {
     setRequestModalOpen(false);
     if (activePanel === 'request') setActivePanel('home');
+  }
+
+  function closePhotoRequest() {
+    setPhotoMessage('');
+    setActivePanel('home');
+  }
+
+  function updatePhotoRequestFile(event) {
+    const file = event.target.files?.[0] || null;
+    setPhotoMessage('');
+    setPhotoAnalysis(null);
+    if (!file) {
+      setPhotoRequest((current) => ({ ...current, file: null, previewUrl: '' }));
+      return;
+    }
+
+    setPhotoRequest((current) => ({
+      ...current,
+      file,
+      previewUrl: window.URL.createObjectURL(file),
+    }));
+  }
+
+  function analyzePhotoRequest() {
+    const result = analisarComprovantePedidoTeste({
+      arquivo: photoRequest.file,
+      linkLocalizacao: photoRequest.customerLocationUrl,
+    });
+    setPhotoAnalysis(result.ok ? result : null);
+    setPhotoMessage(result.ok ? 'Analise de teste concluida. Nenhum dado foi gravado.' : result.motivo);
+  }
+
+  function loadPhotoAnalysisIntoManualForm() {
+    if (!photoAnalysis?.ok) return;
+    const values = transformarAnaliseEmPedidoLoja(photoAnalysis);
+    const calculatedMinutes = calcularMinutosAteHorarioPrevistoPedidoLoja(values.estimatedTime);
+    setRequestForm((current) => ({
+      ...current,
+      ...values,
+      orderCode: values.orderCode || current.orderCode || `PED-${Date.now().toString().slice(-6)}`,
+      estimatedMinutes: calculatedMinutes === null ? '' : String(calculatedMinutes),
+      customerLocationUrl: photoRequest.customerLocationUrl,
+    }));
+    setRequestMessage('Dados carregados para conferencia. Nada foi salvo ainda.');
+    setActivePanel('request');
   }
 
   function validateEstimatedTimeField() {
@@ -646,6 +711,118 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     );
   }
 
+  if (activePanel === 'photo-request') {
+    const values = photoAnalysis?.valores || {};
+    const coordinatesLabel = photoAnalysis?.coordenadas
+      ? `${photoAnalysis.coordenadas.latitude.toFixed(7)}, ${photoAnalysis.coordenadas.longitude.toFixed(7)}`
+      : 'Nao informado';
+    const analysisFields = [
+      { icon: <Store size={24} />, label: 'Loja', value: values.loja },
+      { icon: <PencilLine size={24} />, label: 'Pedido', value: values.numeroPedido },
+      { icon: <Clock3 size={24} />, label: 'Entrega prevista', value: values.entregaPrevista },
+      { icon: <UserRound size={24} />, label: 'Cliente', value: values.cliente },
+      { icon: <MapPin size={24} />, label: 'Endereco', value: values.endereco },
+      { icon: <Navigation size={24} />, label: 'Bairro', value: values.bairro },
+      { icon: <PencilLine size={24} />, label: 'Complemento', value: values.complemento },
+      { icon: <WalletCards size={24} />, label: 'Valor do pedido', value: values.valorPedido },
+      { icon: <WalletCards size={24} />, label: 'Taxa no comprovante', value: values.taxaEntrega },
+      { icon: <MapPin size={24} />, label: 'Latitude / longitude', value: coordinatesLabel },
+    ];
+
+    return (
+      <LayoutLojista dataPage>
+        <header className="store-app-header">
+          <button className="store-menu-button store-logo-menu" type="button" aria-label="Voltar" onClick={closePhotoRequest}>
+            <ArrowRight size={24} className="back-icon" />
+          </button>
+          <h1>Pedido por foto</h1>
+          <button className={`store-connected-pill ${storeOpen ? 'open' : 'closed'}`} type="button" onClick={toggleStoreStatus}>
+            <span />{storeOpen ? 'Aberto' : 'Fechado'}
+          </button>
+        </header>
+
+        <section className="photo-request-page" aria-labelledby="photo-request-title">
+          <div className="photo-request-hero">
+            <span className="delivery-request-brand"><Camera size={28} /> BEELBEM MOTOBOY</span>
+            <h2 id="photo-request-title">Analise de comprovante</h2>
+            <p>Envie a foto da comanda e confira os dados lidos antes de criar a entrega.</p>
+          </div>
+
+          <div className="photo-request-shell">
+            <section className="photo-request-upload" aria-label="Foto do comprovante">
+              <label className="photo-dropzone">
+                <input type="file" accept="image/*" onChange={updatePhotoRequestFile} />
+                {photoRequest.previewUrl ? (
+                  <img src={photoRequest.previewUrl} alt="" />
+                ) : (
+                  <span>
+                    <Camera size={44} />
+                    Foto do comprovante
+                  </span>
+                )}
+              </label>
+
+              <label className="request-field wide">
+                <span>Link da localizacao do cliente</span>
+                <span className="request-input">
+                  <MapPin size={20} />
+                  <input
+                    value={photoRequest.customerLocationUrl}
+                    onChange={(event) => setPhotoRequest((current) => ({ ...current, customerLocationUrl: event.target.value }))}
+                    placeholder="Cole aqui o link do Google Maps ou Apple Maps"
+                  />
+                </span>
+              </label>
+
+              {photoRequest.file && <p className="photo-file-name">{photoRequest.file.name}</p>}
+              {photoMessage && <p className={photoAnalysis ? 'success-message' : 'field-error'}>{photoMessage}</p>}
+
+              <div className="photo-request-actions">
+                <button className="primary-action" type="button" onClick={analyzePhotoRequest}>Analisar foto</button>
+                <button className="secondary-action" type="button" onClick={closePhotoRequest}>Voltar</button>
+              </div>
+            </section>
+
+            <section className="photo-analysis-result" aria-label="Resultado da analise">
+              {photoAnalysis ? (
+                <>
+                  <div className="photo-analysis-title">
+                    <span>Retorno de teste</span>
+                    <strong>{values.origem || 'Comprovante'}</strong>
+                  </div>
+                  <div className="photo-analysis-list">
+                    {analysisFields.map((field) => (
+                      <article key={field.label}>
+                        {field.icon}
+                        <span>{field.label}</span>
+                        <strong>{field.value || 'Nao encontrado'}</strong>
+                      </article>
+                    ))}
+                  </div>
+                  {values.itemPrincipal && <p className="photo-item-summary">{values.itemPrincipal}</p>}
+                  {photoAnalysis.avisos?.length > 0 && (
+                    <ul className="photo-analysis-warnings">
+                      {photoAnalysis.avisos.map((warning) => <li key={warning}>{warning}</li>)}
+                    </ul>
+                  )}
+                  <button className="primary-action" type="button" onClick={loadPhotoAnalysisIntoManualForm}>
+                    Usar dados no formulario
+                  </button>
+                </>
+              ) : (
+                <div className="photo-analysis-empty">
+                  <Camera size={48} />
+                  <strong>Aguardando analise</strong>
+                  <span>Os valores extraidos aparecerao aqui.</span>
+                </div>
+              )}
+            </section>
+          </div>
+        </section>
+      </LayoutLojista>
+    );
+  }
+
   if (activePanel === 'request') {
     return (
       <LayoutLojista dataPage>
@@ -813,7 +990,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
       </section>
 
       <section className="store-request-actions" aria-label="Solicitar entrega">
-        <button className="store-request-card photo" type="button" onClick={() => openDeliveryRequest('modal')}>
+        <button className="store-request-card photo" type="button" onClick={openPhotoRequest}>
           <span className="request-icon"><Camera size={52} /></span>
           <span>
             <strong>Solicitar por foto</strong>

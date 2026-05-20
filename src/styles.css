@@ -1267,6 +1267,238 @@ button, a {
   }
 }
 
+.photo-request-page {
+  width: min(1040px, 100%);
+  margin: 0 auto;
+  display: grid;
+  gap: 18px;
+  color: #fff;
+}
+
+.photo-request-hero {
+  display: grid;
+  gap: 10px;
+}
+
+.photo-request-hero h2 {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(30px, 6vw, 42px);
+  line-height: 1.05;
+}
+
+.photo-request-hero p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.74);
+  font-size: 17px;
+  line-height: 1.4;
+}
+
+.photo-request-shell {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.9fr) minmax(340px, 1.1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.photo-request-upload,
+.photo-analysis-result {
+  min-width: 0;
+  padding: 22px;
+  border: 1px solid rgba(255, 196, 0, 0.3);
+  border-radius: 18px;
+  display: grid;
+  gap: 16px;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0.76)),
+    radial-gradient(circle at 82% 0%, rgba(255, 196, 0, 0.18), transparent 34%),
+    #07100a;
+  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.42);
+}
+
+.photo-dropzone {
+  position: relative;
+  min-height: 330px;
+  border: 1px dashed rgba(255, 196, 0, 0.58);
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.055);
+  cursor: pointer;
+}
+
+.photo-dropzone input {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.photo-dropzone img {
+  width: 100%;
+  max-height: 430px;
+  object-fit: contain;
+}
+
+.photo-dropzone span {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  color: rgba(255, 255, 255, 0.74);
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.photo-dropzone svg,
+.photo-analysis-empty svg {
+  color: #ffc400;
+}
+
+.photo-file-name {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.photo-request-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(130px, 160px);
+  gap: 12px;
+}
+
+.photo-request-actions .primary-action,
+.photo-analysis-result > .primary-action {
+  min-height: 54px;
+  height: auto;
+  margin-top: 0;
+  border-radius: 11px;
+  background: #ffc400;
+  color: #090909;
+  font-size: 17px;
+  font-weight: 950;
+}
+
+.photo-request-actions .secondary-action {
+  min-height: 54px;
+  border: 1px solid rgba(255, 196, 0, 0.36);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.photo-analysis-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.photo-analysis-title span {
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 13px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.photo-analysis-title strong {
+  color: #ffc400;
+  font-size: 18px;
+}
+
+.photo-analysis-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+}
+
+.photo-analysis-list article {
+  min-width: 0;
+  min-height: 78px;
+  padding: 12px;
+  border-radius: 12px;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.photo-analysis-list svg {
+  grid-row: span 2;
+  color: #ffc400;
+}
+
+.photo-analysis-list span {
+  color: rgba(255, 255, 255, 0.64);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.photo-analysis-list strong {
+  color: #fff;
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+
+.photo-item-summary {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 11px;
+  background: rgba(255, 196, 0, 0.12);
+  color: #ffc400;
+  font-weight: 900;
+}
+
+.photo-analysis-warnings {
+  margin: 0;
+  padding-left: 18px;
+  color: rgba(255, 255, 255, 0.72);
+  line-height: 1.45;
+}
+
+.photo-analysis-empty {
+  min-height: 430px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.photo-analysis-empty strong {
+  color: #fff;
+  font-size: 22px;
+}
+
+.photo-analysis-empty span {
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.photo-request-upload .success-message,
+.photo-request-upload .field-error {
+  margin-top: 0;
+}
+
+.photo-request-upload .success-message {
+  color: #18e855;
+}
+
+@media (max-width: 860px) {
+  .photo-request-shell,
+  .photo-request-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
 .courier-availability-modal {
   position: fixed;
   inset: 0;
