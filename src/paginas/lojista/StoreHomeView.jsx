@@ -62,6 +62,16 @@ function formatXpValue(value) {
   return Number.isInteger(numeric) ? numeric.toFixed(0) : numeric.toFixed(1).replace('.', ',');
 }
 
+function formatShortDateTime(value) {
+  if (!value) return '--';
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
 function courierLevelFromXp(value) {
   return Math.max(1, Math.floor(Number(value || 0) / 500) + 1);
 }
@@ -100,6 +110,14 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
   const [storeDeliveries, setStoreDeliveries] = React.useState([]);
   const [deliveriesLoading, setDeliveriesLoading] = React.useState(false);
   const [deliveriesMessage, setDeliveriesMessage] = React.useState('');
+  const [statusDetailsOpen, setStatusDetailsOpen] = React.useState(false);
+  const [statusDetailsRows, setStatusDetailsRows] = React.useState([]);
+  const [statusDetailsLoading, setStatusDetailsLoading] = React.useState(false);
+  const [statusDetailsMessage, setStatusDetailsMessage] = React.useState('');
+  const [statusDetailsFilters, setStatusDetailsFilters] = React.useState({
+    startDate: todayIso,
+    endDate: todayIso,
+  });
   const [liveDeliveries, setLiveDeliveries] = React.useState([]);
   const [liveDeliveriesMessage, setLiveDeliveriesMessage] = React.useState('');
   const [pendingOfferPrompt, setPendingOfferPrompt] = React.useState(null);
@@ -142,9 +160,9 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
       delivery.deadlineAt && new Date(delivery.deadlineAt).getTime() < now && delivery.status !== 'delivered'
     )).length;
     return [
-      { label: 'A caminho da loja', value: String(toStore).padStart(2, '0'), tone: 'green', icon: <Bike size={32} /> },
-      { label: 'A caminho do cliente', value: String(toCustomer).padStart(2, '0'), tone: 'yellow', icon: <Bike size={32} /> },
-      { label: 'Em atraso', value: String(late).padStart(2, '0'), tone: 'red', icon: <AlertTriangle size={32} /> },
+      { key: 'to-store', label: 'A caminho da loja', value: String(toStore).padStart(2, '0'), tone: 'green', icon: <Bike size={32} /> },
+      { key: 'to-customer', label: 'A caminho do cliente', value: String(toCustomer).padStart(2, '0'), tone: 'yellow', icon: <Bike size={32} /> },
+      { key: 'late', label: 'Em atraso', value: String(late).padStart(2, '0'), tone: 'red', icon: <AlertTriangle size={32} /> },
     ];
   }, [liveDeliveries]);
 
@@ -299,6 +317,82 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
       window.clearInterval(intervalId);
     };
   }, [store?.id]);
+
+  React.useEffect(() => {
+    if (!statusDetailsOpen) return undefined;
+    let mounted = true;
+
+    async function loadStatusDetails() {
+      setStatusDetailsMessage('');
+      if (!supabase || !store?.id) {
+        setStatusDetailsRows([]);
+        setStatusDetailsMessage('Supabase nao disponivel nesta sessao.');
+        return;
+      }
+
+      const startDate = statusDetailsFilters.startDate || todayIso;
+      const endDate = statusDetailsFilters.endDate || startDate;
+      const start = `${startDate}T00:00:00`;
+      const end = `${endDate}T23:59:59.999`;
+
+      setStatusDetailsLoading(true);
+      const { data, error } = await supabase
+        .from('delivery_events')
+        .select('id, created_at, deliveries!inner(id, order_code, delivery_district, store_id, customers(name), couriers(name))')
+        .eq('status', 'assigned')
+        .eq('deliveries.store_id', store.id)
+        .gte('created_at', start)
+        .lte('created_at', end)
+        .order('created_at', { ascending: false });
+
+      if (!mounted) return;
+
+      if (!error) {
+        setStatusDetailsRows((data ?? []).map((event) => ({
+          id: event.id,
+          courierName: event.deliveries?.couriers?.name || 'Motoboy',
+          orderCode: event.deliveries?.order_code || event.deliveries?.id || '',
+          confirmedAt: event.created_at,
+          customerName: event.deliveries?.customers?.name || 'Cliente nao informado',
+          district: event.deliveries?.delivery_district || 'Bairro nao informado',
+        })));
+        setStatusDetailsLoading(false);
+        return;
+      }
+
+      const fallback = await supabase
+        .from('deliveries')
+        .select('id, order_code, delivery_district, updated_at, customers(name), couriers(name)')
+        .eq('store_id', store.id)
+        .eq('status', 'assigned')
+        .gte('updated_at', start)
+        .lte('updated_at', end)
+        .order('updated_at', { ascending: false });
+
+      if (!mounted) return;
+      setStatusDetailsLoading(false);
+
+      if (fallback.error) {
+        setStatusDetailsRows([]);
+        setStatusDetailsMessage(`Nao foi possivel carregar a tabela: ${fallback.error.message}`);
+        return;
+      }
+
+      setStatusDetailsRows((fallback.data ?? []).map((delivery) => ({
+        id: delivery.id,
+        courierName: delivery.couriers?.name || 'Motoboy',
+        orderCode: delivery.order_code || delivery.id,
+        confirmedAt: delivery.updated_at,
+        customerName: delivery.customers?.name || 'Cliente nao informado',
+        district: delivery.delivery_district || 'Bairro nao informado',
+      })));
+    }
+
+    loadStatusDetails();
+    return () => {
+      mounted = false;
+    };
+  }, [statusDetailsFilters.endDate, statusDetailsFilters.startDate, statusDetailsOpen, store?.id, todayIso]);
 
   React.useEffect(() => {
     if (!supabase || !store?.id) return undefined;
@@ -1113,15 +1207,90 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
 
       <section className="store-status-grid" aria-label="Resumo das entregas">
         {liveDeliveryStats.map((item) => (
-          <article className={`store-status-card ${item.tone}`} key={item.label}>
+          <button
+            className={`store-status-card ${item.tone}${item.key === 'to-store' ? ' clickable' : ''}`}
+            type="button"
+            key={item.label}
+            onClick={item.key === 'to-store' ? () => setStatusDetailsOpen(true) : undefined}
+            disabled={item.key !== 'to-store'}
+            aria-label={item.key === 'to-store' ? 'Abrir entregas a caminho da loja' : item.label}
+          >
             <div className="store-status-card-top">
               <div className="store-status-icon">{item.icon}</div>
               <p>{item.label}</p>
             </div>
             <strong>{item.value}</strong>
-          </article>
+          </button>
         ))}
       </section>
+
+      {statusDetailsOpen && (
+        <div className="status-detail-modal" role="dialog" aria-modal="true" aria-labelledby="status-detail-title">
+          <section>
+            <header>
+              <div>
+                <span>Entregas</span>
+                <h2 id="status-detail-title">A caminho da loja</h2>
+              </div>
+              <button type="button" aria-label="Fechar" onClick={() => setStatusDetailsOpen(false)}>Fechar</button>
+            </header>
+
+            <div className="status-detail-filters" aria-label="Filtros por periodo">
+              <label>
+                Periodo inicial
+                <input
+                  type="date"
+                  value={statusDetailsFilters.startDate}
+                  onChange={(event) => {
+                    const nextStartDate = event.target.value || todayIso;
+                    setStatusDetailsFilters((current) => ({
+                      ...current,
+                      startDate: nextStartDate,
+                      endDate: current.endDate < nextStartDate ? nextStartDate : current.endDate,
+                    }));
+                  }}
+                />
+              </label>
+              <label>
+                Periodo final
+                <input
+                  type="date"
+                  value={statusDetailsFilters.endDate}
+                  min={statusDetailsFilters.startDate}
+                  onChange={(event) => setStatusDetailsFilters((current) => ({
+                    ...current,
+                    endDate: event.target.value || current.startDate,
+                  }))}
+                />
+              </label>
+            </div>
+
+            <div className="status-detail-table" role="table" aria-label="Tabela de entregas a caminho da loja">
+              <div className="status-detail-head" role="row">
+                <span>Nome Motoboy</span>
+                <span>Numero pedido</span>
+                <span>Conf.</span>
+                <span>Nome cliente</span>
+                <span>Bairro</span>
+              </div>
+              {statusDetailsLoading && <p className="form-note">Carregando confirmacoes...</p>}
+              {statusDetailsMessage && <p className="field-error">{statusDetailsMessage}</p>}
+              {!statusDetailsLoading && !statusDetailsMessage && statusDetailsRows.map((row) => (
+                <article className="status-detail-row" role="row" key={`${row.id}-${row.confirmedAt}`}>
+                  <strong>{row.courierName}</strong>
+                  <span>{row.orderCode}</span>
+                  <span>{formatShortDateTime(row.confirmedAt)}</span>
+                  <span>{row.customerName}</span>
+                  <span>{row.district}</span>
+                </article>
+              ))}
+              {!statusDetailsLoading && !statusDetailsMessage && statusDetailsRows.length === 0 && (
+                <p className="empty-state">Nenhuma confirmacao encontrada neste periodo.</p>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
 
       {liveDeliveriesMessage && <p className="store-status-message error">{liveDeliveriesMessage}</p>}
 
