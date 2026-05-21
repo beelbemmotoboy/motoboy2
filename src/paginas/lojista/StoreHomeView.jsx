@@ -97,6 +97,17 @@ function formatShortDateTime(value) {
   }).format(new Date(value));
 }
 
+function uniqueStatusDetailRows(rows) {
+  const seen = new Set();
+  return rows.filter((row) => {
+    const key = row.deliveryId || row.orderCode || row.id;
+    if (!key) return true;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function courierLevelFromXp(value) {
   return Math.max(1, Math.floor(Number(value || 0) / 500) + 1);
 }
@@ -382,14 +393,15 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
           return;
         }
 
-        setStatusDetailsRows((lateDeliveries ?? []).map((delivery) => ({
+        setStatusDetailsRows(uniqueStatusDetailRows((lateDeliveries ?? []).map((delivery) => ({
           id: delivery.id,
+          deliveryId: delivery.id,
           courierName: delivery.couriers?.name || 'Motoboy',
           orderCode: delivery.order_code || delivery.id,
           confirmedAt: delivery.delivery_deadline_at,
           customerName: delivery.customers?.name || 'Cliente nao informado',
           district: delivery.delivery_district || 'Bairro nao informado',
-        })));
+        }))));
         return;
       }
 
@@ -405,14 +417,15 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
       if (!mounted) return;
 
       if (!error) {
-        setStatusDetailsRows((data ?? []).map((event) => ({
-          id: event.id,
+        setStatusDetailsRows(uniqueStatusDetailRows((data ?? []).map((event) => ({
+          id: event.deliveries?.id || event.id,
+          deliveryId: event.deliveries?.id || '',
           courierName: event.deliveries?.couriers?.name || 'Motoboy',
           orderCode: event.deliveries?.order_code || event.deliveries?.id || '',
           confirmedAt: event.created_at,
           customerName: event.deliveries?.customers?.name || 'Cliente nao informado',
           district: event.deliveries?.delivery_district || 'Bairro nao informado',
-        })));
+        }))));
         setStatusDetailsLoading(false);
         return;
       }
@@ -435,14 +448,15 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
         return;
       }
 
-      setStatusDetailsRows((fallback.data ?? []).map((delivery) => ({
+      setStatusDetailsRows(uniqueStatusDetailRows((fallback.data ?? []).map((delivery) => ({
         id: delivery.id,
+        deliveryId: delivery.id,
         courierName: delivery.couriers?.name || 'Motoboy',
         orderCode: delivery.order_code || delivery.id,
         confirmedAt: delivery.updated_at,
         customerName: delivery.customers?.name || 'Cliente nao informado',
         district: delivery.delivery_district || 'Bairro nao informado',
-      })));
+      }))));
     }
 
     loadStatusDetails();
