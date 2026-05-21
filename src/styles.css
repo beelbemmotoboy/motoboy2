@@ -1352,8 +1352,7 @@ button, a {
 }
 
 .photo-dropzone svg,
-.photo-analysis-empty svg,
-.photo-analysis-error svg {
+.photo-analysis-empty svg {
   color: #ffc400;
 }
 
@@ -1488,8 +1487,7 @@ button, a {
   line-height: 1.45;
 }
 
-.photo-analysis-empty,
-.photo-analysis-error {
+.photo-analysis-empty {
   min-height: 430px;
   display: grid;
   place-items: center;
@@ -1498,61 +1496,13 @@ button, a {
   text-align: center;
 }
 
-.photo-analysis-empty strong,
-.photo-analysis-error strong {
+.photo-analysis-empty strong {
   color: #fff;
   font-size: 22px;
 }
 
-.photo-analysis-empty span,
-.photo-analysis-error span {
+.photo-analysis-empty span {
   color: rgba(255, 255, 255, 0.68);
-}
-
-.photo-analysis-error {
-  place-items: stretch;
-  align-content: center;
-  text-align: left;
-}
-
-.photo-analysis-error svg {
-  justify-self: start;
-  color: #ff4a5f;
-}
-
-.photo-analysis-error p {
-  margin: 0;
-  color: rgba(255, 255, 255, 0.76);
-  line-height: 1.45;
-}
-
-.photo-analysis-error div {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(150px, 180px);
-  gap: 12px;
-}
-
-.photo-analysis-error .primary-action {
-  min-height: 54px;
-  height: auto;
-  margin-top: 0;
-  border-radius: 11px;
-  background: #ffc400;
-  color: #090909;
-  font-size: 17px;
-  font-weight: 950;
-}
-
-.photo-analysis-error .secondary-action {
-  min-height: 54px;
-  border: 1px solid rgba(255, 196, 0, 0.36);
-  border-radius: 11px;
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
-  font: inherit;
-  font-size: 17px;
-  font-weight: 950;
-  cursor: pointer;
 }
 
 .photo-request-upload .success-message,
@@ -1564,10 +1514,79 @@ button, a {
   color: #18e855;
 }
 
+.photo-error-popup {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(8px);
+}
+
+.photo-error-popup section {
+  width: min(470px, 100%);
+  padding: 24px;
+  border: 1px solid rgba(255, 74, 95, 0.44);
+  border-radius: 18px;
+  display: grid;
+  gap: 14px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(255, 74, 95, 0.18), transparent 34%),
+    #080b09;
+  box-shadow: 0 24px 82px rgba(0, 0, 0, 0.68);
+  color: #fff;
+}
+
+.photo-error-popup svg {
+  color: #ff4a5f;
+}
+
+.photo-error-popup h2 {
+  margin: 0;
+  color: #fff;
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.photo-error-popup p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.74);
+  line-height: 1.45;
+}
+
+.photo-error-popup div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 180px);
+  gap: 12px;
+}
+
+.photo-error-popup .primary-action,
+.photo-error-popup .secondary-action {
+  min-height: 54px;
+  height: auto;
+  margin-top: 0;
+  border-radius: 11px;
+  font-size: 17px;
+  font-weight: 950;
+}
+
+.photo-error-popup .primary-action {
+  background: #ffc400;
+  color: #090909;
+}
+
+.photo-error-popup .secondary-action {
+  border: 1px solid rgba(255, 196, 0, 0.36);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
 @media (max-width: 860px) {
   .photo-request-shell,
   .photo-request-actions,
-  .photo-analysis-error div {
+  .photo-error-popup div {
     grid-template-columns: 1fr;
   }
 }

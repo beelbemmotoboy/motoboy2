@@ -840,7 +840,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
               </label>
 
               {photoRequest.file && <p className="photo-file-name">{photoRequest.file.name}</p>}
-              {photoMessage && <p className={photoAnalysis ? 'success-message' : 'field-error'}>{photoMessage}</p>}
+              {photoMessage && !photoAnalysisError && <p className={photoAnalysis ? 'success-message' : 'field-error'}>{photoMessage}</p>}
 
               <div className="photo-request-actions">
                 <button className="primary-action" type="button" onClick={() => analyzePhotoRequest()} disabled={photoAnalyzing}>
@@ -883,37 +883,32 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
                   </button>
                 </>
               ) : (
-                photoAnalysisError && !photoAnalyzing ? (
-                  <div className="photo-analysis-error">
-                    <AlertTriangle size={48} />
-                    <strong>Nao foi possivel analisar o comprovante</strong>
-                    <span>{photoAnalysisError}</span>
-                    <p>Deseja tentar novamente ou solicitar manual?</p>
-                    <div>
-                      <button className="primary-action" type="button" onClick={retakePhotoRequest}>
-                        Tirar outra foto
-                      </button>
-                      {photoRequest.file && (
-                        <button className="secondary-action" type="button" onClick={() => analyzePhotoRequest()}>
-                          Tentar novamente
-                        </button>
-                      )}
-                      <button className="secondary-action" type="button" onClick={openManualRequestAfterPhotoError}>
-                        Solicitar manual
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="photo-analysis-empty">
-                    <Camera size={48} />
-                    <strong>{photoAnalyzing ? 'Analisando foto' : 'Aguardando analise'}</strong>
-                    <span>{photoAnalyzing ? 'Extraindo os dados do comprovante.' : 'Os valores extraidos aparecerao aqui.'}</span>
-                  </div>
-                )
+                <div className="photo-analysis-empty">
+                  <Camera size={48} />
+                  <strong>{photoAnalyzing ? 'Analisando foto' : 'Aguardando analise'}</strong>
+                  <span>{photoAnalyzing ? 'Extraindo os dados do comprovante.' : 'Os valores extraidos aparecerao aqui.'}</span>
+                </div>
               )}
             </section>
           </div>
         </section>
+        {photoAnalysisError && !photoAnalyzing && (
+          <div className="photo-error-popup" role="dialog" aria-modal="true" aria-labelledby="photo-error-title">
+            <section>
+              <AlertTriangle size={46} />
+              <h2 id="photo-error-title">Nao foi possivel analisar o comprovante</h2>
+              <p>{photoAnalysisError}</p>
+              <div>
+                <button className="primary-action" type="button" onClick={retakePhotoRequest}>
+                  Nova foto
+                </button>
+                <button className="secondary-action" type="button" onClick={openManualRequestAfterPhotoError}>
+                  Solicitar manual
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
       </LayoutLojista>
     );
   }
