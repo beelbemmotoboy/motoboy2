@@ -122,12 +122,32 @@ async function fetchActiveQueueOffer({ supabaseUrl, serviceRoleKey, deliveryId }
   url.searchParams.set('status', 'eq.offered');
   url.searchParams.set('deliveries.status', 'eq.pending');
   url.searchParams.set('order', 'offered_at.asc');
-  url.searchParams.set('limit', '1');
 
   const response = await fetch(url, { headers: serviceHeaders(serviceRoleKey) });
   if (!response.ok) throw new Error(`Could not fetch active delivery offer: ${await response.text()}`);
   const rows = await response.json() as QueueOffer[];
+  const duplicateOfferIds = rows.slice(1).map((offer) => offer.id).filter(Boolean);
+  if (duplicateOfferIds.length) {
+    await expireQueueOffers({ supabaseUrl, serviceRoleKey, offerIds: duplicateOfferIds });
+  }
   return rows[0] ?? null;
+}
+
+async function expireQueueOffers({ supabaseUrl, serviceRoleKey, offerIds }: {
+  supabaseUrl: string;
+  serviceRoleKey: string;
+  offerIds: string[];
+}) {
+  const url = new URL(`${supabaseUrl}/rest/v1/delivery_queue`);
+  url.searchParams.set('id', `in.(${offerIds.join(',')})`);
+  url.searchParams.set('status', 'eq.offered');
+
+  const response = await fetch(url, {
+    method: 'PATCH',
+    headers: { ...serviceHeaders(serviceRoleKey), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+    body: JSON.stringify({ status: 'expired', answered_at: new Date().toISOString() }),
+  });
+  if (!response.ok) throw new Error(`Could not expire duplicate active offers: ${await response.text()}`);
 }
 
 async function fetchNextQueueOffer({ supabaseUrl, serviceRoleKey, deliveryId }: {

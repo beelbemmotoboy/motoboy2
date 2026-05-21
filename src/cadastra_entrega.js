@@ -742,11 +742,21 @@ async function getActiveQueueOffer({ supabase, deliveryId }) {
     .eq('delivery_id', deliveryId)
     .eq('status', 'offered')
     .eq('deliveries.status', 'pending')
-    .order('offered_at', { ascending: true })
-    .limit(1);
+    .order('offered_at', { ascending: true });
 
   if (error) throw new Error(`Nao foi possivel buscar oferta ativa: ${error.message}`);
-  return data?.[0] ?? null;
+  const activeOffer = data?.[0] ?? null;
+  const duplicateOfferIds = (data ?? []).slice(1).map((offer) => offer.id).filter(Boolean);
+
+  if (duplicateOfferIds.length) {
+    await supabase
+      .from('delivery_queue')
+      .update({ status: 'expired', answered_at: new Date().toISOString() })
+      .in('id', duplicateOfferIds)
+      .eq('status', 'offered');
+  }
+
+  return activeOffer;
 }
 
 async function activateNextQueueOffer({ supabase, deliveryId }) {
