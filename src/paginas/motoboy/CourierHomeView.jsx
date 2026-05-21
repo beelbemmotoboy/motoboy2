@@ -1,7 +1,7 @@
 import React from 'react';
 import { Bike, Clock3, LogOut, Mail, MapPin, Navigation, Search, Star, Store, UserRound, WalletCards } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
-import { acceptQueuedDelivery, avaliarEntregasCompativeisParaMotoboy, emptyDelivery, getNextDeliveryForCourier, markDeliveryDelivered, markDeliveryPickedUp, rejectQueuedDelivery, setCourierAvailable, updateCourierLocation } from '../../cadastra_entrega';
+import { acceptQueuedDelivery, avaliarEntregasCompativeisParaMotoboy, DELIVERY_OFFER_TIMEOUT_SECONDS, emptyDelivery, expireQueuedDeliveryOffer, getNextDeliveryForCourier, markDeliveryDelivered, markDeliveryPickedUp, rejectQueuedDelivery, setCourierAvailable, updateCourierLocation } from '../../cadastra_entrega';
 import { awardAcceptXp, awardOnTimeDeliveryXp, awardPickupXp } from '../../xp_motoboy';
 import { LayoutMotoboy } from '../../layouts/LayoutMotoboy';
 
@@ -149,15 +149,15 @@ function formatMinutesDisplay(value) {
 export function CourierHomeView({ city, profile, onLogout }) {
   const [courierName, setCourierName] = React.useState(profile?.name || 'Motoboy');
   const [courierPoints, setCourierPoints] = React.useState(0);
-  const [acceptTimeoutSeconds, setAcceptTimeoutSeconds] = React.useState(50);
-  const [countdownRemaining, setCountdownRemaining] = React.useState(50);
+  const [acceptTimeoutSeconds, setAcceptTimeoutSeconds] = React.useState(DELIVERY_OFFER_TIMEOUT_SECONDS);
+  const [countdownRemaining, setCountdownRemaining] = React.useState(DELIVERY_OFFER_TIMEOUT_SECONDS);
   const [deadlineRemainingLabel, setDeadlineRemainingLabel] = React.useState('--:--');
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [scoreModalOpen, setScoreModalOpen] = React.useState(false);
   const [availabilityPromptOpen, setAvailabilityPromptOpen] = React.useState(true);
   const [currentDelivery, setCurrentDelivery] = React.useState(emptyDelivery());
   const [compatibleOffer, setCompatibleOffer] = React.useState(null);
-  const [compatibleOfferCountdown, setCompatibleOfferCountdown] = React.useState(50);
+  const [compatibleOfferCountdown, setCompatibleOfferCountdown] = React.useState(DELIVERY_OFFER_TIMEOUT_SECONDS);
   const [deliveryLoading, setDeliveryLoading] = React.useState(false);
   const [actionMessage, setActionMessage] = React.useState('');
   const [notificationPermission, setNotificationPermission] = React.useState(() => (
@@ -177,6 +177,7 @@ export function CourierHomeView({ city, profile, onLogout }) {
   const lastAlertedDeliveryRef = React.useRef('');
   const compatibleOfferDismissedRef = React.useRef(new Set());
   const compatibleOfferLoadingRef = React.useRef(false);
+  const expiringOfferRef = React.useRef('');
   const hasPendingOffer = Boolean(currentDelivery.id && currentDelivery.status === 'pending');
   const hasAcceptedDelivery = Boolean(currentDelivery.id && ['assigned', 'picked_up', 'on_route'].includes(currentDelivery.status));
   const showDeliveryData = hasAcceptedDelivery;
@@ -309,8 +310,9 @@ export function CourierHomeView({ city, profile, onLogout }) {
 
       const configuredSeconds = Number(timeoutSetting?.value?.seconds);
       if (mounted && Number.isFinite(configuredSeconds) && configuredSeconds > 0) {
-        setAcceptTimeoutSeconds(Math.round(configuredSeconds));
-        setCountdownRemaining(Math.round(configuredSeconds));
+        const nextTimeout = Math.max(DELIVERY_OFFER_TIMEOUT_SECONDS, Math.round(configuredSeconds));
+        setAcceptTimeoutSeconds(nextTimeout);
+        setCountdownRemaining(nextTimeout);
       }
 
       if (city?.id) {
@@ -366,6 +368,7 @@ export function CourierHomeView({ city, profile, onLogout }) {
   React.useEffect(() => {
     if (!hasPendingOffer) {
       setCountdownRemaining(acceptTimeoutSeconds);
+      expiringOfferRef.current = '';
       return undefined;
     }
 
@@ -379,6 +382,32 @@ export function CourierHomeView({ city, profile, onLogout }) {
     const intervalId = window.setInterval(updateCountdown, 1000);
     return () => window.clearInterval(intervalId);
   }, [acceptTimeoutSeconds, currentDelivery.id, currentDelivery.offeredAt, hasPendingOffer]);
+
+  React.useEffect(() => {
+    if (!hasPendingOffer || countdownRemaining > 0 || !currentDelivery.id || !profile?.courier_id || !city?.id || !supabase) return;
+    if (expiringOfferRef.current === currentDelivery.queueId) return;
+    expiringOfferRef.current = currentDelivery.queueId;
+
+    async function expireOffer() {
+      try {
+        await expireQueuedDeliveryOffer({
+          supabase,
+          cityId: city.id,
+          delivery: currentDelivery,
+          courierId: profile.courier_id,
+          courierName,
+          note: 'Oferta encaminhada para o proximo motoboy.',
+        });
+        setActionMessage('Tempo esgotado. Oferta enviada para o proximo motoboy.');
+        setCurrentDelivery(emptyDelivery());
+        loadCurrentDelivery({ silent: true });
+      } catch (error) {
+        setActionMessage(error.message);
+      }
+    }
+
+    expireOffer();
+  }, [city?.id, countdownRemaining, courierName, currentDelivery, hasPendingOffer, loadCurrentDelivery, profile?.courier_id]);
 
   React.useEffect(() => {
     if (!hasAcceptedDelivery || !currentDelivery.deadlineAt) {
@@ -401,10 +430,11 @@ export function CourierHomeView({ city, profile, onLogout }) {
 
   React.useEffect(() => {
     if (!hasPendingOffer || !currentDelivery.id) return;
-    if (lastAlertedDeliveryRef.current === currentDelivery.id) return;
-    lastAlertedDeliveryRef.current = currentDelivery.id;
+    const alertKey = `${currentDelivery.queueId || currentDelivery.id}-${currentDelivery.offeredAt || ''}`;
+    if (lastAlertedDeliveryRef.current === alertKey) return;
+    lastAlertedDeliveryRef.current = alertKey;
     triggerCourierOfferAlert(currentDelivery);
-  }, [currentDelivery.id, hasPendingOffer]);
+  }, [currentDelivery.id, currentDelivery.offeredAt, currentDelivery.queueId, hasPendingOffer]);
 
   React.useEffect(() => {
     if (!compatibleOffer) {

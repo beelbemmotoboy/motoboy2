@@ -1,7 +1,7 @@
 import React from 'react';
 import { ArrowLeft, ArrowRight, AlertTriangle, Bike, Camera, Clock3, MapPin, Minus, Navigation, PencilLine, Phone, Plus, Search, Star, Store, UserRound, WalletCards } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
-import { createDeliveryWithQueue } from '../../cadastra_entrega';
+import { advanceDeliveryOfferQueue, cancelPendingDeliveryOfferSearch, createDeliveryWithQueue, STORE_PENDING_FOLLOWUP_SECONDS } from '../../cadastra_entrega';
 import { analisarComprovantePedidoComGemini, transformarAnaliseEmPedidoLoja } from '../../analisa_comprovante_pedido';
 import { isValidCep, isValidEmail, isValidPhone, maskCep, maskCnpj, maskPhone, onlyDigits } from '../../utils/validators';
 import { LayoutLojista } from '../../layouts/LayoutLojista';
@@ -102,6 +102,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
   const [deliveriesMessage, setDeliveriesMessage] = React.useState('');
   const [liveDeliveries, setLiveDeliveries] = React.useState([]);
   const [liveDeliveriesMessage, setLiveDeliveriesMessage] = React.useState('');
+  const [pendingOfferPrompt, setPendingOfferPrompt] = React.useState(null);
   const [dismissedAcceptedDeliveryId, setDismissedAcceptedDeliveryId] = React.useState('');
   const [storeOpen, setStoreOpen] = React.useState(store?.isOpen ?? true);
   const [showOpenPrompt, setShowOpenPrompt] = React.useState(store?.isOpen === false);
@@ -131,6 +132,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
   const [photoAnalysisError, setPhotoAnalysisError] = React.useState('');
   const [photoAnalysisDebug, setPhotoAnalysisDebug] = React.useState(null);
   const [photoAnalyzing, setPhotoAnalyzing] = React.useState(false);
+  const pendingOfferPromptNextAtRef = React.useRef(new Map());
 
   const liveDeliveryStats = React.useMemo(() => {
     const now = Date.now();
@@ -294,6 +296,66 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     const intervalId = window.setInterval(loadLiveDeliveries, 10000);
     return () => {
       mounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, [store?.id]);
+
+  React.useEffect(() => {
+    if (!supabase || !store?.id) return undefined;
+
+    let stopped = false;
+    let running = false;
+
+    async function monitorPendingOffers() {
+      if (stopped || running) return;
+      running = true;
+      try {
+        const { data, error } = await supabase
+          .from('deliveries')
+          .select('id, order_code, created_at')
+          .eq('store_id', store.id)
+          .eq('status', 'pending')
+          .is('courier_id', null)
+          .order('created_at', { ascending: true })
+          .limit(10);
+
+        if (error) {
+          if (!stopped) setLiveDeliveriesMessage(`Nao foi possivel monitorar solicitacoes pendentes: ${error.message}`);
+          return;
+        }
+
+        for (const delivery of data ?? []) {
+          await advanceDeliveryOfferQueue({ supabase, deliveryId: delivery.id });
+        }
+
+        const pendingIds = new Set((data ?? []).map((delivery) => delivery.id));
+        if (!stopped) {
+          setPendingOfferPrompt((current) => current && !pendingIds.has(current.id) ? null : current);
+        }
+
+        const now = Date.now();
+        const waitingTooLong = (data ?? []).find((delivery) => {
+          const createdAt = new Date(delivery.created_at).getTime();
+          const nextPromptAt = pendingOfferPromptNextAtRef.current.get(delivery.id) || createdAt + STORE_PENDING_FOLLOWUP_SECONDS * 1000;
+          return now >= nextPromptAt;
+        });
+
+        if (!stopped && waitingTooLong) {
+          setPendingOfferPrompt((current) => current?.id === waitingTooLong.id ? current : {
+            id: waitingTooLong.id,
+            orderCode: waitingTooLong.order_code || waitingTooLong.id,
+            createdAt: waitingTooLong.created_at,
+          });
+        }
+      } finally {
+        running = false;
+      }
+    }
+
+    monitorPendingOffers();
+    const intervalId = window.setInterval(monitorPendingOffers, 5000);
+    return () => {
+      stopped = true;
       window.clearInterval(intervalId);
     };
   }, [store?.id]);
@@ -601,6 +663,33 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
       setRequestMessage(error.message);
     } finally {
       setRequestSaving(false);
+    }
+  }
+
+  async function continuePendingOfferSearch() {
+    if (!pendingOfferPrompt?.id) return;
+    pendingOfferPromptNextAtRef.current.set(
+      pendingOfferPrompt.id,
+      Date.now() + STORE_PENDING_FOLLOWUP_SECONDS * 1000,
+    );
+    setStatusMessage(`Continuando a busca de motoboy para o pedido ${pendingOfferPrompt.orderCode}.`);
+    setPendingOfferPrompt(null);
+    try {
+      await advanceDeliveryOfferQueue({ supabase, deliveryId: pendingOfferPrompt.id });
+    } catch (error) {
+      setStatusMessage(`Nao foi possivel continuar a busca: ${error.message}`);
+    }
+  }
+
+  async function cancelPendingOfferSearch() {
+    if (!pendingOfferPrompt?.id) return;
+    const deliveryToCancel = pendingOfferPrompt;
+    setPendingOfferPrompt(null);
+    try {
+      await cancelPendingDeliveryOfferSearch({ supabase, deliveryId: deliveryToCancel.id });
+      setStatusMessage(`Solicitacao ${deliveryToCancel.orderCode} cancelada.`);
+    } catch (error) {
+      setStatusMessage(`Nao foi possivel cancelar a solicitacao: ${error.message}`);
     }
   }
 
@@ -1004,6 +1093,18 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
             <div>
               <button className="primary-action" type="button" onClick={toggleStoreStatus}>Abrir loja</button>
               <button className="secondary-action" type="button" onClick={() => setShowOpenPrompt(false)}>Agora nao</button>
+            </div>
+          </section>
+        </div>
+      )}
+      {pendingOfferPrompt && (
+        <div className="store-open-prompt" role="dialog" aria-modal="true" aria-labelledby="pending-offer-title">
+          <section>
+            <h2 id="pending-offer-title">Ainda sem aceite</h2>
+            <p>Ja se passaram 5 minutos e nenhum motoboy aceitou o pedido {pendingOfferPrompt.orderCode}. Deseja continuar tentando?</p>
+            <div>
+              <button className="primary-action" type="button" onClick={continuePendingOfferSearch}>Continuar</button>
+              <button className="secondary-action" type="button" onClick={cancelPendingOfferSearch}>Cancelar solicitacao</button>
             </div>
           </section>
         </div>
