@@ -1556,6 +1556,28 @@ button, a {
   line-height: 1.45;
 }
 
+.photo-error-details {
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.photo-error-details summary {
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.82);
+  font-weight: 800;
+}
+
+.photo-error-details pre {
+  margin: 10px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .photo-error-popup div {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(150px, 180px);

@@ -1,6 +1,7 @@
 import { extrairCoordenadasDoLinkLocalizacao } from './cadastra_entrega.js';
 
 const GEMINI_MODEL_PADRAO = import.meta.env?.VITE_GEMINI_MODEL || 'gemini-2.5-flash';
+const GEMINI_FALLBACK_MODEL = import.meta.env?.VITE_GEMINI_FALLBACK_MODEL || 'gemini-3.5-flash';
 const GEMINI_API_KEY = import.meta.env?.VITE_GEMINI_API_KEY || '';
 
 const COMPROVANTE_IFOOD_TESTE = `
@@ -31,6 +32,7 @@ Cobrar do cliente: R$ 0,00
 export const geminiConfigStatus = {
   hasApiKey: Boolean(GEMINI_API_KEY),
   model: GEMINI_MODEL_PADRAO,
+  fallbackModel: GEMINI_FALLBACK_MODEL,
 };
 
 export async function analisarComprovantePedidoComGemini({
@@ -52,6 +54,7 @@ export async function analisarComprovantePedidoComGemini({
   if (!apiKey) {
     return {
       ok: false,
+      codigo: 'gemini_api_key_missing',
       motivo: 'Configure a chave VITE_GEMINI_API_KEY para analisar a foto com Gemini.',
       valores: null,
       coordenadas: null,
@@ -61,96 +64,146 @@ export async function analisarComprovantePedidoComGemini({
 
   try {
     const imageData = await arquivoParaBase64(arquivo);
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      body: JSON.stringify({
-        contents: [{
-          role: 'user',
-          parts: [
-            {
-              inline_data: {
-                mime_type: arquivo.type || 'image/jpeg',
-                data: imageData,
-              },
-            },
-            { text: promptExtracaoComprovante() },
-          ],
-        }],
-        generationConfig: {
-          temperature: 0,
-          responseMimeType: 'application/json',
+    const modelosParaTentar = [...new Set([model, GEMINI_FALLBACK_MODEL].filter(Boolean))];
+    let ultimaFalha = null;
+
+    for (const modeloAtual of modelosParaTentar) {
+      const { response, data } = await chamarGemini({
+        apiKey,
+        model: modeloAtual,
+        arquivo,
+        imageData,
+      });
+
+      if (!response.ok) {
+        ultimaFalha = montarFalhaGemini(data, response.status, modeloAtual);
+        if (deveTentarModeloFallback(ultimaFalha) && modeloAtual !== modelosParaTentar.at(-1)) continue;
+        return ultimaFalha;
+      }
+
+      const text = extrairTextoGemini(data);
+      if (!text) {
+        return {
+          ok: false,
+          codigo: 'gemini_empty_response',
+          motivo: montarMotivoRespostaVazia(data),
+          valores: null,
+          coordenadas: null,
+          modelo: modeloAtual,
+          avisos: ['Nenhum dado foi gravado no banco.'],
+        };
+      }
+
+      const parsed = parseJsonGemini(text);
+      if (!parsed) {
+        return {
+          ok: false,
+          codigo: 'gemini_invalid_json',
+          motivo: 'Gemini respondeu, mas nao retornou um JSON valido para o comprovante.',
+          valores: null,
+          coordenadas: null,
+          modelo: modeloAtual,
+          avisos: ['Nenhum dado foi gravado no banco.'],
+        };
+      }
+
+      const valores = normalizarValoresGemini(parsed);
+      const coordenadas = extrairCoordenadasDoLinkLocalizacao(linkLocalizacao);
+      const avisos = [
+        'Leitura realizada automaticamente. Nenhum dado foi gravado no banco.',
+        'Confira os campos antes de usar no formulario do pedido.',
+      ];
+
+      if (modeloAtual !== model) {
+        avisos.push(`Modelo principal indisponivel; leitura feita com ${modeloAtual}.`);
+      }
+      if (linkLocalizacao && !coordenadas) {
+        avisos.push('Nao foi possivel extrair latitude e longitude do link informado.');
+      }
+      if (!valores.telefoneCliente) {
+        avisos.push('Telefone do cliente nao encontrado no comprovante.');
+      }
+      if (Array.isArray(parsed.observacoes)) {
+        avisos.push(...parsed.observacoes.filter(Boolean).map(String));
+      }
+
+      return {
+        ok: true,
+        modo: 'gemini',
+        modelo: modeloAtual,
+        arquivo: {
+          nome: arquivo.name || 'Foto selecionada',
+          tipo: arquivo.type || '',
+          tamanhoBytes: arquivo.size || 0,
         },
-      }),
-    });
-
-    const data = await response.json().catch(() => null);
-    if (!response.ok) {
-      const motivo = data?.error?.message || 'Nao foi possivel analisar a foto com Gemini.';
-      return {
-        ok: false,
-        motivo,
-        valores: null,
-        coordenadas: null,
-        avisos: ['Nenhum dado foi gravado no banco.'],
+        valores,
+        coordenadas,
+        avisos,
+        bruto: parsed,
       };
     }
 
-    const text = extrairTextoGemini(data);
-    const parsed = parseJsonGemini(text);
-    if (!parsed) {
-      return {
-        ok: false,
-        motivo: 'Gemini respondeu, mas nao retornou um JSON valido para o comprovante.',
-        valores: null,
-        coordenadas: null,
-        avisos: ['Nenhum dado foi gravado no banco.'],
-      };
-    }
-
-    const valores = normalizarValoresGemini(parsed);
-    const coordenadas = extrairCoordenadasDoLinkLocalizacao(linkLocalizacao);
-    const avisos = [
-      'Leitura realizada automaticamente. Nenhum dado foi gravado no banco.',
-      'Confira os campos antes de usar no formulario do pedido.',
-    ];
-
-    if (linkLocalizacao && !coordenadas) {
-      avisos.push('Nao foi possivel extrair latitude e longitude do link informado.');
-    }
-    if (!valores.telefoneCliente) {
-      avisos.push('Telefone do cliente nao encontrado no comprovante.');
-    }
-    if (Array.isArray(parsed.observacoes)) {
-      avisos.push(...parsed.observacoes.filter(Boolean).map(String));
-    }
-
-    return {
-      ok: true,
-      modo: 'gemini',
-      modelo: model,
-      arquivo: {
-        nome: arquivo.name || 'Foto selecionada',
-        tipo: arquivo.type || '',
-        tamanhoBytes: arquivo.size || 0,
-      },
-      valores,
-      coordenadas,
-      avisos,
-      bruto: parsed,
-    };
+    return ultimaFalha;
   } catch (error) {
     return {
       ok: false,
+      codigo: 'gemini_fetch_error',
       motivo: `Nao foi possivel chamar o Gemini: ${error.message}`,
       valores: null,
       coordenadas: null,
       avisos: ['Nenhum dado foi gravado no banco.'],
     };
   }
+}
+
+async function chamarGemini({ apiKey, model, arquivo, imageData }) {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+    },
+    body: JSON.stringify({
+      contents: [{
+        role: 'user',
+        parts: [
+          {
+            inline_data: {
+              mime_type: arquivo.type || 'image/jpeg',
+              data: imageData,
+            },
+          },
+          { text: promptExtracaoComprovante() },
+        ],
+      }],
+      generationConfig: {
+        temperature: 0,
+        responseMimeType: 'application/json',
+      },
+    }),
+  });
+  const data = await response.json().catch(() => null);
+  return { response, data };
+}
+
+function montarFalhaGemini(data, httpStatus, model) {
+  const error = data?.error || {};
+  return {
+    ok: false,
+    codigo: 'gemini_api_error',
+    status: error.status || '',
+    httpStatus,
+    modelo: model,
+    motivo: error.message || 'Nao foi possivel analisar a foto com Gemini.',
+    valores: null,
+    coordenadas: null,
+    avisos: ['Nenhum dado foi gravado no banco.'],
+  };
+}
+
+function deveTentarModeloFallback(falha) {
+  return ['NOT_FOUND', 'UNIMPLEMENTED', 'UNAVAILABLE'].includes(falha?.status)
+    || [404, 503].includes(falha?.httpStatus);
 }
 
 export function analisarComprovantePedidoTeste({ arquivo, textoExtraido = '', linkLocalizacao = '' } = {}) {
@@ -241,6 +294,18 @@ function arquivoParaBase64(arquivo) {
 function extrairTextoGemini(data) {
   const parts = data?.candidates?.[0]?.content?.parts || [];
   return parts.map((part) => part.text || '').join('\n').trim();
+}
+
+function montarMotivoRespostaVazia(data) {
+  const candidate = data?.candidates?.[0] || {};
+  const finishReason = candidate.finishReason || '';
+  if (finishReason === 'SAFETY') {
+    return 'O Gemini bloqueou a resposta por politica de seguranca. Tente outra foto do comprovante ou solicite manualmente.';
+  }
+  if (finishReason) {
+    return `Gemini nao retornou texto para analisar. Motivo: ${finishReason}.`;
+  }
+  return 'Gemini nao retornou texto para analisar. Tente novamente com uma foto mais nitida.';
 }
 
 function parseJsonGemini(texto) {

@@ -12,13 +12,37 @@ function formatCurrency(value) {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-function formatPhotoAnalysisErrorMessage(message) {
+function formatPhotoAnalysisErrorMessage(message, code = '', status = '') {
   const text = String(message || '').trim();
-  if (!text) return 'Nao foi possivel analisar a foto automaticamente.';
-  if (/VITE_GEMINI|Gemini|generateContent|API|chave|key|models|quota|permission|fetch/i.test(text)) {
-    return 'Nao foi possivel analisar a foto automaticamente.';
+  if (code === 'gemini_api_key_missing' || /VITE_GEMINI_API_KEY|chave/i.test(text)) {
+    return 'Analise por foto sem chave do Gemini neste ambiente. Configure VITE_GEMINI_API_KEY e reinicie o app.';
   }
+  if (status === 'RESOURCE_EXHAUSTED' || /quota|rate limit|resource exhausted/i.test(text)) {
+    return 'Limite da API do Gemini atingido. Aguarde a liberacao da cota ou revise o faturamento/limites no Google AI Studio.';
+  }
+  if (['PERMISSION_DENIED', 'UNAUTHENTICATED'].includes(status) || /API key not valid|permission|denied|unauthenticated/i.test(text)) {
+    return 'A chave do Gemini foi recusada. Verifique se ela continua ativa, se a API esta habilitada e se nao ha restricao bloqueando este dominio.';
+  }
+  if (status === 'NOT_FOUND' || /model.*not found|not found.*model|not supported.*generateContent/i.test(text)) {
+    return 'Modelo do Gemini indisponivel para esta chave. Configure VITE_GEMINI_MODEL para um modelo ativo, como gemini-3.5-flash.';
+  }
+  if (status === 'FAILED_PRECONDITION' || /location is not supported|restricted|precondition/i.test(text)) {
+    return 'O projeto ou a localizacao da chave nao pode usar o Gemini API neste momento. Verifique as restricoes da chave e a conta do Google AI Studio.';
+  }
+  if (code === 'gemini_empty_response') return text;
+  if (!text) return 'Nao foi possivel analisar a foto automaticamente.';
   return text;
+}
+
+function montarDetalhesFalhaAnaliseFoto(result = {}) {
+  const detalhes = [
+    result.codigo ? `Codigo: ${result.codigo}` : '',
+    result.status ? `Status Gemini: ${result.status}` : '',
+    result.httpStatus ? `HTTP: ${result.httpStatus}` : '',
+    result.modelo ? `Modelo: ${result.modelo}` : '',
+    result.motivo ? `Mensagem original: ${result.motivo}` : '',
+  ].filter(Boolean);
+  return detalhes.length ? detalhes.join('\n') : '';
 }
 
 function maskDeliveryTime(value) {
@@ -105,6 +129,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
   const [photoAnalysis, setPhotoAnalysis] = React.useState(null);
   const [photoMessage, setPhotoMessage] = React.useState('');
   const [photoAnalysisError, setPhotoAnalysisError] = React.useState('');
+  const [photoAnalysisDebug, setPhotoAnalysisDebug] = React.useState(null);
   const [photoAnalyzing, setPhotoAnalyzing] = React.useState(false);
 
   const liveDeliveryStats = React.useMemo(() => {
@@ -398,6 +423,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     setPhotoMessage('');
     setPhotoAnalysis(null);
     setPhotoAnalysisError('');
+    setPhotoAnalysisDebug(null);
     setPhotoRequest((current) => ({ ...current, file: null, previewUrl: '', customerLocationUrl: '' }));
     setActivePanel('photo-request');
   }
@@ -407,6 +433,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     setPhotoMessage('');
     setPhotoAnalysis(null);
     setPhotoAnalysisError('');
+    setPhotoAnalysisDebug(null);
     setPhotoRequest((current) => ({ ...current, file: null, previewUrl: '', customerLocationUrl: '' }));
     photoCaptureInputRef.current?.click();
   }
@@ -426,6 +453,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     setPhotoMessage('');
     setPhotoAnalysis(null);
     setPhotoAnalysisError('');
+    setPhotoAnalysisDebug(null);
     if (!file) {
       setPhotoRequest((current) => ({ ...current, file: null, previewUrl: '' }));
       return;
@@ -441,6 +469,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     setPhotoMessage('');
     setPhotoAnalysis(null);
     setPhotoAnalysisError('');
+    setPhotoAnalysisDebug(null);
     photoPageInputRef.current?.click();
   }
 
@@ -456,6 +485,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     setPhotoMessage('');
     setPhotoAnalysis(null);
     setPhotoAnalysisError('');
+    setPhotoAnalysisDebug(null);
     setPhotoAnalyzing(true);
     const result = await analisarComprovantePedidoComGemini({
       arquivo: fileOverride,
@@ -481,15 +511,17 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
       }
     }
 
-    const userMessage = result.ok ? 'Analise concluida. Nenhum dado foi gravado.' : formatPhotoAnalysisErrorMessage(result.motivo);
+    const userMessage = result.ok ? 'Analise concluida. Nenhum dado foi gravado.' : formatPhotoAnalysisErrorMessage(result.motivo, result.codigo, result.status);
     setPhotoAnalysis(result.ok ? result : null);
     setPhotoAnalysisError(result.ok ? '' : userMessage);
+    setPhotoAnalysisDebug(result.ok ? null : montarDetalhesFalhaAnaliseFoto(result));
     setPhotoMessage(userMessage);
   }
 
   function openManualRequestAfterPhotoError() {
     setPhotoMessage('');
     setPhotoAnalysisError('');
+    setPhotoAnalysisDebug(null);
     openDeliveryRequest('page');
   }
 
@@ -898,6 +930,12 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
               <AlertTriangle size={46} />
               <h2 id="photo-error-title">Nao foi possivel analisar o comprovante</h2>
               <p>{photoAnalysisError}</p>
+              {photoAnalysisDebug && (
+                <details className="photo-error-details">
+                  <summary>Detalhes tecnicos</summary>
+                  <pre>{photoAnalysisDebug}</pre>
+                </details>
+              )}
               <div>
                 <button className="primary-action" type="button" onClick={retakePhotoRequest}>
                   Nova foto
