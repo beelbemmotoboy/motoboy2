@@ -93,6 +93,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
   });
   const [photoAnalysis, setPhotoAnalysis] = React.useState(null);
   const [photoMessage, setPhotoMessage] = React.useState('');
+  const [photoAnalysisError, setPhotoAnalysisError] = React.useState('');
   const [photoAnalyzing, setPhotoAnalyzing] = React.useState(false);
 
   const liveDeliveryStats = React.useMemo(() => {
@@ -385,6 +386,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     setRequestModalOpen(false);
     setPhotoMessage('');
     setPhotoAnalysis(null);
+    setPhotoAnalysisError('');
     setPhotoRequest((current) => ({ ...current, file: null, previewUrl: '', customerLocationUrl: '' }));
     setActivePanel('photo-request');
   }
@@ -393,6 +395,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     setRequestModalOpen(false);
     setPhotoMessage('');
     setPhotoAnalysis(null);
+    setPhotoAnalysisError('');
     setPhotoRequest((current) => ({ ...current, file: null, previewUrl: '', customerLocationUrl: '' }));
     photoCaptureInputRef.current?.click();
   }
@@ -411,6 +414,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     const file = event.target.files?.[0] || null;
     setPhotoMessage('');
     setPhotoAnalysis(null);
+    setPhotoAnalysisError('');
     if (!file) {
       setPhotoRequest((current) => ({ ...current, file: null, previewUrl: '' }));
       return;
@@ -433,6 +437,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
   async function analyzePhotoRequest(fileOverride = photoRequest.file, linkOverride = photoRequest.customerLocationUrl) {
     setPhotoMessage('');
     setPhotoAnalysis(null);
+    setPhotoAnalysisError('');
     setPhotoAnalyzing(true);
     const result = await analisarComprovantePedidoComGemini({
       arquivo: fileOverride,
@@ -440,7 +445,14 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     });
     setPhotoAnalyzing(false);
     setPhotoAnalysis(result.ok ? result : null);
+    setPhotoAnalysisError(result.ok ? '' : result.motivo);
     setPhotoMessage(result.ok ? 'Analise com Gemini concluida. Nenhum dado foi gravado.' : result.motivo);
+  }
+
+  function openManualRequestAfterPhotoError() {
+    setPhotoMessage('');
+    setPhotoAnalysisError('');
+    openDeliveryRequest('page');
   }
 
   function loadPhotoAnalysisIntoManualForm() {
@@ -833,12 +845,29 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
                   </button>
                 </>
               ) : (
-                <div className="photo-analysis-empty">
-                  <Camera size={48} />
-                  <strong>{photoAnalyzing ? 'Analisando foto' : 'Aguardando analise'}</strong>
-                  <span>{photoAnalyzing ? 'Gemini esta extraindo os dados do comprovante.' : 'Os valores extraidos aparecerao aqui.'}</span>
-                  {!geminiConfigStatus.hasApiKey && <span>Configure VITE_GEMINI_API_KEY para liberar a analise real.</span>}
-                </div>
+                photoAnalysisError && !photoAnalyzing ? (
+                  <div className="photo-analysis-error">
+                    <AlertTriangle size={48} />
+                    <strong>Nao foi possivel analisar o comprovante</strong>
+                    <span>{photoAnalysisError}</span>
+                    <p>Deseja tentar novamente ou solicitar manual?</p>
+                    <div>
+                      <button className="primary-action" type="button" onClick={() => analyzePhotoRequest()} disabled={!photoRequest.file}>
+                        Tentar novamente
+                      </button>
+                      <button className="secondary-action" type="button" onClick={openManualRequestAfterPhotoError}>
+                        Solicitar manual
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="photo-analysis-empty">
+                    <Camera size={48} />
+                    <strong>{photoAnalyzing ? 'Analisando foto' : 'Aguardando analise'}</strong>
+                    <span>{photoAnalyzing ? 'Gemini esta extraindo os dados do comprovante.' : 'Os valores extraidos aparecerao aqui.'}</span>
+                    {!geminiConfigStatus.hasApiKey && <span>Configure VITE_GEMINI_API_KEY para liberar a analise real.</span>}
+                  </div>
+                )
               )}
             </section>
           </div>

@@ -1352,7 +1352,8 @@ button, a {
 }
 
 .photo-dropzone svg,
-.photo-analysis-empty svg {
+.photo-analysis-empty svg,
+.photo-analysis-error svg {
   color: #ffc400;
 }
 
@@ -1465,7 +1466,8 @@ button, a {
   line-height: 1.45;
 }
 
-.photo-analysis-empty {
+.photo-analysis-empty,
+.photo-analysis-error {
   min-height: 430px;
   display: grid;
   place-items: center;
@@ -1474,13 +1476,61 @@ button, a {
   text-align: center;
 }
 
-.photo-analysis-empty strong {
+.photo-analysis-empty strong,
+.photo-analysis-error strong {
   color: #fff;
   font-size: 22px;
 }
 
-.photo-analysis-empty span {
+.photo-analysis-empty span,
+.photo-analysis-error span {
   color: rgba(255, 255, 255, 0.68);
+}
+
+.photo-analysis-error {
+  place-items: stretch;
+  align-content: center;
+  text-align: left;
+}
+
+.photo-analysis-error svg {
+  justify-self: start;
+  color: #ff4a5f;
+}
+
+.photo-analysis-error p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.76);
+  line-height: 1.45;
+}
+
+.photo-analysis-error div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 180px);
+  gap: 12px;
+}
+
+.photo-analysis-error .primary-action {
+  min-height: 54px;
+  height: auto;
+  margin-top: 0;
+  border-radius: 11px;
+  background: #ffc400;
+  color: #090909;
+  font-size: 17px;
+  font-weight: 950;
+}
+
+.photo-analysis-error .secondary-action {
+  min-height: 54px;
+  border: 1px solid rgba(255, 196, 0, 0.36);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 950;
+  cursor: pointer;
 }
 
 .photo-request-upload .success-message,
@@ -1494,7 +1544,8 @@ button, a {
 
 @media (max-width: 860px) {
   .photo-request-shell,
-  .photo-request-actions {
+  .photo-request-actions,
+  .photo-analysis-error div {
     grid-template-columns: 1fr;
   }
 }
