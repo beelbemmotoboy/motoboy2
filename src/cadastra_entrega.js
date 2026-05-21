@@ -667,12 +667,25 @@ export async function expireQueuedDeliveryOffer({ supabase, cityId, delivery, co
   return { expired: true };
 }
 
-export async function notifyNextCourierOffer({ supabase, deliveryId, allowClientFallback = true }) {
+export async function notifyNextCourierOffer({
+  supabase,
+  deliveryId,
+  allowClientFallback = true,
+  allowServerInvoke = false,
+}) {
   if (!supabase || !deliveryId) return { ok: false, reason: 'missing-context' };
 
   await expireTimedOutDeliveryOffers({ supabase, deliveryId });
   const activeOffer = await getActiveQueueOffer({ supabase, deliveryId });
   if (activeOffer) return { ok: true, alreadyOffered: true, offer: activeOffer };
+
+  if (allowClientFallback) {
+    return activateNextQueueOffer({ supabase, deliveryId });
+  }
+
+  if (!allowServerInvoke) {
+    return { ok: false, reason: 'server-handoff-disabled' };
+  }
 
   let invokeResult = null;
   if (supabase.functions?.invoke) {
@@ -694,11 +707,7 @@ export async function notifyNextCourierOffer({ supabase, deliveryId, allowClient
     return { ok: true, data: invokeResult?.data, offer: activeOfferAfterInvoke };
   }
 
-  if (!allowClientFallback) {
-    return { ok: Boolean(invokeResult?.data), data: invokeResult?.data, reason: 'server-handoff' };
-  }
-
-  return activateNextQueueOffer({ supabase, deliveryId });
+  return { ok: Boolean(invokeResult?.data), data: invokeResult?.data, reason: 'server-handoff' };
 }
 
 export async function advanceDeliveryOfferQueue({ supabase, deliveryId }) {
@@ -794,7 +803,13 @@ async function activateNextQueueOffer({ supabase, deliveryId }) {
       .select('id, courier_id, offered_at')
       .maybeSingle();
 
-    if (error) throw new Error(`Nao foi possivel oferecer entrega: ${error.message}`);
+    if (error) {
+      const activeOffer = await getActiveQueueOffer({ supabase, deliveryId });
+      if (activeOffer && (error.code === '23505' || /duplicate|unique/i.test(error.message || ''))) {
+        return { ok: true, alreadyOffered: true, offer: activeOffer };
+      }
+      throw new Error(`Nao foi possivel oferecer entrega: ${error.message}`);
+    }
     if (offer) return { ok: true, offer, repeated: didResetQueue };
   }
 
