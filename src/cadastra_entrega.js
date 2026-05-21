@@ -675,6 +675,9 @@ export async function notifyNextCourierOffer({
 }) {
   if (!supabase || !deliveryId) return { ok: false, reason: 'missing-context' };
 
+  const rpcResult = await advanceDeliveryOfferQueueRpc({ supabase, deliveryId });
+  if (!rpcResult.missingRpc) return rpcResult;
+
   await expireTimedOutDeliveryOffers({ supabase, deliveryId });
   const activeOffer = await getActiveQueueOffer({ supabase, deliveryId });
   if (activeOffer) return { ok: true, alreadyOffered: true, offer: activeOffer };
@@ -712,6 +715,9 @@ export async function notifyNextCourierOffer({
 
 export async function advanceDeliveryOfferQueue({ supabase, deliveryId }) {
   if (!supabase || !deliveryId) return { ok: false, reason: 'missing-context' };
+  const rpcResult = await advanceDeliveryOfferQueueRpc({ supabase, deliveryId });
+  if (!rpcResult.missingRpc) return rpcResult;
+
   await expireTimedOutDeliveryOffers({ supabase, deliveryId });
   const activeOffer = await getActiveQueueOffer({ supabase, deliveryId });
   if (activeOffer) return { ok: true, alreadyOffered: true, offer: activeOffer };
@@ -742,6 +748,36 @@ async function expireTimedOutDeliveryOffers({ supabase, deliveryId }) {
 
   if (error) throw new Error(`Nao foi possivel atualizar ofertas expiradas: ${error.message}`);
   return expiredRows ?? [];
+}
+
+async function advanceDeliveryOfferQueueRpc({ supabase, deliveryId }) {
+  if (!supabase?.rpc || !deliveryId) return { ok: false, missingRpc: true, reason: 'missing-context' };
+
+  const { data, error } = await supabase.rpc('advance_delivery_offer_queue', {
+    p_delivery_id: deliveryId,
+    p_offer_timeout_seconds: DELIVERY_OFFER_TIMEOUT_SECONDS,
+  });
+
+  if (error) {
+    const text = `${error.message || ''} ${error.details || ''} ${error.hint || ''}`;
+    const missingRpc = error.code === '42883'
+      || /advance_delivery_offer_queue|schema cache|function.*does not exist|could not find/i.test(text);
+    if (missingRpc) return { ok: false, missingRpc: true, reason: 'rpc-missing' };
+    throw new Error(`Nao foi possivel avancar a fila: ${error.message}`);
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return { ok: false, reason: 'rpc-empty-response' };
+
+  return {
+    ok: Boolean(row.ok),
+    reason: row.reason || '',
+    offer: row.offer_id ? {
+      id: row.offer_id,
+      courier_id: row.courier_id,
+    } : null,
+    repeated: Boolean(row.repeated),
+  };
 }
 
 async function getActiveQueueOffer({ supabase, deliveryId }) {
