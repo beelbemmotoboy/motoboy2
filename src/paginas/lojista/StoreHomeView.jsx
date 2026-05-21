@@ -2,13 +2,22 @@ import React from 'react';
 import { ArrowLeft, ArrowRight, AlertTriangle, Bike, Camera, Clock3, MapPin, Minus, Navigation, PencilLine, Phone, Plus, Search, Star, Store, UserRound, WalletCards } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { createDeliveryWithQueue } from '../../cadastra_entrega';
-import { analisarComprovantePedidoComGemini, geminiConfigStatus, transformarAnaliseEmPedidoLoja } from '../../analisa_comprovante_pedido';
+import { analisarComprovantePedidoComGemini, transformarAnaliseEmPedidoLoja } from '../../analisa_comprovante_pedido';
 import { isValidCep, isValidEmail, isValidPhone, maskCep, maskCnpj, maskPhone, onlyDigits } from '../../utils/validators';
 import { LayoutLojista } from '../../layouts/LayoutLojista';
 import { calcularMinutosAteHorarioPrevistoPedidoLoja, validarHorarioPrevistoPedidoLoja, validarPedidoLoja, validarTaxaEntregaPedidoLoja } from '../../ValidaPedidoLoja';
 
 function formatCurrency(value) {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function formatPhotoAnalysisErrorMessage(message) {
+  const text = String(message || '').trim();
+  if (!text) return 'Nao foi possivel analisar a foto automaticamente.';
+  if (/VITE_GEMINI|Gemini|generateContent|API|chave|key|models|quota|permission|fetch/i.test(text)) {
+    return 'Nao foi possivel analisar a foto automaticamente.';
+  }
+  return text;
 }
 
 function maskDeliveryTime(value) {
@@ -444,9 +453,21 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
       linkLocalizacao: linkOverride,
     });
     setPhotoAnalyzing(false);
+
+    if (result.ok) {
+      const timeValidation = validarHorarioPrevistoPedidoLoja(result.valores?.entregaPrevista);
+      if (!timeValidation.valido) {
+        setPhotoAnalysis(null);
+        setPhotoAnalysisError(timeValidation.motivo);
+        setPhotoMessage(timeValidation.motivo);
+        return;
+      }
+    }
+
+    const userMessage = result.ok ? 'Analise concluida. Nenhum dado foi gravado.' : formatPhotoAnalysisErrorMessage(result.motivo);
     setPhotoAnalysis(result.ok ? result : null);
-    setPhotoAnalysisError(result.ok ? '' : result.motivo);
-    setPhotoMessage(result.ok ? 'Analise com Gemini concluida. Nenhum dado foi gravado.' : result.motivo);
+    setPhotoAnalysisError(result.ok ? '' : userMessage);
+    setPhotoMessage(userMessage);
   }
 
   function openManualRequestAfterPhotoError() {
@@ -746,9 +767,6 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
 
   if (activePanel === 'photo-request') {
     const values = photoAnalysis?.valores || {};
-    const coordinatesLabel = photoAnalysis?.coordenadas
-      ? `${photoAnalysis.coordenadas.latitude.toFixed(7)}, ${photoAnalysis.coordenadas.longitude.toFixed(7)}`
-      : 'Nao informado';
     const analysisFields = [
       { icon: <Store size={24} />, label: 'Loja', value: values.loja },
       { icon: <PencilLine size={24} />, label: 'Pedido', value: values.numeroPedido },
@@ -758,8 +776,6 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
       { icon: <Navigation size={24} />, label: 'Bairro', value: values.bairro },
       { icon: <PencilLine size={24} />, label: 'Complemento', value: values.complemento },
       { icon: <WalletCards size={24} />, label: 'Valor do pedido', value: values.valorPedido },
-      { icon: <WalletCards size={24} />, label: 'Taxa no comprovante', value: values.taxaEntrega },
-      { icon: <MapPin size={24} />, label: 'Latitude / longitude', value: coordinatesLabel },
     ];
 
     return (
@@ -774,11 +790,9 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
           </button>
         </header>
 
-        <section className="photo-request-page" aria-labelledby="photo-request-title">
+        <section className="photo-request-page" aria-label="Pedido por foto">
           <div className="photo-request-hero">
             <span className="delivery-request-brand"><Camera size={28} /> BEELBEM MOTOBOY</span>
-            <h2 id="photo-request-title">Analise de comprovante</h2>
-            <p>Abra a camera, fotografe a comanda e confira os dados lidos pelo Gemini antes de criar a entrega.</p>
           </div>
 
           <div className="photo-request-shell">
@@ -812,7 +826,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
 
               <div className="photo-request-actions">
                 <button className="primary-action" type="button" onClick={() => analyzePhotoRequest()} disabled={photoAnalyzing}>
-                  {photoAnalyzing ? 'Analisando...' : 'Analisar com Gemini'}
+                  {photoAnalyzing ? 'Analisando...' : 'Analisar foto'}
                 </button>
                 <button className="secondary-action" type="button" onClick={closePhotoRequest}>Voltar</button>
               </div>
@@ -822,8 +836,8 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
               {photoAnalysis ? (
                 <>
                   <div className="photo-analysis-title">
-                    <span>Retorno da IA</span>
-                    <strong>{photoAnalysis.modelo || geminiConfigStatus.model}</strong>
+                    <span>Dados encontrados</span>
+                    <strong>{values.origem || 'Pedido por foto'}</strong>
                   </div>
                   <div className="photo-analysis-list">
                     {analysisFields.map((field) => (
@@ -864,8 +878,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
                   <div className="photo-analysis-empty">
                     <Camera size={48} />
                     <strong>{photoAnalyzing ? 'Analisando foto' : 'Aguardando analise'}</strong>
-                    <span>{photoAnalyzing ? 'Gemini esta extraindo os dados do comprovante.' : 'Os valores extraidos aparecerao aqui.'}</span>
-                    {!geminiConfigStatus.hasApiKey && <span>Configure VITE_GEMINI_API_KEY para liberar a analise real.</span>}
+                    <span>{photoAnalyzing ? 'Extraindo os dados do comprovante.' : 'Os valores extraidos aparecerao aqui.'}</span>
                   </div>
                 )
               )}

@@ -114,7 +114,7 @@ export async function analisarComprovantePedidoComGemini({
     const valores = normalizarValoresGemini(parsed);
     const coordenadas = extrairCoordenadasDoLinkLocalizacao(linkLocalizacao);
     const avisos = [
-      'Leitura realizada pelo Gemini. Nenhum dado foi gravado no banco.',
+      'Leitura realizada automaticamente. Nenhum dado foi gravado no banco.',
       'Confira os campos antes de usar no formulario do pedido.',
     ];
 
