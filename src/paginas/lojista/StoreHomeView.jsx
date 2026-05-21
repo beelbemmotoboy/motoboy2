@@ -13,13 +13,23 @@ const STATUS_DETAIL_CONFIG = {
     title: 'A caminho da loja',
     openLabel: 'Abrir entregas a caminho da loja',
     statuses: ['assigned'],
+    dateColumnLabel: 'Conf.',
     emptyMessage: 'Nenhuma confirmacao encontrada neste periodo.',
   },
   'to-customer': {
     title: 'A caminho do cliente',
     openLabel: 'Abrir entregas a caminho do cliente',
     statuses: ['picked_up', 'on_route'],
+    dateColumnLabel: 'Conf.',
     emptyMessage: 'Nenhuma entrega a caminho do cliente encontrada neste periodo.',
+  },
+  late: {
+    title: 'Em atraso',
+    openLabel: 'Abrir entregas em atraso',
+    statuses: ['assigned', 'picked_up', 'on_route'],
+    dateColumnLabel: 'Prazo',
+    lateOnly: true,
+    emptyMessage: 'Nenhum pedido em atraso encontrado neste periodo.',
   },
 };
 
@@ -352,6 +362,37 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
       const end = `${endDate}T23:59:59.999`;
 
       setStatusDetailsLoading(true);
+      if (statusDetailsConfig.lateOnly) {
+        const { data: lateDeliveries, error: lateError } = await supabase
+          .from('deliveries')
+          .select('id, order_code, delivery_district, delivery_deadline_at, customers(name), couriers(name)')
+          .eq('store_id', store.id)
+          .in('status', statusDetailsConfig.statuses)
+          .lt('delivery_deadline_at', new Date().toISOString())
+          .gte('delivery_deadline_at', start)
+          .lte('delivery_deadline_at', end)
+          .order('delivery_deadline_at', { ascending: true });
+
+        if (!mounted) return;
+        setStatusDetailsLoading(false);
+
+        if (lateError) {
+          setStatusDetailsRows([]);
+          setStatusDetailsMessage(`Nao foi possivel carregar a tabela: ${lateError.message}`);
+          return;
+        }
+
+        setStatusDetailsRows((lateDeliveries ?? []).map((delivery) => ({
+          id: delivery.id,
+          courierName: delivery.couriers?.name || 'Motoboy',
+          orderCode: delivery.order_code || delivery.id,
+          confirmedAt: delivery.delivery_deadline_at,
+          customerName: delivery.customers?.name || 'Cliente nao informado',
+          district: delivery.delivery_district || 'Bairro nao informado',
+        })));
+        return;
+      }
+
       const { data, error } = await supabase
         .from('delivery_events')
         .select('id, created_at, deliveries!inner(id, order_code, delivery_district, store_id, customers(name), couriers(name))')
@@ -1288,11 +1329,11 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
               <div className="status-detail-head" role="row">
                 <span>Nome Motoboy</span>
                 <span>Numero pedido</span>
-                <span>Conf.</span>
+                <span>{statusDetailsConfig.dateColumnLabel}</span>
                 <span>Nome cliente</span>
                 <span>Bairro</span>
               </div>
-              {statusDetailsLoading && <p className="form-note">Carregando confirmacoes...</p>}
+              {statusDetailsLoading && <p className="form-note">Carregando entregas...</p>}
               {statusDetailsMessage && <p className="field-error">{statusDetailsMessage}</p>}
               {!statusDetailsLoading && !statusDetailsMessage && statusDetailsRows.map((row) => (
                 <article className="status-detail-row" role="row" key={`${row.id}-${row.confirmedAt}`}>
