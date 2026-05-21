@@ -6,6 +6,7 @@ import { analisarComprovantePedidoComGemini, transformarAnaliseEmPedidoLoja } fr
 import { isValidCep, isValidEmail, isValidPhone, maskCep, maskCnpj, maskPhone, onlyDigits } from '../../utils/validators';
 import { LayoutLojista } from '../../layouts/LayoutLojista';
 import { calcularMinutosAteHorarioPrevistoPedidoLoja, validarHorarioPrevistoPedidoLoja, validarPedidoLoja, validarTaxaEntregaPedidoLoja } from '../../ValidaPedidoLoja';
+import { validar_dadoscomprovante_gemini } from '../../valid_dadoscomprovante_gemini';
 
 function formatCurrency(value) {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -47,6 +48,7 @@ function courierStarsFromXp(value) {
 
 export function StoreHomeView({ city, store, profile, onLogout }) {
   const photoCaptureInputRef = React.useRef(null);
+  const photoPageInputRef = React.useRef(null);
   const storeName = store?.fantasyName || store?.name || profile?.name || 'Minha loja';
   const storeWords = storeName.split(' ').filter(Boolean);
   const brandTop = storeWords[0] || 'Beelbem';
@@ -435,6 +437,13 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     event.target.value = '';
   }
 
+  function retakePhotoRequest() {
+    setPhotoMessage('');
+    setPhotoAnalysis(null);
+    setPhotoAnalysisError('');
+    photoPageInputRef.current?.click();
+  }
+
   function setPhotoRequestFile(file) {
     setPhotoRequest((current) => ({
       ...current,
@@ -455,6 +464,14 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     setPhotoAnalyzing(false);
 
     if (result.ok) {
+      const dataValidation = validar_dadoscomprovante_gemini(result.valores);
+      if (dataValidation.todosNaoEncontrados) {
+        setPhotoAnalysis(null);
+        setPhotoAnalysisError(dataValidation.mensagemTodosNaoEncontrados);
+        setPhotoMessage(dataValidation.mensagemTodosNaoEncontrados);
+        return;
+      }
+
       const timeValidation = validarHorarioPrevistoPedidoLoja(result.valores?.entregaPrevista);
       if (!timeValidation.valido) {
         setPhotoAnalysis(null);
@@ -767,6 +784,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
 
   if (activePanel === 'photo-request') {
     const values = photoAnalysis?.valores || {};
+    const photoDataValidation = photoAnalysis?.ok ? validar_dadoscomprovante_gemini(values) : null;
     const analysisFields = [
       { icon: <Store size={24} />, label: 'Loja', value: values.loja },
       { icon: <PencilLine size={24} />, label: 'Pedido', value: values.numeroPedido },
@@ -798,7 +816,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
           <div className="photo-request-shell">
             <section className="photo-request-upload" aria-label="Foto do comprovante">
               <label className="photo-dropzone">
-                <input type="file" accept="image/*" capture="environment" onChange={updatePhotoRequestFile} />
+                <input ref={photoPageInputRef} type="file" accept="image/*" capture="environment" onChange={updatePhotoRequestFile} />
                 {photoRequest.previewUrl ? (
                   <img src={photoRequest.previewUrl} alt="" />
                 ) : (
@@ -839,6 +857,12 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
                     <span>Dados encontrados</span>
                     <strong>{values.origem || 'Pedido por foto'}</strong>
                   </div>
+                  {photoDataValidation?.camposNaoAnalisados.length > 0 && (
+                    <div className="photo-analysis-missing">
+                      <AlertTriangle size={24} />
+                      <p>{photoDataValidation.mensagem}</p>
+                    </div>
+                  )}
                   <div className="photo-analysis-list">
                     {analysisFields.map((field) => (
                       <article key={field.label}>
@@ -866,9 +890,14 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
                     <span>{photoAnalysisError}</span>
                     <p>Deseja tentar novamente ou solicitar manual?</p>
                     <div>
-                      <button className="primary-action" type="button" onClick={() => analyzePhotoRequest()} disabled={!photoRequest.file}>
-                        Tentar novamente
+                      <button className="primary-action" type="button" onClick={retakePhotoRequest}>
+                        Tirar outra foto
                       </button>
+                      {photoRequest.file && (
+                        <button className="secondary-action" type="button" onClick={() => analyzePhotoRequest()}>
+                          Tentar novamente
+                        </button>
+                      )}
                       <button className="secondary-action" type="button" onClick={openManualRequestAfterPhotoError}>
                         Solicitar manual
                       </button>

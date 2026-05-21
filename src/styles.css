@@ -1459,6 +1459,28 @@ button, a {
   font-weight: 900;
 }
 
+.photo-analysis-missing {
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 196, 0, 0.32);
+  border-radius: 12px;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  background: rgba(255, 196, 0, 0.1);
+}
+
+.photo-analysis-missing svg {
+  color: #ffc400;
+}
+
+.photo-analysis-missing p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
 .photo-analysis-warnings {
   margin: 0;
   padding-left: 18px;
