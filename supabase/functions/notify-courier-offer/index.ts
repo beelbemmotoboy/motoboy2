@@ -44,6 +44,9 @@ Deno.serve(async (request) => {
 
     let offer = await fetchNextQueueOffer({ supabaseUrl, serviceRoleKey, deliveryId });
     if (!offer && repeat) {
+      const activeOfferBeforeReset = await fetchActiveQueueOffer({ supabaseUrl, serviceRoleKey, deliveryId });
+      if (activeOfferBeforeReset) return json({ notified: 0, skipped: 'active_offer', offerId: activeOfferBeforeReset.id });
+
       await resetQueueForRepeat({ supabaseUrl, serviceRoleKey, deliveryId });
       offer = await fetchNextQueueOffer({ supabaseUrl, serviceRoleKey, deliveryId });
     }

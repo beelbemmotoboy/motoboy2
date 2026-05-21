@@ -638,7 +638,7 @@ export async function rejectQueuedDelivery({ supabase, cityId, delivery, courier
     note: `${courierName} recusou a entrega.`,
   });
 
-  await notifyNextCourierOffer({ supabase, deliveryId: delivery.id });
+  await notifyNextCourierOffer({ supabase, deliveryId: delivery.id, allowClientFallback: false });
 }
 
 export async function expireQueuedDeliveryOffer({ supabase, cityId, delivery, courierId, courierName, note = 'Tempo para aceite esgotado.' }) {
@@ -663,11 +663,11 @@ export async function expireQueuedDeliveryOffer({ supabase, cityId, delivery, co
     note: `${courierName || 'Motoboy'} nao respondeu em 1 minuto. ${note}`,
   });
 
-  await notifyNextCourierOffer({ supabase, deliveryId: delivery.id });
+  await notifyNextCourierOffer({ supabase, deliveryId: delivery.id, allowClientFallback: false });
   return { expired: true };
 }
 
-export async function notifyNextCourierOffer({ supabase, deliveryId }) {
+export async function notifyNextCourierOffer({ supabase, deliveryId, allowClientFallback = true }) {
   if (!supabase || !deliveryId) return { ok: false, reason: 'missing-context' };
 
   await expireTimedOutDeliveryOffers({ supabase, deliveryId });
@@ -692,6 +692,10 @@ export async function notifyNextCourierOffer({ supabase, deliveryId }) {
   const activeOfferAfterInvoke = await getActiveQueueOffer({ supabase, deliveryId });
   if (activeOfferAfterInvoke) {
     return { ok: true, data: invokeResult?.data, offer: activeOfferAfterInvoke };
+  }
+
+  if (!allowClientFallback) {
+    return { ok: Boolean(invokeResult?.data), data: invokeResult?.data, reason: 'server-handoff' };
   }
 
   return activateNextQueueOffer({ supabase, deliveryId });
@@ -752,6 +756,9 @@ async function activateNextQueueOffer({ supabase, deliveryId }) {
   let rows = await fetchWaitingQueueRows({ supabase, deliveryId });
   let didResetQueue = false;
   if (!rows.length) {
+    const activeOfferBeforeReset = await getActiveQueueOffer({ supabase, deliveryId });
+    if (activeOfferBeforeReset) return { ok: true, alreadyOffered: true, offer: activeOfferBeforeReset };
+
     await resetQueueForRepeat({ supabase, deliveryId });
     didResetQueue = true;
     rows = await fetchWaitingQueueRows({ supabase, deliveryId });
