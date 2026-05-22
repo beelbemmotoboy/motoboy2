@@ -774,7 +774,7 @@ async function advanceDeliveryOfferQueueRpc({ supabase, deliveryId }) {
     reason: row.reason || '',
     offer: row.offer_id ? {
       id: row.offer_id,
-      courier_id: row.courier_id,
+      courier_id: row.offered_courier_id || row.courier_id,
     } : null,
     repeated: Boolean(row.repeated),
   };
