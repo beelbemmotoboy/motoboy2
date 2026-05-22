@@ -146,6 +146,54 @@ function formatMinutesDisplay(value) {
   return `${Math.max(0, Math.round(minutes))} min`;
 }
 
+async function fetchCourierStats({ supabase, cityId, courierId }) {
+  if (!supabase || !cityId || !courierId) {
+    return {
+      onlineCouriers: 0,
+      openStores: 0,
+      todayDeliveries: 0,
+      todayXp: 0,
+    };
+  }
+
+  const dayStart = new Date();
+  dayStart.setHours(0, 0, 0, 0);
+
+  const [onlineResult, storesResult, deliveriesResult, xpTodayResult] = await Promise.all([
+    supabase
+      .from('couriers')
+      .select('id', { count: 'exact', head: true })
+      .eq('city_id', cityId)
+      .eq('active', true)
+      .eq('availability_status', 'available'),
+    supabase
+      .from('stores')
+      .select('id', { count: 'exact', head: true })
+      .eq('city_id', cityId)
+      .eq('active', true)
+      .eq('is_open', true),
+    supabase
+      .from('deliveries')
+      .select('id', { count: 'exact', head: true })
+      .eq('city_id', cityId)
+      .eq('courier_id', courierId)
+      .gte('created_at', dayStart.toISOString()),
+    supabase
+      .from('courier_xp_events')
+      .select('points')
+      .eq('city_id', cityId)
+      .eq('courier_id', courierId)
+      .gte('created_at', dayStart.toISOString()),
+  ]);
+
+  return {
+    onlineCouriers: onlineResult.count ?? 0,
+    openStores: storesResult.count ?? 0,
+    todayDeliveries: deliveriesResult.count ?? 0,
+    todayXp: (xpTodayResult.data ?? []).reduce((total, item) => total + Number(item.points || 0), 0),
+  };
+}
+
 export function CourierHomeView({ city, profile, onLogout }) {
   const [courierName, setCourierName] = React.useState(profile?.name || 'Motoboy');
   const [courierPoints, setCourierPoints] = React.useState(0);
@@ -154,7 +202,7 @@ export function CourierHomeView({ city, profile, onLogout }) {
   const [deadlineRemainingLabel, setDeadlineRemainingLabel] = React.useState('--:--');
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [scoreModalOpen, setScoreModalOpen] = React.useState(false);
-  const [availabilityPromptOpen, setAvailabilityPromptOpen] = React.useState(true);
+  const [availabilityPromptOpen, setAvailabilityPromptOpen] = React.useState(false);
   const [currentDelivery, setCurrentDelivery] = React.useState(emptyDelivery());
   const [compatibleOffer, setCompatibleOffer] = React.useState(null);
   const [compatibleOfferCountdown, setCompatibleOfferCountdown] = React.useState(DELIVERY_OFFER_TIMEOUT_SECONDS);
@@ -188,6 +236,11 @@ export function CourierHomeView({ city, profile, onLogout }) {
   const formatXpValue = (value) => (
     Number.isInteger(Number(value)) ? Number(value).toFixed(0) : Number(value).toFixed(1).replace('.', ',')
   );
+
+  const loadCourierStats = React.useCallback(async () => {
+    const nextStats = await fetchCourierStats({ supabase, cityId: city?.id, courierId: profile?.courier_id });
+    setCourierStats(nextStats);
+  }, [city?.id, profile?.courier_id]);
 
   const mapDeliveryStatus = (status) => {
     if (status === 'assigned') return 'A caminho da loja';
@@ -298,7 +351,11 @@ export function CourierHomeView({ city, profile, onLogout }) {
         if (mounted) {
           setCourierPoints(Number(pointsData?.total_points ?? 0));
           if (courierData?.name) setCourierName(courierData.name);
-          if (courierData?.availability_status) setCourierAvailableState(courierData.availability_status === 'available');
+          if (courierData?.availability_status) {
+            const isAvailable = courierData.availability_status === 'available';
+            setCourierAvailableState(isAvailable);
+            setAvailabilityPromptOpen(!isAvailable);
+          }
         }
       }
 
@@ -315,45 +372,9 @@ export function CourierHomeView({ city, profile, onLogout }) {
         setCountdownRemaining(nextTimeout);
       }
 
-      if (city?.id) {
-        const dayStart = new Date();
-        dayStart.setHours(0, 0, 0, 0);
-
-        const [onlineResult, storesResult, deliveriesResult, xpTodayResult] = await Promise.all([
-          supabase
-            .from('couriers')
-            .select('id', { count: 'exact', head: true })
-            .eq('city_id', city.id)
-            .eq('active', true)
-            .eq('availability_status', 'available'),
-          supabase
-            .from('stores')
-            .select('id', { count: 'exact', head: true })
-            .eq('city_id', city.id)
-            .eq('active', true)
-            .eq('is_open', true),
-          supabase
-            .from('deliveries')
-            .select('id', { count: 'exact', head: true })
-            .eq('city_id', city.id)
-            .eq('courier_id', profile.courier_id)
-            .gte('created_at', dayStart.toISOString()),
-          supabase
-            .from('courier_xp_events')
-            .select('points')
-            .eq('city_id', city.id)
-            .eq('courier_id', profile.courier_id)
-            .gte('created_at', dayStart.toISOString()),
-        ]);
-
-        if (mounted) {
-          setCourierStats({
-            onlineCouriers: onlineResult.count ?? 0,
-            openStores: storesResult.count ?? 0,
-            todayDeliveries: deliveriesResult.count ?? 0,
-            todayXp: (xpTodayResult.data ?? []).reduce((total, item) => total + Number(item.points || 0), 0),
-          });
-        }
+      if (city?.id && profile?.courier_id) {
+        const nextStats = await fetchCourierStats({ supabase, cityId: city.id, courierId: profile.courier_id });
+        if (mounted) setCourierStats(nextStats);
       }
     }
 
@@ -364,6 +385,88 @@ export function CourierHomeView({ city, profile, onLogout }) {
       mounted = false;
     };
   }, [profile?.courier_id, city?.id, loadCurrentDelivery]);
+
+  React.useEffect(() => {
+    if (!supabase || !profile?.courier_id || !city?.id) return undefined;
+
+    let stopped = false;
+    let refreshTimeoutId = 0;
+
+    const refreshStats = () => {
+      if (stopped) return;
+      window.clearTimeout(refreshTimeoutId);
+      refreshTimeoutId = window.setTimeout(() => {
+        loadCourierStats().catch(() => undefined);
+      }, 250);
+    };
+
+    const refreshOwnCourier = async (payload) => {
+      refreshStats();
+      const nextCourier = payload.new?.id === profile.courier_id ? payload.new : null;
+      if (!nextCourier || stopped) return;
+      if (nextCourier.name) setCourierName(nextCourier.name);
+      if (nextCourier.availability_status) {
+        const isAvailable = nextCourier.availability_status === 'available';
+        setCourierAvailableState(isAvailable);
+        if (isAvailable) setAvailabilityPromptOpen(false);
+      }
+    };
+
+    const refreshCourierPoints = async () => {
+      const { data } = await supabase
+        .from('courier_points')
+        .select('total_points')
+        .eq('courier_id', profile.courier_id)
+        .maybeSingle();
+      if (!stopped) setCourierPoints(Number(data?.total_points ?? 0));
+      refreshStats();
+    };
+
+    const statsChannel = supabase
+      .channel(`courier-live-stats-${profile.courier_id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'couriers', filter: `city_id=eq.${city.id}` },
+        refreshOwnCourier,
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'stores', filter: `city_id=eq.${city.id}` },
+        refreshStats,
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'deliveries', filter: `city_id=eq.${city.id}` },
+        refreshStats,
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'courier_xp_events', filter: `courier_id=eq.${profile.courier_id}` },
+        refreshStats,
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'courier_points', filter: `courier_id=eq.${profile.courier_id}` },
+        refreshCourierPoints,
+      )
+      .subscribe();
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') refreshStats();
+    };
+
+    window.addEventListener('focus', refreshStats);
+    document.addEventListener('visibilitychange', handleVisibility);
+    refreshStats();
+
+    return () => {
+      stopped = true;
+      window.clearTimeout(refreshTimeoutId);
+      window.removeEventListener('focus', refreshStats);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      supabase.removeChannel(statsChannel);
+    };
+  }, [city?.id, loadCourierStats, profile?.courier_id]);
 
   React.useEffect(() => {
     if (!hasPendingOffer) {
