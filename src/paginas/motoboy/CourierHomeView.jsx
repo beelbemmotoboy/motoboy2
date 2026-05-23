@@ -657,6 +657,29 @@ export function CourierHomeView({ city, profile, onLogout }) {
   }, [currentDelivery.id, currentDelivery.offeredAt, currentDelivery.queueId, hasPendingOffer]);
 
   React.useEffect(() => {
+    if (!supabase || !profile?.courier_id || !city?.id || !hasPendingOffer) return undefined;
+
+    let stopped = false;
+    const refreshPendingOffer = () => {
+      if (!stopped) loadCurrentDelivery({ silent: true });
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') refreshPendingOffer();
+    };
+
+    const intervalId = window.setInterval(refreshPendingOffer, 3000);
+    window.addEventListener('focus', refreshPendingOffer);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      stopped = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refreshPendingOffer);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [city?.id, hasPendingOffer, loadCurrentDelivery, profile?.courier_id]);
+
+  React.useEffect(() => {
     if (!compatibleOffer) {
       setCompatibleOfferCountdown(acceptTimeoutSeconds);
       return undefined;
