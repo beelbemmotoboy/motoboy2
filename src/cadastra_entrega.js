@@ -5,6 +5,8 @@ import { parseValorMonetarioPedidoLoja } from './ValidaPedidoLoja.js';
 
 const DELIVERY_RULES_SELECT = 'id, city_id, order_code, store_id, customer_id, courier_id, pickup_address, delivery_address, delivery_district, delivery_complement, customer_latitude, customer_longitude, delivery_deadline_at, estimated_minutes, delivery_fee, status, created_at, customers(id, name, phone, address), stores(id, name, fantasy_name, whatsapp, address, address_number, district, latitude, longitude)';
 export const DELIVERY_OFFER_TIMEOUT_SECONDS = 60;
+export const DELIVERY_INDIVIDUAL_OFFER_LIMIT = 5;
+export const DELIVERY_BROADCAST_AFTER_SECONDS = DELIVERY_INDIVIDUAL_OFFER_LIMIT * DELIVERY_OFFER_TIMEOUT_SECONDS;
 export const STORE_PENDING_FOLLOWUP_SECONDS = 5 * 60;
 
 export function emptyDelivery() {
@@ -160,7 +162,7 @@ export async function buildDeliveryQueue({ supabase, cityId, deliveryId }) {
     .eq('city_id', cityId)
     .eq('active', true)
     .eq('approval_status', 'approved')
-    .eq('availability_status', 'available');
+    .in('availability_status', ['available', 'on_delivery']);
 
   if (couriersError) throw new Error(`Nao foi possivel buscar motoboys: ${couriersError.message}`);
   if (!couriers?.length) return 0;
@@ -255,17 +257,6 @@ export async function getNextDeliveryForCourier({ supabase, cityId, courierId })
   if (!supabase || !cityId || !courierId) return emptyDelivery();
 
   const baseSelect = 'id, order_code, delivery_address, delivery_district, delivery_complement, customer_latitude, customer_longitude, delivery_deadline_at, estimated_minutes, delivery_fee, status, created_at, customers(name, address), stores(name, fantasy_name, whatsapp, address, address_number, district, latitude, longitude)';
-  const { data: assignedData, error: assignedError } = await supabase
-    .from('deliveries')
-    .select(baseSelect)
-    .eq('courier_id', courierId)
-    .in('status', ['assigned', 'picked_up', 'on_route'])
-    .order('created_at', { ascending: true })
-    .limit(1);
-
-  if (assignedError) throw new Error(`Nao foi possivel buscar entrega: ${assignedError.message}`);
-  if (assignedData?.length) return formatDeliveryForCourier(assignedData[0]);
-
   const { data: queueRows, error: queueError } = await supabase
     .from('delivery_queue')
     .select('id, delivery_id, queue_position, offered_at, deliveries!inner(id, order_code, delivery_address, delivery_district, delivery_complement, customer_latitude, customer_longitude, delivery_deadline_at, estimated_minutes, delivery_fee, status, created_at, customers(name, address), stores(name, fantasy_name, whatsapp, address, address_number, district, latitude, longitude))')
@@ -298,6 +289,17 @@ export async function getNextDeliveryForCourier({ supabase, cityId, courierId })
     }
     return formatDeliveryForCourier({ ...queueRow.deliveries, offered_at: queueRow.offered_at }, queueRow.id);
   }
+
+  const { data: assignedData, error: assignedError } = await supabase
+    .from('deliveries')
+    .select(baseSelect)
+    .eq('courier_id', courierId)
+    .in('status', ['assigned', 'picked_up', 'on_route'])
+    .order('created_at', { ascending: true })
+    .limit(1);
+
+  if (assignedError) throw new Error(`Nao foi possivel buscar entrega: ${assignedError.message}`);
+  if (assignedData?.length) return formatDeliveryForCourier(assignedData[0]);
 
   return emptyDelivery();
 }
@@ -685,16 +687,16 @@ export async function notifyNextCourierOffer({
 }) {
   if (!supabase || !deliveryId) return { ok: false, reason: 'missing-context' };
 
-  if (allowClientFallback) {
-    return activateAvailableQueueOffers({ supabase, deliveryId });
+  await expireTimedOutDeliveryOffers({ supabase, deliveryId });
+  const offerMode = await getDeliveryOfferMode({ supabase, deliveryId });
+  const activeOffers = await getActiveQueueOffers({ supabase, deliveryId });
+  if (activeOffers.length) {
+    return { ok: true, alreadyOffered: true, offer: activeOffers[0], offers: activeOffers, broadcast: offerMode.broadcast };
   }
 
-  const rpcResult = await advanceDeliveryOfferQueueRpc({ supabase, deliveryId });
-  if (!rpcResult.missingRpc) return rpcResult;
-
-  await expireTimedOutDeliveryOffers({ supabase, deliveryId });
-  const activeOffers = await getActiveQueueOffers({ supabase, deliveryId });
-  if (activeOffers.length) return { ok: true, alreadyOffered: true, offers: activeOffers };
+  if (allowClientFallback) {
+    return activateQueueOffersByMode({ supabase, deliveryId, offerMode });
+  }
 
   if (!allowServerInvoke) {
     return { ok: false, reason: 'server-handoff-disabled' };
@@ -717,7 +719,7 @@ export async function notifyNextCourierOffer({
 
   const activeOffersAfterInvoke = await getActiveQueueOffers({ supabase, deliveryId });
   if (activeOffersAfterInvoke.length) {
-    return { ok: true, data: invokeResult?.data, offers: activeOffersAfterInvoke };
+    return { ok: true, data: invokeResult?.data, offer: activeOffersAfterInvoke[0], offers: activeOffersAfterInvoke };
   }
 
   return { ok: Boolean(invokeResult?.data), data: invokeResult?.data, reason: 'server-handoff' };
@@ -725,12 +727,12 @@ export async function notifyNextCourierOffer({
 
 export async function advanceDeliveryOfferQueue({ supabase, deliveryId }) {
   if (!supabase || !deliveryId) return { ok: false, reason: 'missing-context' };
-  const rpcResult = await advanceDeliveryOfferQueueRpc({ supabase, deliveryId });
-  if (!rpcResult.missingRpc) return rpcResult;
-
   await expireTimedOutDeliveryOffers({ supabase, deliveryId });
+  const offerMode = await getDeliveryOfferMode({ supabase, deliveryId });
   const activeOffers = await getActiveQueueOffers({ supabase, deliveryId });
-  if (activeOffers.length) return { ok: true, alreadyOffered: true, offers: activeOffers };
+  if (activeOffers.length) {
+    return { ok: true, alreadyOffered: true, offer: activeOffers[0], offers: activeOffers, broadcast: offerMode.broadcast };
+  }
   return notifyNextCourierOffer({ supabase, deliveryId });
 }
 
@@ -790,6 +792,36 @@ async function advanceDeliveryOfferQueueRpc({ supabase, deliveryId }) {
   };
 }
 
+async function getDeliveryOfferMode({ supabase, deliveryId }) {
+  const [{ data: delivery, error: deliveryError }, { count: attemptCount, error: attemptsError }] = await Promise.all([
+    supabase
+      .from('deliveries')
+      .select('id, created_at, status')
+      .eq('id', deliveryId)
+      .maybeSingle(),
+    supabase
+      .from('delivery_queue')
+      .select('id', { count: 'exact', head: true })
+      .eq('delivery_id', deliveryId)
+      .not('offered_at', 'is', null),
+  ]);
+
+  if (deliveryError) throw new Error(`Nao foi possivel buscar entrega: ${deliveryError.message}`);
+  if (attemptsError) throw new Error(`Nao foi possivel contar ofertas da fila: ${attemptsError.message}`);
+
+  const createdAt = delivery?.created_at ? new Date(delivery.created_at).getTime() : Date.now();
+  const ageSeconds = Math.max(0, Math.floor((Date.now() - createdAt) / 1000));
+  const attempts = Number(attemptCount ?? 0);
+  const broadcast = ageSeconds >= DELIVERY_BROADCAST_AFTER_SECONDS || attempts >= DELIVERY_INDIVIDUAL_OFFER_LIMIT;
+
+  return {
+    broadcast,
+    ageSeconds,
+    attempts,
+    delivery,
+  };
+}
+
 async function getActiveQueueOffers({ supabase, deliveryId }) {
   const { data, error } = await supabase
     .from('delivery_queue')
@@ -803,26 +835,38 @@ async function getActiveQueueOffers({ supabase, deliveryId }) {
   return data ?? [];
 }
 
-async function activateAvailableQueueOffers({ supabase, deliveryId }) {
+async function getActiveQueueOffer({ supabase, deliveryId }) {
+  const activeOffers = await getActiveQueueOffers({ supabase, deliveryId });
+  return activeOffers[0] ?? null;
+}
+
+async function activateQueueOffersByMode({ supabase, deliveryId, offerMode }) {
+  return offerMode?.broadcast
+    ? activateBroadcastQueueOffers({ supabase, deliveryId, offerMode })
+    : activateNextQueueOffer({ supabase, deliveryId, offerMode });
+}
+
+async function activateNextQueueOffer({ supabase, deliveryId, offerMode }) {
   const deliveryIsPending = await isDeliveryPending({ supabase, deliveryId });
   if (!deliveryIsPending) return { ok: false, reason: 'delivery-not-pending' };
 
   let rows = await fetchWaitingQueueRows({ supabase, deliveryId });
   let didResetQueue = false;
   if (!rows.length) {
-    const activeOffersBeforeReset = await getActiveQueueOffers({ supabase, deliveryId });
-    if (activeOffersBeforeReset.length) return { ok: true, alreadyOffered: true, offers: activeOffersBeforeReset };
+    if ((offerMode?.attempts ?? 0) >= DELIVERY_INDIVIDUAL_OFFER_LIMIT) {
+      return activateBroadcastQueueOffers({ supabase, deliveryId, offerMode: { ...offerMode, broadcast: true } });
+    }
+
+    const activeOfferBeforeReset = await getActiveQueueOffer({ supabase, deliveryId });
+    if (activeOfferBeforeReset) return { ok: true, alreadyOffered: true, offer: activeOfferBeforeReset };
 
     await resetQueueForRepeat({ supabase, deliveryId });
     didResetQueue = true;
     rows = await fetchWaitingQueueRows({ supabase, deliveryId });
   }
 
-  const offeredAt = new Date().toISOString();
-  const offers = [];
-
   for (const row of rows) {
-    const courierAvailable = row.couriers?.active === true && row.couriers?.availability_status === 'available';
+    const courierAvailable = row.couriers?.active === true && ['available', 'on_delivery'].includes(row.couriers?.availability_status);
     if (!courierAvailable) {
       await supabase
         .from('delivery_queue')
@@ -832,26 +876,57 @@ async function activateAvailableQueueOffers({ supabase, deliveryId }) {
       continue;
     }
 
-    const { data: offeredRows, error } = await supabase
+    const offeredAt = new Date().toISOString();
+    const { data: offer, error } = await supabase
       .from('delivery_queue')
       .update({ status: 'offered', offered_at: offeredAt, answered_at: null })
       .eq('id', row.id)
       .eq('status', 'waiting')
-      .select('id, courier_id, offered_at');
+      .select('id, courier_id, offered_at')
+      .maybeSingle();
 
     if (error) {
-      const activeOffers = await getActiveQueueOffers({ supabase, deliveryId });
-      if (activeOffers.length && (error.code === '23505' || /duplicate|unique/i.test(error.message || ''))) {
-        return { ok: true, alreadyOffered: true, offers: activeOffers, requiresMigration: true };
+      const activeOffer = await getActiveQueueOffer({ supabase, deliveryId });
+      if (activeOffer && (error.code === '23505' || /duplicate|unique/i.test(error.message || ''))) {
+        return { ok: true, alreadyOffered: true, offer: activeOffer };
       }
       throw new Error(`Nao foi possivel oferecer entrega: ${error.message}`);
     }
-
-    offers.push(...(offeredRows ?? []));
+    if (offer) return { ok: true, offer, repeated: didResetQueue };
   }
 
-  if (offers.length) return { ok: true, offers, repeated: didResetQueue };
   return { ok: false, reason: 'no-online-courier' };
+}
+
+async function activateBroadcastQueueOffers({ supabase, deliveryId, offerMode }) {
+  const deliveryIsPending = await isDeliveryPending({ supabase, deliveryId });
+  if (!deliveryIsPending) return { ok: false, reason: 'delivery-not-pending' };
+
+  const rows = await fetchBroadcastQueueRows({ supabase, deliveryId });
+  const offerIds = rows
+    .filter((row) => row.couriers?.active === true && ['available', 'on_delivery'].includes(row.couriers?.availability_status))
+    .map((row) => row.id)
+    .filter(Boolean);
+
+  if (!offerIds.length) return { ok: false, reason: 'no-online-courier', broadcast: true };
+
+  const offeredAt = new Date().toISOString();
+  const { data: offers, error } = await supabase
+    .from('delivery_queue')
+    .update({ status: 'offered', offered_at: offeredAt, answered_at: null })
+    .in('id', offerIds)
+    .in('status', ['waiting', 'expired', 'rejected', 'skipped'])
+    .select('id, courier_id, offered_at');
+
+  if (error) throw new Error(`Nao foi possivel oferecer entrega para varios motoboys: ${error.message}`);
+  return {
+    ok: Boolean(offers?.length),
+    offer: offers?.[0] ?? null,
+    offers: offers ?? [],
+    broadcast: true,
+    attempts: offerMode?.attempts ?? null,
+    reason: offers?.length ? 'broadcast-offered' : 'no-online-courier',
+  };
 }
 
 async function isDeliveryPending({ supabase, deliveryId }) {
@@ -875,6 +950,18 @@ async function fetchWaitingQueueRows({ supabase, deliveryId }) {
     .order('queue_position', { ascending: true });
 
   if (error) throw new Error(`Nao foi possivel buscar proximo motoboy: ${error.message}`);
+  return data ?? [];
+}
+
+async function fetchBroadcastQueueRows({ supabase, deliveryId }) {
+  const { data, error } = await supabase
+    .from('delivery_queue')
+    .select('id, courier_id, queue_position, status, couriers(active, availability_status)')
+    .eq('delivery_id', deliveryId)
+    .in('status', ['waiting', 'expired', 'rejected', 'skipped'])
+    .order('queue_position', { ascending: true });
+
+  if (error) throw new Error(`Nao foi possivel buscar motoboys para oferta simultanea: ${error.message}`);
   return data ?? [];
 }
 
