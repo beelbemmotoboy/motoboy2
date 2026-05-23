@@ -146,6 +146,25 @@ function formatMinutesDisplay(value) {
   return `${Math.max(0, Math.round(minutes))} min`;
 }
 
+function formatDateTimeDisplay(value) {
+  if (!value) return 'Nao informado';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Nao informado';
+  return date.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatRawValue(value) {
+  if (value === null || value === undefined || value === '') return 'Nao informado';
+  if (typeof value === 'number') return Number.isInteger(value) ? String(value) : String(value).replace('.', ',');
+  return String(value);
+}
+
 async function fetchCourierStats({ supabase, cityId, courierId }) {
   if (!supabase || !cityId || !courierId) {
     return {
@@ -195,6 +214,7 @@ async function fetchCourierStats({ supabase, cityId, courierId }) {
 }
 
 export function CourierHomeView({ city, profile, onLogout }) {
+  const [activePanel, setActivePanel] = React.useState('home');
   const [courierName, setCourierName] = React.useState(profile?.name || 'Motoboy');
   const [courierPoints, setCourierPoints] = React.useState(0);
   const [acceptTimeoutSeconds, setAcceptTimeoutSeconds] = React.useState(DELIVERY_OFFER_TIMEOUT_SECONDS);
@@ -220,6 +240,10 @@ export function CourierHomeView({ city, profile, onLogout }) {
   });
   const [xpAnimation, setXpAnimation] = React.useState(null);
   const [courierCoords, setCourierCoords] = React.useState(null);
+  const [completedDeliveries, setCompletedDeliveries] = React.useState([]);
+  const [completedDeliveriesLoading, setCompletedDeliveriesLoading] = React.useState(false);
+  const [completedDeliveriesMessage, setCompletedDeliveriesMessage] = React.useState('');
+  const [selectedDeliveryDetails, setSelectedDeliveryDetails] = React.useState(null);
   const deliveryPollingRef = React.useRef(false);
   const lastLocationSyncRef = React.useRef(0);
   const lastAlertedDeliveryRef = React.useRef('');
@@ -236,6 +260,67 @@ export function CourierHomeView({ city, profile, onLogout }) {
   const formatXpValue = (value) => (
     Number.isInteger(Number(value)) ? Number(value).toFixed(0) : Number(value).toFixed(1).replace('.', ',')
   );
+
+  const completedDeliveryRows = completedDeliveries.map((delivery) => ({
+    id: delivery.id,
+    code: delivery.order_code || delivery.id,
+    storeName: delivery.stores?.fantasy_name || delivery.stores?.name || 'Loja nao informada',
+    finishedAt: formatDateTimeDisplay(delivery.delivered_at || delivery.updated_at || delivery.created_at),
+    fee: formatCurrencyDisplay(delivery.delivery_fee),
+    raw: delivery,
+  }));
+
+  const selectedDetailSections = selectedDeliveryDetails ? [
+    {
+      title: 'Entrega',
+      rows: [
+        ['ID', selectedDeliveryDetails.id],
+        ['Codigo do pedido', selectedDeliveryDetails.order_code],
+        ['Status', selectedDeliveryDetails.status],
+        ['Criada em', formatDateTimeDisplay(selectedDeliveryDetails.created_at)],
+        ['Finalizada em', formatDateTimeDisplay(selectedDeliveryDetails.delivered_at)],
+        ['Taxa', formatCurrencyDisplay(selectedDeliveryDetails.delivery_fee)],
+        ['Endereco de coleta', selectedDeliveryDetails.pickup_address],
+        ['Endereco de entrega', selectedDeliveryDetails.delivery_address],
+        ['Bairro', selectedDeliveryDetails.delivery_district],
+        ['Complemento', selectedDeliveryDetails.delivery_complement],
+        ['Latitude cliente', selectedDeliveryDetails.customer_latitude],
+        ['Longitude cliente', selectedDeliveryDetails.customer_longitude],
+        ['Prazo', formatDateTimeDisplay(selectedDeliveryDetails.delivery_deadline_at)],
+        ['Minutos estimados', selectedDeliveryDetails.estimated_minutes],
+      ],
+    },
+    {
+      title: 'Loja',
+      rows: [
+        ['ID', selectedDeliveryDetails.stores?.id],
+        ['Nome', selectedDeliveryDetails.stores?.name],
+        ['Nome fantasia', selectedDeliveryDetails.stores?.fantasy_name],
+        ['Responsavel', selectedDeliveryDetails.stores?.responsible_name],
+        ['E-mail', selectedDeliveryDetails.stores?.email],
+        ['WhatsApp', selectedDeliveryDetails.stores?.whatsapp],
+        ['Endereco', [selectedDeliveryDetails.stores?.address, selectedDeliveryDetails.stores?.address_number, selectedDeliveryDetails.stores?.district].filter(Boolean).join(', ')],
+        ['CEP', selectedDeliveryDetails.stores?.zip_code],
+      ],
+    },
+    {
+      title: 'Cliente',
+      rows: [
+        ['ID', selectedDeliveryDetails.customers?.id],
+        ['Nome', selectedDeliveryDetails.customers?.name],
+        ['Telefone', selectedDeliveryDetails.customers?.phone],
+        ['Endereco salvo', selectedDeliveryDetails.customers?.address],
+      ],
+    },
+    {
+      title: 'Eventos',
+      rows: (selectedDeliveryDetails.delivery_events?.length ? selectedDeliveryDetails.delivery_events : [])
+        .map((event) => [
+          formatDateTimeDisplay(event.created_at),
+          [event.status, event.note].filter(Boolean).join(' - '),
+        ]),
+    },
+  ] : [];
 
   const loadCourierStats = React.useCallback(async () => {
     const nextStats = await fetchCourierStats({ supabase, cityId: city?.id, courierId: profile?.courier_id });
@@ -649,6 +734,38 @@ export function CourierHomeView({ city, profile, onLogout }) {
   }, [city?.id, courierAvailable, hasAcceptedDelivery, hasPendingOffer, loadCurrentDelivery, profile?.courier_id]);
 
   React.useEffect(() => {
+    if (activePanel !== 'data' || !supabase || !profile?.courier_id) return undefined;
+
+    let stopped = false;
+    async function loadCompletedDeliveries() {
+      setCompletedDeliveriesLoading(true);
+      setCompletedDeliveriesMessage('');
+      const { data, error } = await supabase
+        .from('deliveries')
+        .select('id, order_code, status, created_at, updated_at, delivered_at, pickup_address, delivery_address, delivery_district, delivery_complement, customer_latitude, customer_longitude, delivery_deadline_at, estimated_minutes, delivery_fee, customers(id, name, phone, address), stores(id, name, fantasy_name, responsible_name, email, whatsapp, address, address_number, district, zip_code), delivery_events(id, status, note, created_at)')
+        .eq('courier_id', profile.courier_id)
+        .eq('status', 'delivered')
+        .order('delivered_at', { ascending: false, nullsFirst: false })
+        .limit(80);
+
+      if (stopped) return;
+      setCompletedDeliveriesLoading(false);
+      if (error) {
+        setCompletedDeliveries([]);
+        setCompletedDeliveriesMessage(`Nao foi possivel buscar entregas finalizadas: ${error.message}`);
+        return;
+      }
+      setCompletedDeliveries(data ?? []);
+      setCompletedDeliveriesMessage((data ?? []).length ? '' : 'Nenhuma entrega finalizada encontrada.');
+    }
+
+    loadCompletedDeliveries();
+    return () => {
+      stopped = true;
+    };
+  }, [activePanel, profile?.courier_id]);
+
+  React.useEffect(() => {
     const shouldTrackLocation = Boolean(profile?.courier_id && city?.id && (courierAvailable || hasPendingOffer || hasAcceptedDelivery));
     if (!shouldTrackLocation || !navigator.geolocation) return undefined;
 
@@ -824,6 +941,17 @@ export function CourierHomeView({ city, profile, onLogout }) {
     if (available) loadCurrentDelivery();
   }
 
+  function openCourierDataPanel() {
+    setMenuOpen(false);
+    setActionMessage('');
+    setActivePanel('data');
+  }
+
+  function closeCourierDataPanel() {
+    setSelectedDeliveryDetails(null);
+    setActivePanel('home');
+  }
+
   function rejectCompatibleOffer() {
     if (compatibleOffer?.id) compatibleOfferDismissedRef.current.add(compatibleOffer.id);
     setCompatibleOffer(null);
@@ -848,7 +976,7 @@ export function CourierHomeView({ city, profile, onLogout }) {
           <nav className="courier-profile-menu" aria-label="Menu do motoboy">
             <button type="button" onClick={() => changeAvailability(true)}>Ficar disponivel On-line</button>
             <button type="button" onClick={() => changeAvailability(false)}>Ficar Off-line</button>
-            <button type="button" onClick={() => setActionMessage('Meus dados sera implementado na proxima etapa.')}>Meus dados</button>
+            <button type="button" onClick={openCourierDataPanel}>Meus dados</button>
             <button type="button" onClick={() => setActionMessage('Minhas entregas sera implementado na proxima etapa.')}>Minhas entregas</button>
             <button type="button" onClick={() => setActionMessage('Relatorios sera implementado na proxima etapa.')}>Relatorios</button>
             <button type="button" onClick={onLogout}>Sair</button>
@@ -888,6 +1016,86 @@ export function CourierHomeView({ city, profile, onLogout }) {
         </div>
       )}
 
+      {activePanel === 'data' ? (
+        <section className="courier-data-window" aria-labelledby="courier-data-title">
+          <div className="courier-data-toolbar">
+            <div>
+              <span>Historico do motoboy</span>
+              <h2 id="courier-data-title">Meus dados</h2>
+            </div>
+            <button className="secondary-action" type="button" onClick={closeCourierDataPanel}>Voltar</button>
+          </div>
+
+          <div className="courier-data-table-wrap">
+            <table className="courier-data-table">
+              <thead>
+                <tr>
+                  <th>Cod. pedido</th>
+                  <th>Nome do lojista</th>
+                  <th>Finalizacao</th>
+                  <th>Valor</th>
+                </tr>
+              </thead>
+              <tbody>
+                {completedDeliveryRows.map((delivery) => (
+                  <tr key={delivery.id}>
+                    <td>
+                      <button type="button" className="courier-order-link" onClick={() => setSelectedDeliveryDetails(delivery.raw)}>
+                        {delivery.code}
+                      </button>
+                    </td>
+                    <td>{delivery.storeName}</td>
+                    <td>{delivery.finishedAt}</td>
+                    <td>{delivery.fee}</td>
+                  </tr>
+                ))}
+                {!completedDeliveryRows.length && (
+                  <tr>
+                    <td colSpan="4">{completedDeliveriesLoading ? 'Buscando entregas finalizadas...' : completedDeliveriesMessage || 'Nenhum dado encontrado.'}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {completedDeliveriesMessage && completedDeliveryRows.length > 0 && (
+            <p className="courier-action-message">{completedDeliveriesMessage}</p>
+          )}
+
+          {selectedDeliveryDetails && (
+            <div className="courier-data-modal" role="dialog" aria-modal="true" aria-labelledby="courier-data-modal-title">
+              <section>
+                <header>
+                  <div>
+                    <span>Dados do pedido</span>
+                    <h2 id="courier-data-modal-title">{selectedDeliveryDetails.order_code || selectedDeliveryDetails.id}</h2>
+                  </div>
+                  <button type="button" onClick={() => setSelectedDeliveryDetails(null)}>Fechar</button>
+                </header>
+                <div className="courier-data-detail-grid">
+                  {selectedDetailSections.map((section) => (
+                    <article key={section.title}>
+                      <h3>{section.title}</h3>
+                      {section.rows.length > 0 ? section.rows.map(([label, value]) => (
+                        <p key={`${section.title}-${label}`}>
+                          <span>{label}</span>
+                          <strong>{formatRawValue(value)}</strong>
+                        </p>
+                      )) : (
+                        <p>
+                          <span>Registro</span>
+                          <strong>Nao informado</strong>
+                        </p>
+                      )}
+                    </article>
+                  ))}
+                </div>
+              </section>
+            </div>
+          )}
+        </section>
+      ) : (
+      <>
       <section className="courier-mini-stats" aria-label="Indicadores do motoboy">
         <article>
           <UserRound size={30} />
@@ -1130,6 +1338,8 @@ export function CourierHomeView({ city, profile, onLogout }) {
       <button className="courier-logout" type="button" onClick={onLogout}>
         <LogOut size={18} />Sair
       </button>
+      </>
+      )}
     </LayoutMotoboy>
   );
 }
