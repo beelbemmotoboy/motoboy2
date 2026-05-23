@@ -1,5 +1,5 @@
 const MINUTOS_MINIMOS_HORARIO_PREVISTO = 10;
-const MINUTOS_MAXIMOS_HORARIO_PREVISTO = 180;
+const MINUTOS_MAXIMOS_HORARIO_PREVISTO = 720;
 const VALOR_MINIMO_ENTREGA = 5;
 const VALOR_MAXIMO_ENTREGA = 100;
 
@@ -47,7 +47,7 @@ export function validarHorarioPrevistoPedidoLoja(horarioPrevisto, agora = new Da
     return {
       valido: false,
       campo: 'estimatedTime',
-      motivo: 'Horario previsto nao pode ser maior que 3 horas do horario atual.',
+      motivo: 'Horario previsto nao pode ser maior que 12 horas do horario atual.',
     };
   }
 
