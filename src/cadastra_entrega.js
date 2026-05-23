@@ -638,7 +638,12 @@ export async function rejectQueuedDelivery({ supabase, cityId, delivery, courier
     note: `${courierName} recusou a entrega.`,
   });
 
-  await notifyNextCourierOffer({ supabase, deliveryId: delivery.id, allowClientFallback: false });
+  await notifyNextCourierOffer({
+    supabase,
+    deliveryId: delivery.id,
+    allowClientFallback: false,
+    allowServerInvoke: true,
+  });
 }
 
 export async function expireQueuedDeliveryOffer({ supabase, cityId, delivery, courierId, courierName, note = 'Tempo para aceite esgotado.' }) {
@@ -663,7 +668,12 @@ export async function expireQueuedDeliveryOffer({ supabase, cityId, delivery, co
     note: `${courierName || 'Motoboy'} nao respondeu em 1 minuto. ${note}`,
   });
 
-  await notifyNextCourierOffer({ supabase, deliveryId: delivery.id, allowClientFallback: false });
+  await notifyNextCourierOffer({
+    supabase,
+    deliveryId: delivery.id,
+    allowClientFallback: false,
+    allowServerInvoke: true,
+  });
   return { expired: true };
 }
 
@@ -675,16 +685,16 @@ export async function notifyNextCourierOffer({
 }) {
   if (!supabase || !deliveryId) return { ok: false, reason: 'missing-context' };
 
+  if (allowClientFallback) {
+    return activateAvailableQueueOffers({ supabase, deliveryId });
+  }
+
   const rpcResult = await advanceDeliveryOfferQueueRpc({ supabase, deliveryId });
   if (!rpcResult.missingRpc) return rpcResult;
 
   await expireTimedOutDeliveryOffers({ supabase, deliveryId });
-  const activeOffer = await getActiveQueueOffer({ supabase, deliveryId });
-  if (activeOffer) return { ok: true, alreadyOffered: true, offer: activeOffer };
-
-  if (allowClientFallback) {
-    return activateNextQueueOffer({ supabase, deliveryId });
-  }
+  const activeOffers = await getActiveQueueOffers({ supabase, deliveryId });
+  if (activeOffers.length) return { ok: true, alreadyOffered: true, offers: activeOffers };
 
   if (!allowServerInvoke) {
     return { ok: false, reason: 'server-handoff-disabled' };
@@ -705,9 +715,9 @@ export async function notifyNextCourierOffer({
     }
   }
 
-  const activeOfferAfterInvoke = await getActiveQueueOffer({ supabase, deliveryId });
-  if (activeOfferAfterInvoke) {
-    return { ok: true, data: invokeResult?.data, offer: activeOfferAfterInvoke };
+  const activeOffersAfterInvoke = await getActiveQueueOffers({ supabase, deliveryId });
+  if (activeOffersAfterInvoke.length) {
+    return { ok: true, data: invokeResult?.data, offers: activeOffersAfterInvoke };
   }
 
   return { ok: Boolean(invokeResult?.data), data: invokeResult?.data, reason: 'server-handoff' };
@@ -719,8 +729,8 @@ export async function advanceDeliveryOfferQueue({ supabase, deliveryId }) {
   if (!rpcResult.missingRpc) return rpcResult;
 
   await expireTimedOutDeliveryOffers({ supabase, deliveryId });
-  const activeOffer = await getActiveQueueOffer({ supabase, deliveryId });
-  if (activeOffer) return { ok: true, alreadyOffered: true, offer: activeOffer };
+  const activeOffers = await getActiveQueueOffers({ supabase, deliveryId });
+  if (activeOffers.length) return { ok: true, alreadyOffered: true, offers: activeOffers };
   return notifyNextCourierOffer({ supabase, deliveryId });
 }
 
@@ -780,7 +790,7 @@ async function advanceDeliveryOfferQueueRpc({ supabase, deliveryId }) {
   };
 }
 
-async function getActiveQueueOffer({ supabase, deliveryId }) {
+async function getActiveQueueOffers({ supabase, deliveryId }) {
   const { data, error } = await supabase
     .from('delivery_queue')
     .select('id, courier_id, offered_at, deliveries!inner(id, status)')
@@ -790,34 +800,26 @@ async function getActiveQueueOffer({ supabase, deliveryId }) {
     .order('offered_at', { ascending: true });
 
   if (error) throw new Error(`Nao foi possivel buscar oferta ativa: ${error.message}`);
-  const activeOffer = data?.[0] ?? null;
-  const duplicateOfferIds = (data ?? []).slice(1).map((offer) => offer.id).filter(Boolean);
-
-  if (duplicateOfferIds.length) {
-    await supabase
-      .from('delivery_queue')
-      .update({ status: 'expired', answered_at: new Date().toISOString() })
-      .in('id', duplicateOfferIds)
-      .eq('status', 'offered');
-  }
-
-  return activeOffer;
+  return data ?? [];
 }
 
-async function activateNextQueueOffer({ supabase, deliveryId }) {
+async function activateAvailableQueueOffers({ supabase, deliveryId }) {
   const deliveryIsPending = await isDeliveryPending({ supabase, deliveryId });
   if (!deliveryIsPending) return { ok: false, reason: 'delivery-not-pending' };
 
   let rows = await fetchWaitingQueueRows({ supabase, deliveryId });
   let didResetQueue = false;
   if (!rows.length) {
-    const activeOfferBeforeReset = await getActiveQueueOffer({ supabase, deliveryId });
-    if (activeOfferBeforeReset) return { ok: true, alreadyOffered: true, offer: activeOfferBeforeReset };
+    const activeOffersBeforeReset = await getActiveQueueOffers({ supabase, deliveryId });
+    if (activeOffersBeforeReset.length) return { ok: true, alreadyOffered: true, offers: activeOffersBeforeReset };
 
     await resetQueueForRepeat({ supabase, deliveryId });
     didResetQueue = true;
     rows = await fetchWaitingQueueRows({ supabase, deliveryId });
   }
+
+  const offeredAt = new Date().toISOString();
+  const offers = [];
 
   for (const row of rows) {
     const courierAvailable = row.couriers?.active === true && row.couriers?.availability_status === 'available';
@@ -830,25 +832,25 @@ async function activateNextQueueOffer({ supabase, deliveryId }) {
       continue;
     }
 
-    const offeredAt = new Date().toISOString();
-    const { data: offer, error } = await supabase
+    const { data: offeredRows, error } = await supabase
       .from('delivery_queue')
       .update({ status: 'offered', offered_at: offeredAt, answered_at: null })
       .eq('id', row.id)
       .eq('status', 'waiting')
-      .select('id, courier_id, offered_at')
-      .maybeSingle();
+      .select('id, courier_id, offered_at');
 
     if (error) {
-      const activeOffer = await getActiveQueueOffer({ supabase, deliveryId });
-      if (activeOffer && (error.code === '23505' || /duplicate|unique/i.test(error.message || ''))) {
-        return { ok: true, alreadyOffered: true, offer: activeOffer };
+      const activeOffers = await getActiveQueueOffers({ supabase, deliveryId });
+      if (activeOffers.length && (error.code === '23505' || /duplicate|unique/i.test(error.message || ''))) {
+        return { ok: true, alreadyOffered: true, offers: activeOffers, requiresMigration: true };
       }
       throw new Error(`Nao foi possivel oferecer entrega: ${error.message}`);
     }
-    if (offer) return { ok: true, offer, repeated: didResetQueue };
+
+    offers.push(...(offeredRows ?? []));
   }
 
+  if (offers.length) return { ok: true, offers, repeated: didResetQueue };
   return { ok: false, reason: 'no-online-courier' };
 }
 

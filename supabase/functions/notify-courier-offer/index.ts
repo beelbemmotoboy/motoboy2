@@ -39,53 +39,63 @@ Deno.serve(async (request) => {
 
     await expireTimedOutOffers({ supabaseUrl, serviceRoleKey, deliveryId, offerTimeoutSeconds });
 
-    const activeOffer = await fetchActiveQueueOffer({ supabaseUrl, serviceRoleKey, deliveryId });
-    if (activeOffer) return json({ notified: 0, skipped: 'active_offer', offerId: activeOffer.id });
+    const activeOffers = await fetchActiveQueueOffers({ supabaseUrl, serviceRoleKey, deliveryId });
+    if (activeOffers.length) return json({ notified: 0, skipped: 'active_offer', offers: activeOffers.length });
 
-    let offer = await fetchNextQueueOffer({ supabaseUrl, serviceRoleKey, deliveryId });
-    if (!offer && repeat) {
-      const activeOfferBeforeReset = await fetchActiveQueueOffer({ supabaseUrl, serviceRoleKey, deliveryId });
-      if (activeOfferBeforeReset) return json({ notified: 0, skipped: 'active_offer', offerId: activeOfferBeforeReset.id });
+    let offers = await fetchNextQueueOffers({ supabaseUrl, serviceRoleKey, deliveryId });
+    if (!offers.length && repeat) {
+      const activeOffersBeforeReset = await fetchActiveQueueOffers({ supabaseUrl, serviceRoleKey, deliveryId });
+      if (activeOffersBeforeReset.length) return json({ notified: 0, skipped: 'active_offer', offers: activeOffersBeforeReset.length });
 
       await resetQueueForRepeat({ supabaseUrl, serviceRoleKey, deliveryId });
-      offer = await fetchNextQueueOffer({ supabaseUrl, serviceRoleKey, deliveryId });
+      offers = await fetchNextQueueOffers({ supabaseUrl, serviceRoleKey, deliveryId });
     }
-    if (!offer) return json({ notified: 0, skipped: 'no_online_waiting_courier' });
+    if (!offers.length) return json({ notified: 0, skipped: 'no_online_waiting_courier' });
 
-    const markedOffer = await markQueueOfferAsOffered({ supabaseUrl, serviceRoleKey, offerId: offer.id });
-    if (!markedOffer) return json({ notified: 0, skipped: 'offer_already_taken' });
-    offer = { ...offer, ...markedOffer };
-
-    const subscriptions = await fetchCourierSubscriptions({
+    const markedOffers = await markQueueOffersAsOffered({
       supabaseUrl,
       serviceRoleKey,
-      courierId: offer.courier_id,
+      offerIds: offers.map((offer) => offer.id),
     });
+    if (!markedOffers.length) return json({ notified: 0, skipped: 'offer_already_taken' });
+    const offerById = new Map(offers.map((offer) => [offer.id, offer]));
+    offers = markedOffers.map((markedOffer) => ({ ...offerById.get(markedOffer.id)!, ...markedOffer }));
 
-    const payload = JSON.stringify({
-      title: 'Nova entrega disponivel',
-      body: [
-        offer.deliveries.order_code || offer.deliveries.id,
-        offer.deliveries.stores?.fantasy_name || offer.deliveries.stores?.name || '',
-        formatCurrency(Number(offer.deliveries.delivery_fee || 0)),
-      ].filter(Boolean).join(' - '),
-      url: '/#login',
-      deliveryId: offer.deliveries.id,
-    });
+    const subscriptionsByCourier = await Promise.all(offers.map(async (offer) => ({
+      offer,
+      subscriptions: await fetchCourierSubscriptions({
+        supabaseUrl,
+        serviceRoleKey,
+        courierId: offer.courier_id,
+      }),
+    })));
 
     let notified = 0;
     const staleSubscriptionIds: string[] = [];
-    for (const subscription of subscriptions) {
-      const result = await sendWebPush(subscription, payload);
-      if (result.ok) notified += 1;
-      if (result.stale) staleSubscriptionIds.push(subscription.id);
+    for (const item of subscriptionsByCourier) {
+      const payload = JSON.stringify({
+        title: 'Nova entrega disponivel',
+        body: [
+          item.offer.deliveries.order_code || item.offer.deliveries.id,
+          item.offer.deliveries.stores?.fantasy_name || item.offer.deliveries.stores?.name || '',
+          formatCurrency(Number(item.offer.deliveries.delivery_fee || 0)),
+        ].filter(Boolean).join(' - '),
+        url: '/#login',
+        deliveryId: item.offer.deliveries.id,
+      });
+
+      for (const subscription of item.subscriptions) {
+        const result = await sendWebPush(subscription, payload);
+        if (result.ok) notified += 1;
+        if (result.stale) staleSubscriptionIds.push(subscription.id);
+      }
     }
 
     if (staleSubscriptionIds.length) {
       await deactivateSubscriptions({ supabaseUrl, serviceRoleKey, ids: staleSubscriptionIds });
     }
 
-    return json({ notified, stale: staleSubscriptionIds.length, offerId: offer.id, courierId: offer.courier_id });
+    return json({ notified, stale: staleSubscriptionIds.length, offers: offers.length });
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : 'Unexpected error' }, 500);
   }
@@ -111,11 +121,11 @@ async function expireTimedOutOffers({ supabaseUrl, serviceRoleKey, deliveryId, o
   if (!response.ok) throw new Error(`Could not expire queue offers: ${await response.text()}`);
 }
 
-async function fetchActiveQueueOffer({ supabaseUrl, serviceRoleKey, deliveryId }: {
+async function fetchActiveQueueOffers({ supabaseUrl, serviceRoleKey, deliveryId }: {
   supabaseUrl: string;
   serviceRoleKey: string;
   deliveryId: string;
-}): Promise<QueueOffer | null> {
+}): Promise<QueueOffer[]> {
   const url = new URL(`${supabaseUrl}/rest/v1/delivery_queue`);
   url.searchParams.set('select', 'id,courier_id,offered_at,deliveries!inner(id,order_code,delivery_fee,status,stores(name,fantasy_name))');
   url.searchParams.set('delivery_id', `eq.${deliveryId}`);
@@ -125,60 +135,38 @@ async function fetchActiveQueueOffer({ supabaseUrl, serviceRoleKey, deliveryId }
 
   const response = await fetch(url, { headers: serviceHeaders(serviceRoleKey) });
   if (!response.ok) throw new Error(`Could not fetch active delivery offer: ${await response.text()}`);
-  const rows = await response.json() as QueueOffer[];
-  const duplicateOfferIds = rows.slice(1).map((offer) => offer.id).filter(Boolean);
-  if (duplicateOfferIds.length) {
-    await expireQueueOffers({ supabaseUrl, serviceRoleKey, offerIds: duplicateOfferIds });
-  }
-  return rows[0] ?? null;
+  return response.json();
 }
 
-async function expireQueueOffers({ supabaseUrl, serviceRoleKey, offerIds }: {
-  supabaseUrl: string;
-  serviceRoleKey: string;
-  offerIds: string[];
-}) {
-  const url = new URL(`${supabaseUrl}/rest/v1/delivery_queue`);
-  url.searchParams.set('id', `in.(${offerIds.join(',')})`);
-  url.searchParams.set('status', 'eq.offered');
-
-  const response = await fetch(url, {
-    method: 'PATCH',
-    headers: { ...serviceHeaders(serviceRoleKey), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-    body: JSON.stringify({ status: 'expired', answered_at: new Date().toISOString() }),
-  });
-  if (!response.ok) throw new Error(`Could not expire duplicate active offers: ${await response.text()}`);
-}
-
-async function fetchNextQueueOffer({ supabaseUrl, serviceRoleKey, deliveryId }: {
+async function fetchNextQueueOffers({ supabaseUrl, serviceRoleKey, deliveryId }: {
   supabaseUrl: string;
   serviceRoleKey: string;
   deliveryId: string;
-}): Promise<QueueOffer | null> {
+}): Promise<QueueOffer[]> {
   const url = new URL(`${supabaseUrl}/rest/v1/delivery_queue`);
-  url.searchParams.set('select', 'id,courier_id,deliveries!inner(id,order_code,delivery_fee,status,stores(name,fantasy_name)),couriers!inner(active,availability_status)');
+  url.searchParams.set('select', 'id,courier_id,deliveries!inner(id,order_code,delivery_fee,status,stores(name,fantasy_name)),couriers!inner(active,approval_status,availability_status)');
   url.searchParams.set('delivery_id', `eq.${deliveryId}`);
   url.searchParams.set('status', 'eq.waiting');
   url.searchParams.set('deliveries.status', 'eq.pending');
   url.searchParams.set('couriers.active', 'eq.true');
+  url.searchParams.set('couriers.approval_status', 'eq.approved');
   url.searchParams.set('couriers.availability_status', 'eq.available');
   url.searchParams.set('order', 'queue_position.asc');
-  url.searchParams.set('limit', '1');
 
   const response = await fetch(url, { headers: serviceHeaders(serviceRoleKey) });
   if (!response.ok) throw new Error(`Could not fetch delivery queue: ${await response.text()}`);
-  const rows = await response.json() as QueueOffer[];
-  return rows[0] ?? null;
+  return response.json();
 }
 
-async function markQueueOfferAsOffered({ supabaseUrl, serviceRoleKey, offerId }: {
+async function markQueueOffersAsOffered({ supabaseUrl, serviceRoleKey, offerIds }: {
   supabaseUrl: string;
   serviceRoleKey: string;
-  offerId: string;
-}): Promise<Pick<QueueOffer, 'id' | 'courier_id' | 'offered_at'> | null> {
+  offerIds: string[];
+}): Promise<Pick<QueueOffer, 'id' | 'courier_id' | 'offered_at'>[]> {
+  if (!offerIds.length) return [];
   const offeredAt = new Date().toISOString();
   const url = new URL(`${supabaseUrl}/rest/v1/delivery_queue`);
-  url.searchParams.set('id', `eq.${offerId}`);
+  url.searchParams.set('id', `in.(${offerIds.join(',')})`);
   url.searchParams.set('status', 'eq.waiting');
   url.searchParams.set('select', 'id,courier_id,offered_at');
 
@@ -188,8 +176,7 @@ async function markQueueOfferAsOffered({ supabaseUrl, serviceRoleKey, offerId }:
     body: JSON.stringify({ status: 'offered', offered_at: offeredAt, answered_at: null }),
   });
   if (!response.ok) throw new Error(`Could not mark queue offer: ${await response.text()}`);
-  const rows = await response.json() as Pick<QueueOffer, 'id' | 'courier_id' | 'offered_at'>[];
-  return rows[0] ?? null;
+  return response.json();
 }
 
 async function resetQueueForRepeat({ supabaseUrl, serviceRoleKey, deliveryId }: {
