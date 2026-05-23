@@ -989,8 +989,62 @@ export function CourierHomeView({ city, profile, onLogout }) {
     setCompatibleOffer(null);
   }
 
-  function acceptCompatibleOffer() {
-    setActionMessage('Aceite de entrega extra sera ativado no proximo passo.');
+  async function acceptCompatibleOffer() {
+    const deliveryId = compatibleOffer?.corrida?.id;
+    if (!deliveryId || !profile?.courier_id || !city?.id || !supabase) {
+      setActionMessage('Nenhuma entrega extra disponivel para aceitar.');
+      return;
+    }
+
+    setActionMessage('');
+    setDeliveryLoading(true);
+    try {
+      const answeredAt = new Date().toISOString();
+      const { data: acceptedDelivery, error } = await supabase
+        .from('deliveries')
+        .update({ courier_id: profile.courier_id, status: 'assigned' })
+        .eq('id', deliveryId)
+        .eq('city_id', city.id)
+        .eq('status', 'pending')
+        .is('courier_id', null)
+        .select('id')
+        .maybeSingle();
+
+      if (error) throw new Error(`Nao foi possivel aceitar entrega extra: ${error.message}`);
+      if (!acceptedDelivery) throw new Error('Entrega extra ja foi aceita por outro motoboy ou nao esta mais pendente.');
+
+      await supabase.from('delivery_events').insert({
+        city_id: city.id,
+        delivery_id: deliveryId,
+        status: 'assigned',
+        note: `${courierName} aceitou entrega extra da mesma rota.`,
+      });
+
+      await supabase
+        .from('delivery_queue')
+        .update({ status: 'skipped', answered_at: answeredAt })
+        .eq('delivery_id', deliveryId)
+        .in('status', ['waiting', 'offered']);
+
+      const xpGained = await awardAcceptXp({
+        supabase,
+        courierId: profile.courier_id,
+        delivery: { id: deliveryId, offeredAt: compatibleOffer.offeredAt },
+        cityId: city.id,
+      });
+      setCourierPoints((current) => Number(current || 0) + xpGained);
+      setCourierStats((current) => ({ ...current, todayXp: Number(current.todayXp || 0) + xpGained }));
+      setXpAnimation(`+${xpGained} XP`);
+      setTimeout(() => setXpAnimation(null), 3000);
+      compatibleOfferDismissedRef.current.add(deliveryId);
+      setCompatibleOffer(null);
+      setActionMessage(`Entrega extra aceita. +${xpGained} XP`);
+      loadCurrentDelivery();
+    } catch (error) {
+      setActionMessage(error.message);
+    } finally {
+      setDeliveryLoading(false);
+    }
   }
 
   return (

@@ -207,18 +207,23 @@ function avaliarCorridaExtra({
   const mesmaLoja = verificar_entrega_mesma_loja({ corrida_aceita, nova_corrida });
   if (configuracoes.permitir_entregas_mesma_loja && !mesmaLoja.permitido) motivos.push(mesmaLoja.motivo);
 
-  const mesmoSentido = configuracoes.permitir_entregas_no_mesmo_sentido
-    ? verificar_mesmo_sentido_entrega({ corrida_aceita, nova_corrida, configuracoes })
-    : { permitido: true, grau_compatibilidade: 1, desvio_estimado_km: 0, motivo: 'Regra de mesmo sentido desativada.' };
+  const entregaMesmaLoja = mesmaLoja.permitido;
+  const mesmoSentido = entregaMesmaLoja
+    ? { permitido: true, grau_compatibilidade: 1, desvio_estimado_km: 0, motivo: 'Corridas saem da mesma loja.' }
+    : configuracoes.permitir_entregas_no_mesmo_sentido
+      ? verificar_mesmo_sentido_entrega({ corrida_aceita, nova_corrida, configuracoes })
+      : { permitido: true, grau_compatibilidade: 1, desvio_estimado_km: 0, motivo: 'Regra de mesmo sentido desativada.' };
   if (!mesmoSentido.permitido) motivos.push(mesmoSentido.motivo);
 
   const rota = rota_estimativa_atual || montarRotaEstimativa(corrida_aceita, localizacao_atual_motoboy);
-  const raioTrajeto = verificar_entrega_no_raio_do_trajeto({
-    localizacao_atual_motoboy,
-    rota_estimativa_atual: rota,
-    nova_corrida,
-    raio_maximo_km: configuracoes.raio_maximo_para_oferecer_entrega_km,
-  });
+  const raioTrajeto = entregaMesmaLoja
+    ? { permitido: true, distancia_ate_rota_km: 0, motivo: 'Corridas saem da mesma loja.' }
+    : verificar_entrega_no_raio_do_trajeto({
+      localizacao_atual_motoboy,
+      rota_estimativa_atual: rota,
+      nova_corrida,
+      raio_maximo_km: configuracoes.raio_maximo_para_oferecer_entrega_km,
+    });
   if (!raioTrajeto.permitido) motivos.push(raioTrajeto.motivo);
 
   const desvioEstimado = Number(mesmoSentido.desvio_estimado_km ?? 0);
