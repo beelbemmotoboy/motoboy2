@@ -1,11 +1,13 @@
 import React from 'react';
 import { Bike, Clock3, LogOut, Mail, MapPin, Navigation, Search, Star, Store, UserRound, WalletCards } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
-import { acceptQueuedDelivery, avaliarEntregasCompativeisParaMotoboy, DELIVERY_OFFER_TIMEOUT_SECONDS, emptyDelivery, expireQueuedDeliveryOffer, getNextDeliveryForCourier, markDeliveryDelivered, markDeliveryPickedUp, rejectQueuedDelivery, setCourierAvailable, updateCourierLocation } from '../../cadastra_entrega';
+import { acceptQueuedDelivery, avaliarEntregasCompativeisParaMotoboy, DELIVERY_OFFER_TIMEOUT_SECONDS, emptyDelivery, expireQueuedDeliveryOffer, formatDeliveryForCourier, getNextDeliveryForCourier, markDeliveryDelivered, markDeliveryPickedUp, rejectQueuedDelivery, setCourierAvailable, updateCourierLocation } from '../../cadastra_entrega';
 import { awardAcceptXp, awardOnTimeDeliveryXp, awardPickupXp } from '../../xp_motoboy';
 import { LayoutMotoboy } from '../../layouts/LayoutMotoboy';
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || '';
+const ACTIVE_DELIVERY_STATUSES = ['assigned', 'picked_up', 'on_route'];
+const ACTIVE_DELIVERY_SELECT = 'id, city_id, order_code, store_id, customer_id, courier_id, pickup_address, delivery_address, delivery_district, delivery_complement, customer_latitude, customer_longitude, delivery_deadline_at, estimated_minutes, delivery_fee, status, created_at, customers(id, name, phone, address), stores(id, name, fantasy_name, whatsapp, address, address_number, district, latitude, longitude)';
 
 function base64UrlToUint8Array(value) {
   const padding = '='.repeat((4 - (value.length % 4)) % 4);
@@ -224,6 +226,7 @@ export function CourierHomeView({ city, profile, onLogout }) {
   const [scoreModalOpen, setScoreModalOpen] = React.useState(false);
   const [availabilityPromptOpen, setAvailabilityPromptOpen] = React.useState(false);
   const [currentDelivery, setCurrentDelivery] = React.useState(emptyDelivery());
+  const [activeDeliveries, setActiveDeliveries] = React.useState([]);
   const [compatibleOffer, setCompatibleOffer] = React.useState(null);
   const [compatibleOfferCountdown, setCompatibleOfferCountdown] = React.useState(DELIVERY_OFFER_TIMEOUT_SECONDS);
   const [deliveryLoading, setDeliveryLoading] = React.useState(false);
@@ -251,8 +254,11 @@ export function CourierHomeView({ city, profile, onLogout }) {
   const compatibleOfferLoadingRef = React.useRef(false);
   const expiringOfferRef = React.useRef('');
   const hasPendingOffer = Boolean(currentDelivery.id && currentDelivery.status === 'pending');
-  const hasAcceptedDelivery = Boolean(currentDelivery.id && ['assigned', 'picked_up', 'on_route'].includes(currentDelivery.status));
-  const showDeliveryData = hasAcceptedDelivery;
+  const hasAcceptedDelivery = Boolean(activeDeliveries.length || (currentDelivery.id && ACTIVE_DELIVERY_STATUSES.includes(currentDelivery.status)));
+  const visibleDeliveryCards = activeDeliveries.length
+    ? activeDeliveries
+    : (currentDelivery.id && ACTIVE_DELIVERY_STATUSES.includes(currentDelivery.status) ? [currentDelivery] : []);
+  const showDeliveryData = visibleDeliveryCards.length > 0;
   const countdownLabel = `${String(Math.floor(countdownRemaining / 60)).padStart(2, '0')}:${String(countdownRemaining % 60).padStart(2, '0')}`;
   const compatibleOfferCountdownLabel = `${String(Math.floor(compatibleOfferCountdown / 60)).padStart(2, '0')}:${String(compatibleOfferCountdown % 60).padStart(2, '0')}`;
   const courierLevel = Math.max(1, Math.floor(Number(courierPoints || 0) / 500) + 1);
@@ -325,6 +331,26 @@ export function CourierHomeView({ city, profile, onLogout }) {
   const loadCourierStats = React.useCallback(async () => {
     const nextStats = await fetchCourierStats({ supabase, cityId: city?.id, courierId: profile?.courier_id });
     setCourierStats(nextStats);
+  }, [city?.id, profile?.courier_id]);
+
+  const loadActiveDeliveries = React.useCallback(async () => {
+    if (!supabase || !profile?.courier_id || !city?.id) {
+      setActiveDeliveries([]);
+      return [];
+    }
+
+    const { data, error } = await supabase
+      .from('deliveries')
+      .select(ACTIVE_DELIVERY_SELECT)
+      .eq('city_id', city.id)
+      .eq('courier_id', profile.courier_id)
+      .in('status', ACTIVE_DELIVERY_STATUSES)
+      .order('created_at', { ascending: true });
+
+    if (error) throw new Error(error.message);
+    const deliveries = (data ?? []).map((delivery) => formatDeliveryForCourier(delivery));
+    setActiveDeliveries(deliveries);
+    return deliveries;
   }, [city?.id, profile?.courier_id]);
 
   const mapDeliveryStatus = (status) => {
@@ -405,13 +431,14 @@ export function CourierHomeView({ city, profile, onLogout }) {
     try {
       const nextDelivery = await getNextDeliveryForCourier({ supabase, cityId: city.id, courierId: profile.courier_id });
       setCurrentDelivery(nextDelivery);
+      await loadActiveDeliveries();
     } catch (error) {
       if (!silent) setActionMessage(error.message);
     } finally {
       deliveryPollingRef.current = false;
       if (!silent) setDeliveryLoading(false);
     }
-  }, [city?.id, profile?.courier_id]);
+  }, [city?.id, loadActiveDeliveries, profile?.courier_id]);
 
   React.useEffect(() => {
     let mounted = true;
@@ -507,6 +534,11 @@ export function CourierHomeView({ city, profile, onLogout }) {
       refreshStats();
     };
 
+    const refreshDeliveryState = () => {
+      refreshStats();
+      loadCurrentDelivery({ silent: true }).catch(() => undefined);
+    };
+
     const statsChannel = supabase
       .channel(`courier-live-stats-${profile.courier_id}`)
       .on(
@@ -522,7 +554,7 @@ export function CourierHomeView({ city, profile, onLogout }) {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'deliveries', filter: `city_id=eq.${city.id}` },
-        refreshStats,
+        refreshDeliveryState,
       )
       .on(
         'postgres_changes',
@@ -551,7 +583,7 @@ export function CourierHomeView({ city, profile, onLogout }) {
       document.removeEventListener('visibilitychange', handleVisibility);
       supabase.removeChannel(statsChannel);
     };
-  }, [city?.id, loadCourierStats, profile?.courier_id]);
+  }, [city?.id, loadCourierStats, loadCurrentDelivery, profile?.courier_id]);
 
   React.useEffect(() => {
     if (!hasPendingOffer) {
@@ -837,8 +869,8 @@ export function CourierHomeView({ city, profile, onLogout }) {
     }
   }
 
-  async function confirmPickupAtStore() {
-    if (!currentDelivery.id || !profile?.courier_id || !supabase) {
+  async function confirmPickupAtStore(delivery = currentDelivery) {
+    if (!delivery.id || !profile?.courier_id || !supabase) {
       setActionMessage('Nenhuma entrega aceita para retirar na loja.');
       return;
     }
@@ -846,8 +878,8 @@ export function CourierHomeView({ city, profile, onLogout }) {
     setActionMessage('');
     setDeliveryLoading(true);
     try {
-      await markDeliveryPickedUp({ supabase, cityId: city.id, delivery: currentDelivery, courierId: profile.courier_id, courierName });
-      const xpGained = await awardPickupXp({ supabase, courierId: profile.courier_id, deliveryId: currentDelivery.id, cityId: city.id });
+      await markDeliveryPickedUp({ supabase, cityId: city.id, delivery, courierId: profile.courier_id, courierName });
+      const xpGained = await awardPickupXp({ supabase, courierId: profile.courier_id, deliveryId: delivery.id, cityId: city.id });
       setCourierPoints((current) => Number(current || 0) + xpGained);
       setCourierStats((current) => ({ ...current, todayXp: Number(current.todayXp || 0) + xpGained }));
       setXpAnimation(`+${xpGained} XP`);
@@ -861,8 +893,8 @@ export function CourierHomeView({ city, profile, onLogout }) {
     }
   }
 
-  async function confirmDeliveryFinished() {
-    if (!currentDelivery.id || !profile?.courier_id || !supabase) {
+  async function confirmDeliveryFinished(delivery = currentDelivery) {
+    if (!delivery.id || !profile?.courier_id || !supabase) {
       setActionMessage('Nenhuma entrega em andamento para finalizar.');
       return;
     }
@@ -870,8 +902,8 @@ export function CourierHomeView({ city, profile, onLogout }) {
     setActionMessage('');
     setDeliveryLoading(true);
     try {
-      await markDeliveryDelivered({ supabase, cityId: city.id, delivery: currentDelivery, courierId: profile.courier_id, courierName });
-      const xpGained = await awardOnTimeDeliveryXp({ supabase, courierId: profile.courier_id, deliveryId: currentDelivery.id, cityId: city.id });
+      await markDeliveryDelivered({ supabase, cityId: city.id, delivery, courierId: profile.courier_id, courierName });
+      const xpGained = await awardOnTimeDeliveryXp({ supabase, courierId: profile.courier_id, deliveryId: delivery.id, cityId: city.id });
       setCourierPoints((current) => Number(current || 0) + xpGained);
       setCourierStats((current) => ({
         ...current,
@@ -1279,59 +1311,59 @@ export function CourierHomeView({ city, profile, onLogout }) {
         </div>
       </section>
 
-      {showDeliveryData && (
-      <section className="courier-delivery-card" aria-label="Dados da entrega">
-        <article>
-          <UserRound size={32} />
-          <span>Cliente</span>
-          <strong>{currentDelivery.customer}</strong>
-        </article>
-        <article>
-          <MapPin size={34} />
-          <span>Loja</span>
-          <strong>{currentDelivery.store}</strong>
-        </article>
-        <article>
-          <WalletCards size={34} />
-          <span>Valor da entrega</span>
-          <strong className="money">{currentDelivery.fee}</strong>
-        </article>
-        <article>
-          <MapPin size={34} />
-          <span>Endereco</span>
-          <strong>{[currentDelivery.address, currentDelivery.complement].filter(Boolean).join(' - ')}</strong>
-        </article>
-        <article>
-          <Navigation size={34} />
-          <span>Bairro</span>
-          <strong>{currentDelivery.district}</strong>
-        </article>
-        {currentDelivery.locationUrl && (
+      {showDeliveryData && visibleDeliveryCards.map((delivery) => (
+        <section className="courier-delivery-card" aria-label={`Dados da entrega ${delivery.code}`} key={delivery.id}>
+          <article>
+            <UserRound size={32} />
+            <span>Cliente</span>
+            <strong>{delivery.customer}</strong>
+          </article>
           <article>
             <MapPin size={34} />
-            <span>Localizacao</span>
-            <a className="courier-inline-link" href={currentDelivery.locationUrl} target="_blank" rel="noreferrer">Ver localizacao</a>
+            <span>Loja</span>
+            <strong>{delivery.store}</strong>
           </article>
-        )}
-        {currentDelivery.storeMessageUrl && (
           <article>
-            <Mail size={34} />
-            <span>Comunicacao com a loja</span>
-            <a className="courier-inline-link" href={currentDelivery.storeMessageUrl} target="_blank" rel="noreferrer">Enviar mensagem</a>
+            <WalletCards size={34} />
+            <span>Valor da entrega</span>
+            <strong className="money">{delivery.fee}</strong>
           </article>
-        )}
-        {currentDelivery.status === 'assigned' && (
-          <button className="courier-pickup-button" type="button" onClick={confirmPickupAtStore} disabled={deliveryLoading}>
-            Peguei o pedido.
-          </button>
-        )}
-        {['picked_up', 'on_route'].includes(currentDelivery.status) && (
-          <button className="courier-finish-button" type="button" onClick={confirmDeliveryFinished} disabled={deliveryLoading}>
-            Entrega finalizada.
-          </button>
-        )}
-      </section>
-      )}
+          <article>
+            <MapPin size={34} />
+            <span>Endereco</span>
+            <strong>{[delivery.address, delivery.complement].filter(Boolean).join(' - ')}</strong>
+          </article>
+          <article>
+            <Navigation size={34} />
+            <span>Bairro</span>
+            <strong>{delivery.district}</strong>
+          </article>
+          {delivery.locationUrl && (
+            <article>
+              <MapPin size={34} />
+              <span>Localizacao</span>
+              <a className="courier-inline-link" href={delivery.locationUrl} target="_blank" rel="noreferrer">Ver localizacao</a>
+            </article>
+          )}
+          {delivery.storeMessageUrl && (
+            <article>
+              <Mail size={34} />
+              <span>Comunicacao com a loja</span>
+              <a className="courier-inline-link" href={delivery.storeMessageUrl} target="_blank" rel="noreferrer">Enviar mensagem</a>
+            </article>
+          )}
+          {delivery.status === 'assigned' && (
+            <button className="courier-pickup-button" type="button" onClick={() => confirmPickupAtStore(delivery)} disabled={deliveryLoading}>
+              Peguei o pedido.
+            </button>
+          )}
+          {['picked_up', 'on_route'].includes(delivery.status) && (
+            <button className="courier-finish-button" type="button" onClick={() => confirmDeliveryFinished(delivery)} disabled={deliveryLoading}>
+              Entrega finalizada.
+            </button>
+          )}
+        </section>
+      ))}
 
       {actionMessage && <p className="courier-action-message">{actionMessage}</p>}
 
