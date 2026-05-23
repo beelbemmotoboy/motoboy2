@@ -257,6 +257,8 @@ export async function getNextDeliveryForCourier({ supabase, cityId, courierId })
   if (!supabase || !cityId || !courierId) return emptyDelivery();
 
   const baseSelect = 'id, order_code, delivery_address, delivery_district, delivery_complement, customer_latitude, customer_longitude, delivery_deadline_at, estimated_minutes, delivery_fee, status, created_at, customers(name, address), stores(name, fantasy_name, whatsapp, address, address_number, district, latitude, longitude)';
+  await advanceWaitingOffersForCourier({ supabase, cityId, courierId });
+
   const { data: queueRows, error: queueError } = await supabase
     .from('delivery_queue')
     .select('id, delivery_id, queue_position, offered_at, deliveries!inner(id, order_code, delivery_address, delivery_district, delivery_complement, customer_latitude, customer_longitude, delivery_deadline_at, estimated_minutes, delivery_fee, status, created_at, customers(name, address), stores(name, fantasy_name, whatsapp, address, address_number, district, latitude, longitude))')
@@ -302,6 +304,28 @@ export async function getNextDeliveryForCourier({ supabase, cityId, courierId })
   if (assignedData?.length) return formatDeliveryForCourier(assignedData[0]);
 
   return emptyDelivery();
+}
+
+async function advanceWaitingOffersForCourier({ supabase, cityId, courierId }) {
+  const { data: waitingRows, error } = await supabase
+    .from('delivery_queue')
+    .select('delivery_id, deliveries!inner(id, status)')
+    .eq('city_id', cityId)
+    .eq('courier_id', courierId)
+    .eq('status', 'waiting')
+    .eq('deliveries.status', 'pending')
+    .order('queue_position', { ascending: true })
+    .limit(3);
+
+  if (error) return;
+
+  const deliveryIds = [...new Set((waitingRows ?? []).map((row) => row.delivery_id).filter(Boolean))];
+  await Promise.all(deliveryIds.map((deliveryId) => notifyNextCourierOffer({
+    supabase,
+    deliveryId,
+    allowClientFallback: false,
+    allowServerInvoke: true,
+  }).catch(() => undefined)));
 }
 
 export async function buscarEntregasCompativeisParaMotoboy({
