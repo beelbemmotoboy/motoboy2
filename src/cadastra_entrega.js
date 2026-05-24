@@ -667,7 +667,7 @@ export async function rejectQueuedDelivery({ supabase, cityId, delivery, courier
   await notifyNextCourierOffer({
     supabase,
     deliveryId: delivery.id,
-    allowClientFallback: false,
+    allowClientFallback: true,
     allowServerInvoke: true,
   });
 }
@@ -697,7 +697,7 @@ export async function expireQueuedDeliveryOffer({ supabase, cityId, delivery, co
   await notifyNextCourierOffer({
     supabase,
     deliveryId: delivery.id,
-    allowClientFallback: false,
+    allowClientFallback: true,
     allowServerInvoke: true,
   });
   return { expired: true };
@@ -718,8 +718,17 @@ export async function notifyNextCourierOffer({
     return { ok: true, alreadyOffered: true, offer: activeOffers[0], offers: activeOffers, broadcast: offerMode.broadcast };
   }
 
+  if (!offerMode.broadcast) {
+    const rpcResult = await advanceDeliveryOfferQueueRpc({ supabase, deliveryId });
+    if (!rpcResult.missingRpc) return rpcResult;
+  }
+
   if (allowClientFallback) {
-    return activateQueueOffersByMode({ supabase, deliveryId, offerMode });
+    try {
+      return await activateQueueOffersByMode({ supabase, deliveryId, offerMode });
+    } catch (error) {
+      if (!allowServerInvoke) throw error;
+    }
   }
 
   if (!allowServerInvoke) {
