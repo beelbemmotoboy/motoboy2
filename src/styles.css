@@ -2467,6 +2467,29 @@ button, a {
   overflow-wrap: anywhere;
 }
 
+.courier-data-file-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.courier-data-file-value img {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.courier-data-detail-grid .courier-data-file-value span {
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
 .courier-xp-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

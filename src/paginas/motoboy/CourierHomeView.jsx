@@ -167,6 +167,18 @@ function formatRawValue(value) {
   return String(value);
 }
 
+function isCourierDocumentField(label) {
+  return ['Arquivo CRLV', 'Arquivo CNH', 'Foto de rosto'].includes(label);
+}
+
+async function createCourierDocumentPreviewUrl(path) {
+  if (!path || typeof path !== 'string') return '';
+  if (/^https?:\/\//i.test(path)) return path;
+  if (!path.includes('/') || !supabase?.storage) return '';
+  const { data, error } = await supabase.storage.from('courier-documents').createSignedUrl(path, 600);
+  return error ? '' : data?.signedUrl || '';
+}
+
 async function fetchCourierStats({ supabase, cityId, courierId }) {
   if (!supabase || !cityId || !courierId) {
     return {
@@ -249,6 +261,7 @@ export function CourierHomeView({ city, profile, onLogout }) {
   const [courierDetails, setCourierDetails] = React.useState(null);
   const [courierDetailsLoading, setCourierDetailsLoading] = React.useState(false);
   const [courierDetailsMessage, setCourierDetailsMessage] = React.useState('');
+  const [courierDocumentPreviews, setCourierDocumentPreviews] = React.useState({});
   const [selectedDeliveryDetails, setSelectedDeliveryDetails] = React.useState(null);
   const deliveryPollingRef = React.useRef(false);
   const lastLocationSyncRef = React.useRef(0);
@@ -380,6 +393,18 @@ export function CourierHomeView({ city, profile, onLogout }) {
         ]),
     },
   ] : [];
+
+  function renderCourierDetailValue(label, value) {
+    const previewUrl = isCourierDocumentField(label) ? courierDocumentPreviews[value] : '';
+    if (!previewUrl) return <strong>{formatRawValue(value)}</strong>;
+
+    return (
+      <strong className="courier-data-file-value">
+        <img src={previewUrl} alt={`Previa ${label}`} loading="lazy" onError={(event) => { event.currentTarget.style.display = 'none'; }} />
+        <span>{formatRawValue(value)}</span>
+      </strong>
+    );
+  }
 
   const loadCourierStats = React.useCallback(async () => {
     const nextStats = await fetchCourierStats({ supabase, cityId: city?.id, courierId: profile?.courier_id });
@@ -904,6 +929,36 @@ export function CourierHomeView({ city, profile, onLogout }) {
   }, [activePanel, profile?.courier_id]);
 
   React.useEffect(() => {
+    if (activePanel !== 'profile' || !courierDetails) {
+      setCourierDocumentPreviews({});
+      return undefined;
+    }
+
+    let stopped = false;
+    async function loadCourierDocumentPreviews() {
+      const paths = [
+        courierDetails.crlv_file_path,
+        courierDetails.cnh_file_path,
+        courierDetails.face_photo_path,
+      ].filter(Boolean);
+
+      const entries = await Promise.all(paths.map(async (path) => [
+        path,
+        await createCourierDocumentPreviewUrl(path),
+      ]));
+
+      if (!stopped) {
+        setCourierDocumentPreviews(Object.fromEntries(entries.filter(([, url]) => Boolean(url))));
+      }
+    }
+
+    loadCourierDocumentPreviews();
+    return () => {
+      stopped = true;
+    };
+  }, [activePanel, courierDetails]);
+
+  React.useEffect(() => {
     const shouldTrackLocation = Boolean(profile?.courier_id && city?.id && (courierAvailable || hasPendingOffer || hasAcceptedDelivery));
     if (!shouldTrackLocation || !navigator.geolocation) return undefined;
 
@@ -1238,7 +1293,7 @@ export function CourierHomeView({ city, profile, onLogout }) {
                   {section.rows.map(([label, value]) => (
                     <p key={`${section.title}-${label}`}>
                       <span>{label}</span>
-                      <strong>{formatRawValue(value)}</strong>
+                      {renderCourierDetailValue(label, value)}
                     </p>
                   ))}
                 </article>
