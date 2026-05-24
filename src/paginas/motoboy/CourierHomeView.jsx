@@ -1179,13 +1179,9 @@ export function CourierHomeView({ city, profile, onLogout }) {
       return;
     }
 
-    const { data, error } = await supabase
-      .from('couriers')
-      .select('id, name, face_photo_path')
-      .eq('city_id', city.id)
-      .eq('active', true)
-      .eq('availability_status', 'available')
-      .order('name', { ascending: true });
+    const { data, error } = await supabase.rpc('list_online_couriers_for_current_city', {
+      target_city_id: city.id,
+    });
 
     if (error) {
       setOnlineCouriersLoading(false);
@@ -1193,21 +1189,8 @@ export function CourierHomeView({ city, profile, onLogout }) {
       return;
     }
 
-    const courierIds = (data ?? []).map((courier) => courier.id).filter(Boolean);
-    const pointsByCourier = new Map();
-    if (courierIds.length) {
-      const { data: pointsData, error: pointsError } = await supabase
-        .from('courier_points')
-        .select('courier_id, total_points')
-        .in('courier_id', courierIds);
-      if (pointsError) {
-        setOnlineCouriersMessage(`Nao foi possivel buscar o XP total: ${pointsError.message}`);
-      }
-      for (const item of pointsData ?? []) pointsByCourier.set(item.courier_id, Number(item.total_points || 0));
-    }
-
     const mappedCouriers = await Promise.all((data ?? []).map(async (courier) => {
-      const totalXp = pointsByCourier.get(courier.id) ?? 0;
+      const totalXp = Number(courier.total_points || 0);
       return {
         id: courier.id,
         name: courier.name || 'Motoboy',
