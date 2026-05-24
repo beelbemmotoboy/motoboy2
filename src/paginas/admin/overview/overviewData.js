@@ -75,37 +75,37 @@ export const overviewLegend = [
 
 function countActiveStores(stores, fallback) {
   const total = stores.filter((store) => store.active !== false).length;
-  return total || Number(fallback || 0);
+  return stores.length ? total : Number(fallback || 0);
 }
 
 function countOpenStores(stores, fallback) {
   const total = stores.filter((store) => store.active !== false && store.isOpen !== false).length;
-  return total || Number(fallback || 0);
+  return stores.length ? total : Number(fallback || 0);
 }
 
 function countOnlineCouriers(couriers, fallback) {
   const total = couriers.filter((courier) => (
     courier.active !== false && ['available', 'Disponivel'].includes(courier.availability)
   )).length;
-  return total || Number(fallback || 0);
+  return couriers.length ? total : Number(fallback || 0);
 }
 
-function makeOnlineCouriers(couriers) {
+function makeOnlineCouriers(couriers, { fallback = false } = {}) {
   const online = couriers
     .filter((courier) => courier.active !== false && ['available', 'Disponivel'].includes(courier.availability))
     .slice(0, 5)
     .map((courier, index) => ({
-      id: `MB-${String(index + 7).padStart(2, '0')}`,
-      name: courier.fullName || 'Motoboy',
+      id: courier.displayCode || `MB-${String(index + 7).padStart(2, '0')}`,
+      name: courier.fullName || courier.name || 'Motoboy',
       rating: Number(courier.rating || 4.8),
-      todayDeliveries: Math.max(8, 15 - index),
+      todayDeliveries: Number(courier.todayDeliveries || 0),
       status: 'Online',
     }));
-  return online.length ? online : fallbackOnlineCouriers;
+  return online.length ? online : (fallback ? fallbackOnlineCouriers : []);
 }
 
 function makeRanking(couriers) {
-  const ranked = makeOnlineCouriers(couriers)
+  const ranked = makeOnlineCouriers(couriers, { fallback: true })
     .map((courier, index) => ({
       position: index + 1,
       courier: `${courier.name} (${courier.id})`,
@@ -117,33 +117,46 @@ function makeRanking(couriers) {
   return ranked.length ? ranked : fallbackRanking;
 }
 
-export function buildOverviewData({ city = {}, stores = [], couriers = [] } = {}) {
-  const totalDeliveries = Number(city.metrics?.[0] || 1280);
-  const activeDeliveries = Number(city.activeDeliveries || city.metrics?.[1] || 386);
-  const completedToday = Number(city.metrics?.[2] || 894);
-  const onlineCouriers = countOnlineCouriers(couriers, city.availableCouriers || 32);
-  const openStores = countOpenStores(stores, city.activeStores || 86);
-  const successRate = Number.parseFloat(String(city.metrics?.[3] || '97.6').replace('%', '').replace(',', '.')) || 97.6;
+export function buildOverviewData({
+  city = {},
+  stores = [],
+  couriers = [],
+  activeDeliveryRows = [],
+  alerts = overviewAlerts,
+  hourlyDeliveries = overviewHourlyDeliveries,
+  statusDistribution = overviewStatusDistribution,
+  ranking,
+  mapMarkers = overviewMapMarkers,
+  mapRoutes = overviewMapRoutes,
+} = {}) {
+  const totalDeliveries = Number(city.metrics?.[0] || 0);
+  const activeDeliveriesCount = Number(city.activeDeliveries || city.metrics?.[1] || 0);
+  const completedToday = Number(city.metrics?.[2] || 0);
+  const onlineCouriers = countOnlineCouriers(couriers, city.availableCouriers || 0);
+  const openStores = countOpenStores(stores, city.activeStores || 0);
+  const successRate = Number.parseFloat(String(city.metrics?.[3] || '0').replace('%', '').replace(',', '.')) || 0;
+  const revenueToday = Number(city.revenueToday || 0);
+  const averageDeliveryMinutes = Number(city.averageDeliveryMinutes || 0);
 
   return {
     metrics: [
-      { id: 'total', label: 'Total de entregas', value: formatNumber(totalDeliveries), trend: '+12% vs ontem', icon: 'briefcase', tone: 'yellow' },
-      { id: 'active', label: 'Em andamento', value: formatNumber(activeDeliveries), trend: '+8% vs ontem', icon: 'bike', tone: 'yellow' },
+      { id: 'total', label: 'Total de entregas', value: formatNumber(totalDeliveries), trend: 'Hoje', icon: 'briefcase', tone: 'yellow' },
+      { id: 'active', label: 'Em andamento', value: formatNumber(activeDeliveriesCount), trend: 'Agora', icon: 'bike', tone: 'yellow' },
       { id: 'couriers', label: 'Motoboys disponiveis', value: formatNumber(onlineCouriers), trend: 'Online agora', icon: 'user', tone: 'green' },
       { id: 'stores', label: 'Lojistas conectados', value: formatNumber(openStores), trend: `de ${formatNumber(countActiveStores(stores, openStores))} ativos`, icon: 'store', tone: 'yellow' },
-      { id: 'completed', label: 'Concluidas hoje', value: formatNumber(completedToday), trend: '+15% vs ontem', icon: 'check', tone: 'blue' },
-      { id: 'success', label: 'Taxa de sucesso', value: formatPercent(successRate), trend: '+2,1% vs ontem', icon: 'pulse', tone: 'purple' },
-      { id: 'revenue', label: 'Faturamento do dia', value: formatCurrency(18540.8), trend: '+18% vs ontem', icon: 'wallet', tone: 'yellow' },
-      { id: 'time', label: 'Tempo medio entrega', value: formatMinutes(28), trend: '-4 min vs ontem', icon: 'clock', tone: 'orange' },
+      { id: 'completed', label: 'Concluidas hoje', value: formatNumber(completedToday), trend: 'Hoje', icon: 'check', tone: 'blue' },
+      { id: 'success', label: 'Taxa de sucesso', value: formatPercent(successRate), trend: 'Entregues hoje', icon: 'pulse', tone: 'purple' },
+      { id: 'revenue', label: 'Faturamento do dia', value: formatCurrency(revenueToday), trend: 'Hoje', icon: 'wallet', tone: 'yellow' },
+      { id: 'time', label: 'Tempo medio entrega', value: formatMinutes(averageDeliveryMinutes), trend: 'Media hoje', icon: 'clock', tone: 'orange' },
     ],
-    activeDeliveries: fallbackActiveDeliveries,
+    activeDeliveries: activeDeliveryRows.length ? activeDeliveryRows : fallbackActiveDeliveries,
     onlineCouriers: makeOnlineCouriers(couriers),
-    ranking: makeRanking(couriers),
-    alerts: overviewAlerts,
-    hourlyDeliveries: overviewHourlyDeliveries,
-    statusDistribution: overviewStatusDistribution,
-    mapMarkers: overviewMapMarkers,
-    mapRoutes: overviewMapRoutes,
+    ranking: Array.isArray(ranking) ? ranking : makeRanking(couriers),
+    alerts,
+    hourlyDeliveries,
+    statusDistribution,
+    mapMarkers,
+    mapRoutes,
     legend: overviewLegend,
   };
 }
