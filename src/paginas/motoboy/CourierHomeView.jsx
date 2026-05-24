@@ -278,6 +278,7 @@ export function CourierHomeView({ city, profile, onLogout }) {
   const [completedDeliveries, setCompletedDeliveries] = React.useState([]);
   const [completedDeliveriesLoading, setCompletedDeliveriesLoading] = React.useState(false);
   const [completedDeliveriesMessage, setCompletedDeliveriesMessage] = React.useState('');
+  const [completedDeliveriesFilter, setCompletedDeliveriesFilter] = React.useState('all');
   const [courierDetails, setCourierDetails] = React.useState(null);
   const [courierDetailsLoading, setCourierDetailsLoading] = React.useState(false);
   const [courierDetailsMessage, setCourierDetailsMessage] = React.useState('');
@@ -892,13 +893,22 @@ export function CourierHomeView({ city, profile, onLogout }) {
     async function loadCompletedDeliveries() {
       setCompletedDeliveriesLoading(true);
       setCompletedDeliveriesMessage('');
-      const { data, error } = await supabase
+      let query = supabase
         .from('deliveries')
         .select('id, order_code, status, created_at, updated_at, delivered_at, pickup_address, delivery_address, delivery_district, delivery_complement, customer_latitude, customer_longitude, delivery_deadline_at, estimated_minutes, delivery_fee, customers(id, name, phone, address), stores(id, name, fantasy_name, responsible_name, email, whatsapp, address, address_number, district, zip_code)')
         .eq('courier_id', profile.courier_id)
         .eq('status', 'delivered')
-        .order('delivered_at', { ascending: false, nullsFirst: false })
-        .limit(80);
+        .order('delivered_at', { ascending: false, nullsFirst: false });
+
+      if (completedDeliveriesFilter === 'today') {
+        const dayStart = new Date();
+        dayStart.setHours(0, 0, 0, 0);
+        query = query.gte('created_at', dayStart.toISOString());
+      } else {
+        query = query.limit(80);
+      }
+
+      const { data, error } = await query;
 
       if (stopped) return;
       setCompletedDeliveriesLoading(false);
@@ -908,14 +918,14 @@ export function CourierHomeView({ city, profile, onLogout }) {
         return;
       }
       setCompletedDeliveries(data ?? []);
-      setCompletedDeliveriesMessage((data ?? []).length ? '' : 'Nenhuma entrega finalizada encontrada.');
+      setCompletedDeliveriesMessage((data ?? []).length ? '' : completedDeliveriesFilter === 'today' ? 'Nenhuma entrega finalizada hoje.' : 'Nenhuma entrega finalizada encontrada.');
     }
 
     loadCompletedDeliveries();
     return () => {
       stopped = true;
     };
-  }, [activePanel, profile?.courier_id]);
+  }, [activePanel, completedDeliveriesFilter, profile?.courier_id]);
 
   React.useEffect(() => {
     if (activePanel !== 'profile' || !supabase || !profile?.courier_id) return undefined;
@@ -1164,6 +1174,15 @@ export function CourierHomeView({ city, profile, onLogout }) {
     setMenuOpen(false);
     setActionMessage('');
     setSelectedDeliveryDetails(null);
+    setCompletedDeliveriesFilter('all');
+    setActivePanel('deliveries');
+  }
+
+  function openTodayDeliveriesPanel() {
+    setMenuOpen(false);
+    setActionMessage('');
+    setSelectedDeliveryDetails(null);
+    setCompletedDeliveriesFilter('today');
     setActivePanel('deliveries');
   }
 
@@ -1501,7 +1520,7 @@ export function CourierHomeView({ city, profile, onLogout }) {
         <section className="courier-data-window" aria-labelledby="courier-data-title">
           <div className="courier-data-toolbar">
             <div>
-              <span>Historico do motoboy</span>
+              <span>{completedDeliveriesFilter === 'today' ? 'Entregas finalizadas hoje' : 'Historico do motoboy'}</span>
               <h2 id="courier-data-title">Minhas entregas</h2>
             </div>
             <button className="secondary-action" type="button" onClick={closeCourierDataPanel}>Voltar</button>
@@ -1588,11 +1607,11 @@ export function CourierHomeView({ city, profile, onLogout }) {
           <strong>{courierStats.openStores}</strong>
           <span>Lojas abertas</span>
         </button>
-        <article>
+        <button className="courier-mini-stat-card" type="button" onClick={openTodayDeliveriesPanel}>
           <WalletCards size={30} />
           <strong>{courierStats.todayDeliveries}</strong>
           <span>Suas entregas de hoje</span>
-        </article>
+        </button>
       </section>
 
       <section className="courier-deadline-card" aria-label="Tempo limite da entrega">
