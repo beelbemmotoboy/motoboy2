@@ -103,11 +103,6 @@ begin
   v_broadcast := v_now >= v_delivery.created_at + v_broadcast_after
     or v_attempts >= v_individual_offer_limit;
 
-  if v_broadcast and v_broadcast_attempted then
-    return query select false, 'broadcast-expired', null::uuid, null::uuid, false;
-    return;
-  end if;
-
   if v_broadcast then
     for v_marked_offer in
       update public.delivery_queue as dq

@@ -48,10 +48,6 @@ Deno.serve(async (request) => {
     }
 
     if (offerMode.broadcast) {
-      if (offerMode.broadcastAttempted) {
-        return json({ notified: 0, skipped: 'broadcast_expired', broadcast: true });
-      }
-
       const offers = await markBroadcastQueueOffers({ supabaseUrl, serviceRoleKey, deliveryId });
       if (!offers.length) return json({ notified: 0, skipped: 'no_online_waiting_courier', broadcast: true });
 

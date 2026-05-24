@@ -900,10 +900,6 @@ async function getActiveQueueOffer({ supabase, deliveryId }) {
 }
 
 async function activateQueueOffersByMode({ supabase, deliveryId, offerMode }) {
-  if (offerMode?.broadcast && offerMode.broadcastAttempted) {
-    return { ok: false, reason: 'broadcast-expired', broadcast: true, attempts: offerMode.attempts };
-  }
-
   return offerMode?.broadcast
     ? activateBroadcastQueueOffers({ supabase, deliveryId, offerMode })
     : activateNextQueueOffer({ supabase, deliveryId, offerMode });
@@ -917,10 +913,6 @@ async function activateNextQueueOffer({ supabase, deliveryId, offerMode }) {
   let didResetQueue = false;
   if (!rows.length) {
     if ((offerMode?.attempts ?? 0) >= DELIVERY_INDIVIDUAL_OFFER_LIMIT) {
-      if (offerMode?.broadcastAttempted) {
-        return { ok: false, reason: 'broadcast-expired', broadcast: true, attempts: offerMode.attempts };
-      }
-
       return activateBroadcastQueueOffers({ supabase, deliveryId, offerMode: { ...offerMode, broadcast: true } });
     }
 
