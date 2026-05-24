@@ -165,6 +165,14 @@ function formatDateTimeDisplay(value) {
   });
 }
 
+function formatDateInputValue(date = new Date()) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function formatRawValue(value) {
   if (value === null || value === undefined || value === '') return 'Nao informado';
   if (typeof value === 'number') return Number.isInteger(value) ? String(value) : String(value).replace('.', ',');
@@ -279,6 +287,7 @@ export function CourierHomeView({ city, profile, onLogout }) {
   const [completedDeliveriesLoading, setCompletedDeliveriesLoading] = React.useState(false);
   const [completedDeliveriesMessage, setCompletedDeliveriesMessage] = React.useState('');
   const [completedDeliveriesFilter, setCompletedDeliveriesFilter] = React.useState('all');
+  const [completedDeliveriesDateRange, setCompletedDeliveriesDateRange] = React.useState({ start: '', end: '' });
   const [courierDetails, setCourierDetails] = React.useState(null);
   const [courierDetailsLoading, setCourierDetailsLoading] = React.useState(false);
   const [courierDetailsMessage, setCourierDetailsMessage] = React.useState('');
@@ -304,6 +313,12 @@ export function CourierHomeView({ city, profile, onLogout }) {
   const formatXpValue = (value) => (
     Number.isInteger(Number(value)) ? Number(value).toFixed(0) : Number(value).toFixed(1).replace('.', ',')
   );
+  const hasCompletedDeliveriesDateRange = Boolean(completedDeliveriesDateRange.start || completedDeliveriesDateRange.end);
+  const completedDeliveriesKicker = completedDeliveriesFilter === 'today'
+    ? 'Entregas finalizadas hoje'
+    : hasCompletedDeliveriesDateRange
+      ? 'Intervalo selecionado'
+      : 'Historico do motoboy';
 
   const completedDeliveryRows = completedDeliveries.map((delivery) => ({
     id: delivery.id,
@@ -900,10 +915,18 @@ export function CourierHomeView({ city, profile, onLogout }) {
         .eq('status', 'delivered')
         .order('delivered_at', { ascending: false, nullsFirst: false });
 
-      if (completedDeliveriesFilter === 'today') {
-        const dayStart = new Date();
-        dayStart.setHours(0, 0, 0, 0);
-        query = query.gte('created_at', dayStart.toISOString());
+      if (completedDeliveriesDateRange.start) {
+        const startDate = new Date(`${completedDeliveriesDateRange.start}T00:00:00`);
+        query = query.gte('delivered_at', startDate.toISOString());
+      }
+
+      if (completedDeliveriesDateRange.end) {
+        const endDate = new Date(`${completedDeliveriesDateRange.end}T23:59:59.999`);
+        query = query.lte('delivered_at', endDate.toISOString());
+      }
+
+      if (hasCompletedDeliveriesDateRange) {
+        query = query.limit(200);
       } else {
         query = query.limit(80);
       }
@@ -918,14 +941,14 @@ export function CourierHomeView({ city, profile, onLogout }) {
         return;
       }
       setCompletedDeliveries(data ?? []);
-      setCompletedDeliveriesMessage((data ?? []).length ? '' : completedDeliveriesFilter === 'today' ? 'Nenhuma entrega finalizada hoje.' : 'Nenhuma entrega finalizada encontrada.');
+      setCompletedDeliveriesMessage((data ?? []).length ? '' : hasCompletedDeliveriesDateRange ? 'Nenhuma entrega finalizada no intervalo selecionado.' : 'Nenhuma entrega finalizada encontrada.');
     }
 
     loadCompletedDeliveries();
     return () => {
       stopped = true;
     };
-  }, [activePanel, completedDeliveriesFilter, profile?.courier_id]);
+  }, [activePanel, completedDeliveriesDateRange.end, completedDeliveriesDateRange.start, hasCompletedDeliveriesDateRange, profile?.courier_id]);
 
   React.useEffect(() => {
     if (activePanel !== 'profile' || !supabase || !profile?.courier_id) return undefined;
@@ -1175,6 +1198,7 @@ export function CourierHomeView({ city, profile, onLogout }) {
     setActionMessage('');
     setSelectedDeliveryDetails(null);
     setCompletedDeliveriesFilter('all');
+    setCompletedDeliveriesDateRange({ start: '', end: '' });
     setActivePanel('deliveries');
   }
 
@@ -1183,7 +1207,19 @@ export function CourierHomeView({ city, profile, onLogout }) {
     setActionMessage('');
     setSelectedDeliveryDetails(null);
     setCompletedDeliveriesFilter('today');
+    const today = formatDateInputValue(new Date());
+    setCompletedDeliveriesDateRange({ start: today, end: today });
     setActivePanel('deliveries');
+  }
+
+  function updateCompletedDeliveriesDateRange(field, value) {
+    setCompletedDeliveriesFilter('range');
+    setCompletedDeliveriesDateRange((current) => ({ ...current, [field]: value }));
+  }
+
+  function clearCompletedDeliveriesDateRange() {
+    setCompletedDeliveriesFilter('all');
+    setCompletedDeliveriesDateRange({ start: '', end: '' });
   }
 
   async function openOnlineCouriersModal() {
@@ -1520,10 +1556,30 @@ export function CourierHomeView({ city, profile, onLogout }) {
         <section className="courier-data-window" aria-labelledby="courier-data-title">
           <div className="courier-data-toolbar">
             <div>
-              <span>{completedDeliveriesFilter === 'today' ? 'Entregas finalizadas hoje' : 'Historico do motoboy'}</span>
+              <span>{completedDeliveriesKicker}</span>
               <h2 id="courier-data-title">Minhas entregas</h2>
             </div>
             <button className="secondary-action" type="button" onClick={closeCourierDataPanel}>Voltar</button>
+          </div>
+
+          <div className="courier-date-filters" aria-label="Filtro por intervalo de datas">
+            <label>
+              De
+              <input
+                type="date"
+                value={completedDeliveriesDateRange.start}
+                onChange={(event) => updateCompletedDeliveriesDateRange('start', event.target.value)}
+              />
+            </label>
+            <label>
+              Ate
+              <input
+                type="date"
+                value={completedDeliveriesDateRange.end}
+                onChange={(event) => updateCompletedDeliveriesDateRange('end', event.target.value)}
+              />
+            </label>
+            <button className="secondary-action" type="button" onClick={clearCompletedDeliveriesDateRange}>Limpar</button>
           </div>
 
           <div className="courier-data-table-wrap">

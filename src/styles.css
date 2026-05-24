@@ -2336,6 +2336,40 @@ button, a {
   font-size: clamp(22px, 4vw, 32px);
 }
 
+.courier-date-filters {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  margin: 0 0 14px;
+  flex-wrap: wrap;
+}
+
+.courier-date-filters label {
+  display: grid;
+  gap: 5px;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.courier-date-filters input {
+  min-height: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  padding: 0 10px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.07);
+  font: inherit;
+  font-weight: 800;
+  color-scheme: dark;
+}
+
+.courier-date-filters .secondary-action {
+  min-height: 40px;
+  padding: 0 14px;
+}
+
 .courier-data-table-wrap {
   width: 100%;
   overflow-x: auto;
