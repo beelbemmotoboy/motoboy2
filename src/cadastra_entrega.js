@@ -718,6 +718,9 @@ export async function notifyNextCourierOffer({
     return { ok: true, alreadyOffered: true, offer: activeOffers[0], offers: activeOffers, broadcast: offerMode.broadcast };
   }
 
+  const rpcResult = await advanceDeliveryOfferQueueRpc({ supabase, deliveryId });
+  if (!rpcResult.missingRpc) return rpcResult;
+
   if (allowClientFallback) {
     try {
       return await activateQueueOffersByMode({ supabase, deliveryId, offerMode });
