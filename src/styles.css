@@ -2437,6 +2437,10 @@ button, a {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.courier-data-window > .courier-data-detail-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .courier-data-detail-grid article {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 14px;
