@@ -335,7 +335,7 @@ async function advanceWaitingOffersForCourier({ supabase, cityId, courierId }) {
     .select('delivery_id, deliveries!inner(id, status)')
     .eq('city_id', cityId)
     .eq('courier_id', courierId)
-    .eq('status', 'waiting')
+    .in('status', ['waiting', 'expired', 'rejected', 'skipped'])
     .eq('deliveries.status', 'pending')
     .order('queue_position', { ascending: true })
     .limit(3);
