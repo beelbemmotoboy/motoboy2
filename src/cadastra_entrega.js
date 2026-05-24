@@ -143,7 +143,6 @@ export async function createDeliveryWithQueue({ supabase, city, store, requestFo
   if (deliveryError) throw new Error(`Nao foi possivel criar a entrega: ${deliveryError.message}`);
 
   const queuedCount = await buildDeliveryQueue({ supabase, cityId: city.id, deliveryId: delivery.id });
-  if (queuedCount > 0) await notifyNextCourierOffer({ supabase, deliveryId: delivery.id });
   return { deliveryId: delivery.id, queuedCount };
 }
 
@@ -200,12 +199,14 @@ export async function buildDeliveryQueue({ supabase, cityId, deliveryId }) {
     return String(a.created_at).localeCompare(String(b.created_at));
   });
 
+  const offeredAt = new Date().toISOString();
   const queueRows = orderedCouriers.map((courier, index) => ({
     city_id: cityId,
     delivery_id: deliveryId,
     courier_id: courier.id,
     queue_position: index + 1,
-    status: 'waiting',
+    status: index === 0 ? 'offered' : 'waiting',
+    offered_at: index === 0 ? offeredAt : null,
   }));
 
   const { error: queueError } = await supabase.from('delivery_queue').insert(queueRows);
