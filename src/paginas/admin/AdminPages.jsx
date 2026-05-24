@@ -2,14 +2,7 @@ import React from 'react';
 import { AlertTriangle, Bike, CalendarDays, Camera, Clock3, MapPin, Minus, Navigation, PencilLine, Plus, Search, ShieldCheck, Star, Store, UserRound, WalletCards } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { isValidCep, isValidCnpj, isValidCpf, isValidEmail, isValidPhone, maskCep, maskCnpj, maskCpf, maskPhone, onlyDigits, passwordStrength, validateAccessUserForm, validateCourierForm, validateStoreForm } from '../../utils/validators';
-
-const metrics = [
-  { label: 'Entregas hoje', value: '128', detail: '12% vs ontem' },
-  { label: 'Em andamento', value: '42', detail: 'Agora' },
-  { label: 'Entregas concluidas', value: '86', detail: '8% vs ontem' },
-  { label: 'Taxa de sucesso', value: '98%', detail: '2% vs ontem' },
-  { label: 'Avaliacao media', value: '4.9', detail: '0,1 vs ontem', rating: true },
-];
+import { Overview as OverviewControl } from './overview/OverviewView';
 
 const accessProfiles = [
   {
@@ -135,107 +128,8 @@ function slugifyCity(name, state) {
     .replace(/^-|-$/g, '');
 }
 
-export function Overview({ city }) {
-  const cityMetrics = metrics.map((metric, index) => ({ ...metric, value: city.metrics[index] }));
-  const cityDeliveries = [];
-  const cityCompleted = [];
-  const cityActivity = [];
-
-  return (
-    <>
-      <section className="metrics-grid" aria-label="Indicadores">
-        {cityMetrics.map((metric) => (
-          <article className="metric-card" key={metric.label}>
-            <p>{metric.label}</p>
-            <strong>{metric.value}{metric.rating && <Star className="star" size={18} fill="currentColor" />}</strong>
-            <span>▲ {metric.detail}</span>
-          </article>
-        ))}
-      </section>
-
-      <section className="work-grid">
-        <div className="panel active-deliveries">
-          <div className="panel-header">
-            <h2>Entregas em andamento</h2>
-            <button>Ver todas</button>
-          </div>
-          {cityDeliveries.map((delivery) => (
-            <article className="delivery-row" key={delivery.order}>
-              <div className="avatar">{initials(delivery.courier)}</div>
-              <div className="delivery-main">
-                <strong>
-                  {delivery.courier}
-                  <span><Star size={15} fill="currentColor" />{delivery.rating}</span>
-                  <mark className={delivery.status === 'Saiu da loja' ? 'amber' : ''}>{delivery.status}</mark>
-                </strong>
-                <p>{delivery.store} · Pedido {delivery.order}</p>
-                <p>{delivery.address}</p>
-              </div>
-              <div className="delivery-meta">
-                <span>{delivery.eta}</span>
-                <span>{delivery.distance}</span>
-              </div>
-            </article>
-          ))}
-        </div>
-
-        <DeliveryMap />
-
-        <aside className="side-column">
-          <div className="panel">
-            <h2>Desempenho dos entregadores</h2>
-            {cityDeliveries.map((item) => (
-              <div className="ranking-row" key={item.courier}>
-                <div className="avatar small">{initials(item.courier)}</div>
-                <strong>{item.courier}</strong>
-                <span><Star size={15} fill="currentColor" />{item.rating}</span>
-              </div>
-            ))}
-          </div>
-          <div className="panel">
-            <h2>Atividade recente</h2>
-            {cityActivity.map(([, order, status, time, color]) => (
-              <div className="activity-row" key={order}>
-                <div className={`activity-dot ${color}`}><Clock3 size={14} /></div>
-                <div>
-                  <strong>Pedido {order}</strong>
-                  <p className={color}>{status} · {time}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </aside>
-      </section>
-
-      <section className="panel table-panel">
-        <div className="panel-header">
-          <h2>Entregas concluidas</h2>
-          <button>Ver todas</button>
-        </div>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Pedido</th>
-                <th>Cliente</th>
-                <th>Loja</th>
-                <th>Entregador</th>
-                <th>Entregue em</th>
-                <th>Valor</th>
-              </tr>
-            </thead>
-            <tbody>
-              {cityCompleted.map((row) => (
-                <tr key={row[1]}>
-                  {row.slice(1).map((cell) => <td key={cell}>{cell}</td>)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </>
-  );
+export function Overview({ city, stores, couriers }) {
+  return <OverviewControl city={city} stores={stores} couriers={couriers} />;
 }
 
 export function CitiesView({ cities, selectedCityId, onSelectCity, onChangeCities, loading, error }) {

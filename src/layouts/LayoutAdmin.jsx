@@ -177,7 +177,7 @@ export function LayoutAdmin({
         {page === 'store-center' && <StoreCenterView city={selectedCity} stores={storeList} onChangeStores={setStoreList} onEditStore={(store) => { setStoreToEdit(store); setPage('stores'); }} />}
         {page === 'couriers' && <CouriersView city={selectedCity} cities={cityList} couriers={courierList} onChangeCouriers={setCourierList} courierToEdit={courierToEdit} onEditLoaded={() => setCourierToEdit(null)} />}
         {page === 'courier-center' && <CourierCenterView city={selectedCity} couriers={courierList} onChangeCouriers={setCourierList} onEditCourier={(courier) => { setCourierToEdit(courier); setPage('couriers'); }} />}
-        {page === 'overview' && <Overview city={selectedCity} />}
+        {page === 'overview' && <Overview city={selectedCity} stores={storeList} couriers={courierList} />}
       </main>
     </div>
   );
