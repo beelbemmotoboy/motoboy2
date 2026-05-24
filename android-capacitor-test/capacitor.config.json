@@ -1,0 +1,8 @@
+{
+  "appId": "br.com.beelbem.motoboy",
+  "appName": "Beelbem Motoboy",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}

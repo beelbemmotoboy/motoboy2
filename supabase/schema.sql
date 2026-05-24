@@ -262,6 +262,18 @@ create table if not exists public.delivery_queue (
   )
 );
 
+create table if not exists public.courier_push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  courier_id uuid not null references public.couriers(id) on delete cascade,
+  endpoint text not null unique,
+  p256dh text not null,
+  auth text not null,
+  user_agent text,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists public.system_settings (
   id uuid not null default gen_random_uuid(),
   key text primary key,
@@ -351,8 +363,57 @@ create index if not exists delivery_queue_city_id_idx on public.delivery_queue(c
 create index if not exists delivery_queue_delivery_id_idx on public.delivery_queue(delivery_id);
 create index if not exists delivery_queue_courier_id_idx on public.delivery_queue(courier_id);
 create index if not exists delivery_queue_status_position_idx on public.delivery_queue(status, queue_position);
+create index if not exists courier_push_subscriptions_courier_id_idx on public.courier_push_subscriptions(courier_id) where active = true;
 create index if not exists audit_logs_table_record_idx on public.audit_logs(table_name, record_id);
 create index if not exists audit_logs_actor_id_idx on public.audit_logs(actor_id);
+
+alter table public.couriers replica identity full;
+alter table public.stores replica identity full;
+alter table public.deliveries replica identity full;
+alter table public.courier_xp_events replica identity full;
+alter table public.courier_points replica identity full;
+
+do $$
+begin
+  if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    return;
+  end if;
+
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'couriers'
+  ) then
+    alter publication supabase_realtime add table public.couriers;
+  end if;
+
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'stores'
+  ) then
+    alter publication supabase_realtime add table public.stores;
+  end if;
+
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'deliveries'
+  ) then
+    alter publication supabase_realtime add table public.deliveries;
+  end if;
+
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'courier_xp_events'
+  ) then
+    alter publication supabase_realtime add table public.courier_xp_events;
+  end if;
+
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'courier_points'
+  ) then
+    alter publication supabase_realtime add table public.courier_points;
+  end if;
+end $$;
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -453,7 +514,11 @@ for each row execute function public.set_created_by();
 
 drop trigger if exists set_delivery_queue_updated_at on public.delivery_queue;
 create trigger set_delivery_queue_updated_at before insert or update on public.delivery_queue
-for each row execute function public.set_updated_at();
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists set_courier_push_subscriptions_updated_at on public.courier_push_subscriptions;
+create trigger set_courier_push_subscriptions_updated_at before update on public.courier_push_subscriptions
+  for each row execute function public.set_updated_at();
 
 drop trigger if exists set_system_settings_updated_at on public.system_settings;
 create trigger set_system_settings_updated_at before insert or update on public.system_settings
@@ -594,6 +659,7 @@ alter table public.deliveries enable row level security;
 alter table public.delivery_events enable row level security;
 alter table public.delivery_rejections enable row level security;
 alter table public.delivery_queue enable row level security;
+alter table public.courier_push_subscriptions enable row level security;
 alter table public.audit_logs enable row level security;
 alter table public.system_settings enable row level security;
 
@@ -626,6 +692,7 @@ drop policy if exists "delivery_rejections_insert_by_courier" on public.delivery
 drop policy if exists "delivery_queue_read_by_scope" on public.delivery_queue;
 drop policy if exists "delivery_queue_insert_by_store_or_admin" on public.delivery_queue;
 drop policy if exists "delivery_queue_update_by_scope" on public.delivery_queue;
+drop policy if exists "courier_push_subscriptions_manage_own" on public.courier_push_subscriptions;
 drop policy if exists "audit_logs_read_by_system_or_city_admin" on public.audit_logs;
 drop policy if exists "system_settings_read_by_authenticated" on public.system_settings;
 drop policy if exists "system_settings_manage_by_system_admin" on public.system_settings;
@@ -945,6 +1012,11 @@ create policy "delivery_queue_update_by_scope" on public.delivery_queue
       and d.store_id = public.current_profile_store_id()
     )
   );
+
+create policy "courier_push_subscriptions_manage_own" on public.courier_push_subscriptions
+  for all
+  using (courier_id = public.current_profile_courier_id())
+  with check (courier_id = public.current_profile_courier_id());
 
 create policy "audit_logs_read_by_system_or_city_admin" on public.audit_logs
   for select to authenticated using (

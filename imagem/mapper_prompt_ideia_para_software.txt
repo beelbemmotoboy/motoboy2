@@ -1,0 +1,180 @@
+PROMPT ORGANIZADO PARA CRIAR SOFTWARE COM IA
+════════════════════════════════════════════════
+
+Objetivo: transformar uma ideia simples em uma especificação clara para uma IA entender, planejar e desenvolver um software.
+Entrada humana: blocos de ideia com nomes simples. Saída técnica: estrutura para banco, telas, regras, fluxos, permissões, arquivos e automações.
+Os nomes técnicos sugeridos foram normalizados automaticamente para snake_case.
+
+1. RESUMO DA IDEIA MAPEADA
+════════════════════════════════════════════════
+
+- Pessoas: 0
+- Empresas / Organizações: 0
+- Registros / Informações: 1
+- Telas: 3
+- Regras: 1
+- Processos / Fluxos: 0
+- Automações / IA: 0
+- Arquivos / Mídias: 0
+- Resultados / Saídas: 0
+- Ligações entre blocos: 3
+
+2. NOMES TÉCNICOS RECOMENDADOS
+════════════════════════════════════════════════
+
+1. Usuário do sistema → usuario_do_sistema | tipo: Registro / Informação
+2. Cadastro usuário → cadastro_usuario | tipo: Tela
+3. Nome do site TAI → nome_do_site_tai | tipo: Regra
+4. Login → login | tipo: Tela
+5. Tela de bem vindo → tela_de_bem_vindo | tipo: Tela
+
+3. QUEM PARTICIPA — PESSOAS / USUÁRIOS
+════════════════════════════════════════════════
+
+(nenhuma pessoa/usuário definido)
+
+4. QUEM USA OU REPRESENTA — EMPRESAS / ORGANIZAÇÕES
+════════════════════════════════════════════════
+
+(nenhuma empresa/organização definida)
+
+5. O QUE PRECISA SER SALVO — REGISTROS / INFORMAÇÕES
+════════════════════════════════════════════════
+
+• Usuário do sistema
+  Nome técnico sugerido: usuario_do_sistema
+  Tipo do bloco: Registro / Informação
+  Descrição / informações importantes:
+    - Este bloco representa os usuários que tem acesso a todas as funções do sistema.
+    - Nome
+    - Cpf
+    - email
+    - senha
+    - whatsapp
+    - foto
+  Regras:
+    - Todos os campos são obrigatórios.
+
+6. ONDE APARECE — TELAS DO SISTEMA
+════════════════════════════════════════════════
+
+• Cadastro usuário
+  Nome técnico sugerido: cadastro_usuario
+  Tipo do bloco: Tela
+  Descrição / informações importantes:
+    - Campos:
+    - Nome completo
+    - Cpf
+    - Email
+    - Confirma email
+    - Senha
+    - Confirma senha
+    - n° whatsapp
+    - Foto para o perfil
+  Regras:
+    - Mascara nos campos de cpf,email, n° whatsapp.
+    - Todos devem ser validados antes de enviar para o banco
+    - de dados, e no banco devem ser validados novamente por sql.
+    - A foto do perfil deve funcionar só para testar, salvando o endereço salvo no driver.
+
+• Login
+  Nome técnico sugerido: login
+  Tipo do bloco: Tela
+  Descrição / informações importantes:
+    - para o layout dessa janela. Deve ter um espaço para uma logo no topo com altura de 300px, e os campos de email e senha a ser preenchidos.
+    - um botão Entrar e outro Nova conta que leva para a tela de
+
+• Tela de bem vindo
+  Nome técnico sugerido: tela_de_bem_vindo
+  Tipo do bloco: Tela
+  Descrição / informações importantes:
+    - Deve ter uma logo grande e escrito!
+    - Parabens! Você vai vencer!
+  Observações:
+    - Coloque efeitos especiais, tipo a imagem da logo, surgindo, o nome com algum efeito.
+
+7. REGRAS DO SISTEMA
+════════════════════════════════════════════════
+
+• Nome do site TAI
+  Nome técnico sugerido: nome_do_site_tai
+  Tipo do bloco: Regra
+  Descrição / informações importantes:
+    - O sistema deve ser para testar IA. Faça um site simples, para ser testado no navegador. Sem integração com banco de dados. Crie arquivos separados para cada CSS e outras integrações para cada componente da interface.
+    - A interface deve ter um aspecto moderno coorporativo futuristico.
+
+8. PASSO A PASSO — PROCESSOS / FLUXOS
+════════════════════════════════════════════════
+
+(nenhum processo/fluxo definido)
+
+9. O QUE ACONTECE SOZINHO — AUTOMAÇÕES / IA
+════════════════════════════════════════════════
+
+(nenhuma automação/IA definida)
+
+10. ARQUIVOS / MÍDIAS
+════════════════════════════════════════════════
+
+(nenhum arquivo/mídia definido)
+
+11. RESULTADOS / SAÍDAS
+════════════════════════════════════════════════
+
+(nenhum resultado/saída definido)
+
+12. INFORMAÇÕES INTERNAS DOS BLOCOS
+════════════════════════════════════════════════
+
+Regras preenchidas dentro dos blocos
+────────────────────────────────────────────────
+- Usuário do sistema: Todos os campos são obrigatórios.
+- Cadastro usuário: Mascara nos campos de cpf,email, n° whatsapp.
+- Cadastro usuário: Todos devem ser validados antes de enviar para o banco
+- Cadastro usuário: de dados, e no banco devem ser validados novamente por sql.
+- Cadastro usuário: A foto do perfil deve funcionar só para testar, salvando o endereço salvo no driver.
+
+Observações preenchidas dentro dos blocos
+────────────────────────────────────────────────
+- Tela de bem vindo: Coloque efeitos especiais, tipo a imagem da logo, surgindo, o nome com algum efeito.
+
+13. LIGAÇÕES ENTRE BLOCOS
+════════════════════════════════════════════════
+
+1. Usuário do sistema → Cadastro usuário
+   Tipo simples: Usa
+   Nomes técnicos sugeridos: usuario_do_sistema → cadastro_usuario
+   Interpretação técnica provável: dependência de dados ou consulta.
+
+2. Login → Cadastro usuário
+   Tipo simples: Abre
+   Nomes técnicos sugeridos: login → cadastro_usuario
+   Interpretação técnica provável: navegação entre telas / rota do aplicativo.
+
+3. Login → Tela de bem vindo
+   Tipo simples: Abre
+   Nomes técnicos sugeridos: login → tela_de_bem_vindo
+   Interpretação técnica provável: navegação entre telas / rota do aplicativo.
+
+14. INSTRUÇÃO FINAL PARA IA
+════════════════════════════════════════════════
+
+Você é um arquiteto de software sênior e analista de sistemas. A estrutura abaixo foi criada por uma pessoa que pode não entender programação. Portanto, não trate o texto como banco de dados pronto. Trate como requisitos organizados visualmente.
+
+Sua tarefa é transformar estes blocos em uma especificação profissional para desenvolvimento de software.
+
+Entregue obrigatoriamente:
+1. Diagnóstico da ideia e organização dos módulos.
+2. Entidades principais e tabelas recomendadas em snake_case.
+3. Campos recomendados com tipos corretos para PostgreSQL/Supabase.
+4. Relacionamentos e cardinalidades interpretados a partir das ligações simples.
+5. Telas, rotas e componentes principais.
+6. Fluxos do usuário passo a passo.
+7. Regras de negócio, validações e exceções.
+8. Permissões por perfil de usuário e sugestão de RLS.
+9. Estrutura de arquivos/storage quando houver arquivos, fotos ou documentos.
+10. Automações com IA, entradas, processamento, saída e aprovação humana quando necessário.
+11. MVP recomendado, separando o que deve ficar para versão futura.
+12. SQL completo, caso a estrutura já esteja suficiente. Caso não esteja, aponte exatamente o que falta.
+
+Regras obrigatórias: use snake_case, evite nomes com acento/espaço, salve datas como date/timestamp/timestamptz, salve arquivos no storage com metadados no banco, e sempre diferencie ideia humana de implementação técnica.

@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Documentacao do Sistema Beelbem Motoboy</title>
+  <style>
+    @page { margin: 18mm 15mm; }
+    body {
+      color: #151515;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 11.2pt;
+      line-height: 1.45;
+      margin: 0;
+    }
+    h1 {
+      border-bottom: 3px solid #111;
+      font-size: 24pt;
+      margin: 0 0 18px;
+      padding-bottom: 10px;
+    }
+    h2 {
+      break-after: avoid;
+      border-bottom: 1px solid #d7d7d7;
+      font-size: 17pt;
+      margin: 24px 0 10px;
+      padding-bottom: 5px;
+    }
+    h3 {
+      break-after: avoid;
+      font-size: 13pt;
+      margin: 18px 0 8px;
+    }
+    p { margin: 7px 0; }
+    ul { margin: 7px 0 10px 20px; padding: 0; }
+    li { margin: 3px 0; }
+    code {
+      background: #f2f4f7;
+      border: 1px solid #e1e4e8;
+      border-radius: 4px;
+      font-family: Consolas, 'Courier New', monospace;
+      font-size: 9.5pt;
+      padding: 1px 4px;
+    }
+    pre {
+      background: #f7f7f7;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      overflow-wrap: anywhere;
+      padding: 10px;
+      white-space: pre-wrap;
+    }
+    pre code {
+      background: transparent;
+      border: 0;
+      padding: 0;
+    }
+    table {
+      border-collapse: collapse;
+      font-size: 9.5pt;
+      margin: 12px 0;
+      width: 100%;
+    }
+    th, td {
+      border: 1px solid #d8d8d8;
+      padding: 6px 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: #f1f3f5; }
+    tr { break-inside: avoid; }
+  </style>
+</head>
+<body>
+<h1>Documentacao do Sistema Beelbem Motoboy</h1>
+<p>Atualizado em: 23/05/2026</p>
+<p>Este documento explica, em linguagem pratica, o que existe em cada parte do projeto. A ideia e ajudar voce a saber onde pedir alteracoes: tela da loja, tela do motoboy, validacoes, banco de dados, funcoes do Supabase, notificacoes e regras de entrega.</p>
+<h2>1. Visao Geral</h2>
+<p>O Beelbem Motoboy e um web app feito com React, Vite e Supabase. Ele tem quatro perfis principais:</p>
+<ul><li><code>system_admin</code>: administra tudo.</li><li><code>city_admin</code>: administra uma cidade.</li><li><code>store_admin</code>: lojista, cria entregas e acompanha corridas.</li><li><code>courier_admin</code>: motoboy, fica online/offline, recebe ofertas e aceita entregas.</li></ul>
+<p>O frontend roda no navegador. O backend principal e o Supabase, que cuida de:</p>
+<ul><li>autenticacao de usuarios;</li><li>tabelas do banco;</li><li>regras de seguranca com RLS;</li><li>funcoes Edge;</li><li>storage para documentos;</li><li>realtime para atualizacoes automaticas;</li><li>push notification para motoboy.</li></ul>
+<h2>2. Como o Sistema Abre</h2>
+<p>Arquivo principal:</p>
+<ul><li><code>src/main.jsx</code>: ponto de entrada do React. Ele carrega o componente <code>App</code> dentro do elemento <code>#root</code> do <code>index.html</code>.</li><li><code>src/App.jsx</code>: controla a sessao, o perfil logado, a cidade selecionada e decide qual tela exibir.</li></ul>
+<p>Fluxo simplificado:</p>
+<p>1. O navegador abre <code>index.html</code>. 2. <code>src/main.jsx</code> renderiza <code>App</code>. 3. <code>App</code> verifica a sessao Supabase. 4. <code>App</code> busca o perfil na tabela <code>profiles</code>. 5. Conforme o <code>role</code>, manda o usuario para: - admin; - loja; - motoboy; - login/publico.</p>
+<h2>3. Arquivos da Raiz</h2>
+<h3><code>package.json</code></h3>
+<p>Define o projeto, scripts e dependencias.</p>
+<p>Scripts importantes:</p>
+<ul><li><code>npm run dev</code>: roda o projeto localmente.</li><li><code>npm run build</code>: gera a versao de producao na pasta <code>dist</code>.</li><li><code>npm run preview</code>: testa localmente a build gerada.</li></ul>
+<p>Dependencias principais:</p>
+<ul><li><code>react</code> e <code>react-dom</code>: interface.</li><li><code>vite</code>: build e servidor local.</li><li><code>@supabase/supabase-js</code>: comunicacao com Supabase.</li><li><code>lucide-react</code>: icones.</li><li><code>zxcvbn</code>: forca de senha.</li><li><code>supabase</code>: CLI do Supabase.</li></ul>
+<h3><code>package-lock.json</code></h3>
+<p>Trava as versoes exatas das dependencias instaladas.</p>
+<h3><code>index.html</code></h3>
+<p>HTML base do Vite. Define titulo, icones e o elemento onde o React entra.</p>
+<h3><code>vercel.json</code></h3>
+<p>Configura deploy no Vercel:</p>
+<ul><li>build: <code>npm run build</code>;</li><li>pasta publicada: <code>dist</code>;</li><li>rewrites para enviar qualquer rota para <code>index.html</code>.</li></ul>
+<h3><code>.env.example</code></h3>
+<p>Modelo das variaveis de ambiente.</p>
+<h3><code>.env.local</code> e <code>.env.production</code></h3>
+<p>Configuracoes reais de ambiente. Normalmente contem chaves como URL e anon key do Supabase. Evite expor em prints ou documentos publicos.</p>
+<h3><code>.gitignore</code></h3>
+<p>Diz ao Git quais arquivos ou pastas ignorar.</p>
+<h2>4. Pasta <code>public</code></h2>
+<p>Arquivos servidos diretamente no site.</p>
+<h3><code>public/beelbem-icon.png</code></h3>
+<p>Icone usado no app, manifesto e notificacoes.</p>
+<h3><code>public/login-hero.png</code></h3>
+<p>Imagem usada na tela de login.</p>
+<h3><code>public/manifest.webmanifest</code></h3>
+<p>Configura o app como PWA/mobile:</p>
+<ul><li>nome;</li><li>icones;</li><li>cores;</li><li>modo de exibicao.</li></ul>
+<h3><code>public/sw.js</code></h3>
+<p>Service Worker. Ajuda com cache e notificacoes no navegador. Importante para push notifications e comportamento mobile.</p>
+<h2>5. Pasta <code>src</code></h2>
+<p>Codigo principal do frontend.</p>
+<h3><code>src/main.jsx</code></h3>
+<p>Renderiza o React:</p>
+<ul><li>importa estilos globais;</li><li>importa <code>App</code>;</li><li>monta a aplicacao no DOM.</li></ul>
+<h3><code>src/App.jsx</code></h3>
+<p>E o roteador e controlador principal do app.</p>
+<p>Responsabilidades:</p>
+<ul><li>ler a rota pelo hash da URL, como <code>#login</code>, <code>#courier-home</code>, <code>#store-home</code>;</li><li>verificar sessao do Supabase;</li><li>buscar perfil em <code>profiles</code>;</li><li>carregar cidades, lojas e motoboys;</li><li>calcular metricas da cidade;</li><li>decidir qual tela mostrar conforme o papel do usuario.</li></ul>
+<p>Quando alterar:</p>
+<ul><li>problemas de redirecionamento;</li><li>usuario indo para tela errada;</li><li>carregamento inicial;</li><li>listas globais de cidades, lojas e motoboys;</li><li>regras de acesso por perfil no frontend.</li></ul>
+<h3><code>src/supabaseClient.js</code></h3>
+<p>Cria o cliente Supabase usado no frontend.</p>
+<p>Usa:</p>
+<ul><li><code>VITE_SUPABASE_URL</code>;</li><li><code>VITE_SUPABASE_ANON_KEY</code>.</li></ul>
+<p>Tambem exporta <code>supabaseConfigStatus</code>, usado para saber se o Supabase esta configurado.</p>
+<p>Quando alterar:</p>
+<ul><li>troca de projeto Supabase;</li><li>problemas de conexao;</li><li>configuracao global de auth.</li></ul>
+<h3><code>src/styles.css</code></h3>
+<p>Arquivo grande com todos os estilos visuais do sistema.</p>
+<p>Contem estilos para:</p>
+<ul><li>login;</li><li>admin;</li><li>loja;</li><li>motoboy;</li><li>mapas;</li><li>modais;</li><li>cards;</li><li>tabelas;</li><li>mobile/responsivo.</li></ul>
+<p>Quando alterar:</p>
+<ul><li>cores;</li><li>tamanhos;</li><li>layout;</li><li>botoes;</li><li>espaco entre elementos;</li><li>responsividade.</li></ul>
+<h2>6. Layouts</h2>
+<h3><code>src/layouts/LayoutAdmin.jsx</code></h3>
+<p>Layout base das telas administrativas.</p>
+<h3><code>src/layouts/LayoutLojista.jsx</code></h3>
+<p>Layout base das telas do lojista.</p>
+<h3><code>src/layouts/LayoutMotoboy.jsx</code></h3>
+<p>Layout base das telas do motoboy.</p>
+<p>Esses arquivos geralmente servem como embrulho visual. Se o problema for cabecalho, fundo, estrutura geral ou container de uma area, vale olhar aqui.</p>
+<h2>7. Telas Publicas</h2>
+<p>Pasta: <code>src/paginas/publico</code></p>
+<h3><code>AuthPublic.jsx</code></h3>
+<p>Contem telas e fluxos de autenticacao:</p>
+<ul><li>login;</li><li>lembrar login;</li><li>esqueci minha senha;</li><li>criar conta;</li><li>criar senha a partir de link;</li><li>validacao de forca de senha.</li></ul>
+<p>Componentes/funcoes importantes:</p>
+<ul><li><code>LoginView</code>: tela de login.</li><li><code>ForgotPasswordView</code>: recuperacao de senha.</li><li><code>CreateAccountView</code>: criacao publica de conta.</li><li><code>CreatePasswordView</code>: criacao/alteracao de senha por link.</li></ul>
+<p>Quando alterar:</p>
+<ul><li>texto da tela de login;</li><li>campos de login;</li><li>regras de senha;</li><li>mensagens de erro de autenticacao;</li><li>fluxo de senha inicial.</li></ul>
+<h3><code>AuthUnavailableView.jsx</code></h3>
+<p>Tela exibida quando o Supabase nao esta configurado.</p>
+<h3><code>JoinView.jsx</code></h3>
+<p>Tela publica para escolha/caminho de cadastro.</p>
+<h3><code>PublicSignupView.jsx</code></h3>
+<p>Cadastro publico de loja ou motoboy.</p>
+<p>Responsabilidades:</p>
+<ul><li>escolher cidade;</li><li>validar CNPJ/CPF, e-mail, telefone, CEP;</li><li>enviar pre-cadastro para a Edge Function <code>public-signup</code>;</li><li>deixar cadastro pendente para analise.</li></ul>
+<p>Quando alterar:</p>
+<ul><li>campos do pre-cadastro;</li><li>mensagens do cadastro publico;</li><li>validacoes iniciais de loja/motoboy.</li></ul>
+<h2>8. Telas Administrativas</h2>
+<p>Pasta: <code>src/paginas/admin</code></p>
+<h3><code>AdminShell.jsx</code></h3>
+<p>Estrutura visual principal do admin:</p>
+<ul><li>menu lateral;</li><li>navegacao entre paginas administrativas;</li><li>cabecalho;</li><li>botao sair.</li></ul>
+<h3><code>AdminPages.jsx</code></h3>
+<p>Arquivo grande com quase todas as telas administrativas.</p>
+<p>Contem:</p>
+<ul><li>dashboard/visao geral;</li><li>mapa;</li><li>cidades;</li><li>lojas;</li><li>central de lojas;</li><li>motoboys;</li><li>central de motoboys;</li><li>usuarios/acessos;</li><li>formularios de cadastro e edicao.</li></ul>
+<p>Responsabilidades comuns:</p>
+<ul><li>criar e editar cidades;</li><li>criar e editar lojas;</li><li>criar e editar motoboys;</li><li>gerar convite/senha de acesso;</li><li>ativar/desativar cadastros;</li><li>abrir arquivos de documentos no storage;</li><li>trocar cidade selecionada;</li><li>visualizar status de lojas e entregadores.</li></ul>
+<p>Quando alterar:</p>
+<ul><li>formulario de loja;</li><li>formulario de motoboy;</li><li>campos administrativos;</li><li>telas de centro/relatorio;</li><li>permissoes visuais no painel admin;</li><li>textos e botoes do painel administrativo.</li></ul>
+<h2>9. Tela do Lojista</h2>
+<p>Pasta: <code>src/paginas/lojista</code></p>
+<h3><code>InicioLojista.jsx</code></h3>
+<p>Arquivo simples de entrada/compatibilidade para a area do lojista.</p>
+<h3><code>StoreHomeView.jsx</code></h3>
+<p>Tela principal da loja.</p>
+<p>Responsabilidades:</p>
+<ul><li>mostrar status da loja: aberta/fechada;</li><li>permitir abrir/fechar loja;</li><li>atualizar dados da loja;</li><li>criar entrega manualmente;</li><li>criar entrega por foto/comprovante;</li><li>chamar Gemini para analisar comprovante;</li><li>validar horario previsto e taxa;</li><li>acompanhar entregas do dia;</li><li>acompanhar entregas ao vivo;</li><li>mostrar status: a caminho da loja, a caminho do cliente, atrasadas;</li><li>exibir popup quando uma entrega foi aceita;</li><li>monitorar entregas pendentes sem aceite.</li></ul>
+<p>Fluxo de criar entrega manual:</p>
+<p>1. Usuario abre &quot;Realizar pedido&quot;. 2. Preenche pedido, cliente, telefone, horario, taxa e endereco. 3. <code>validarPedidoLoja</code> valida horario e taxa. 4. <code>createDeliveryWithQueue</code> cria cliente, entrega e fila. 5. Sistema oferece a entrega aos motoboys online elegiveis.</p>
+<p>Fluxo de criar entrega por foto:</p>
+<p>1. Lojista envia foto. 2. <code>analisarComprovantePedidoComGemini</code> tenta extrair dados. 3. <code>validar_dadoscomprovante_gemini</code> verifica se os campos foram encontrados. 4. Dados extraidos preenchem o formulario. 5. Lojista confirma a entrega.</p>
+<p>Quando alterar:</p>
+<ul><li>tela e campos do lojista;</li><li>criacao de pedidos;</li><li>validacao visual do formulario;</li><li>comportamento de loja aberta/fechada;</li><li>analise de comprovante;</li><li>acompanhamento de entregas.</li></ul>
+<h2>10. Tela do Motoboy</h2>
+<p>Pasta: <code>src/paginas/motoboy</code></p>
+<h3><code>InicioMotoboy.jsx</code></h3>
+<p>Arquivo simples de entrada/compatibilidade para a area do motoboy.</p>
+<h3><code>CourierHomeView.jsx</code></h3>
+<p>Tela principal do motoboy.</p>
+<p>Responsabilidades:</p>
+<p>- motoboys online; - lojas abertas; - entregas do dia;</p>
+<ul><li>exibir nome do motoboy;</li><li>mostrar status online/offline;</li><li>perguntar se quer ficar online quando estiver offline;</li><li>mudar disponibilidade;</li><li>receber entrega disponivel;</li><li>aceitar ou recusar entrega;</li><li>mostrar contagem regressiva da oferta;</li><li>expirar oferta sem resposta;</li><li>confirmar retirada na loja;</li><li>confirmar entrega ao cliente;</li><li>mostrar pontos/XP;</li><li>acompanhar indicadores:</li><li>assinar Realtime do Supabase para fila e indicadores;</li><li>atualizar localizacao do motoboy;</li><li>registrar push notification.</li></ul>
+<p>Fluxo de oferta:</p>
+<p>1. A tela escuta <code>delivery_queue</code> para o motoboy logado. 2. Quando existe linha <code>offered</code>, busca a entrega. 3. Mostra modal de nova entrega. 4. Se aceitar, chama <code>acceptQueuedDelivery</code>. 5. Se recusar, chama <code>rejectQueuedDelivery</code>. 6. Se passar do tempo, chama <code>expireQueuedDeliveryOffer</code>.</p>
+<p>Quando alterar:</p>
+<ul><li>experiencia do motoboy;</li><li>textos de aceite/recusa;</li><li>comportamento online/offline;</li><li>tempo da oferta;</li><li>mapa do motoboy;</li><li>indicadores superiores;</li><li>notificacoes no navegador.</li></ul>
+<h2>11. Regras de Entrega e Fila</h2>
+<h3><code>src/cadastra_entrega.js</code></h3>
+<p>E um dos arquivos mais importantes do sistema.</p>
+<p>Responsabilidades:</p>
+<ul><li>formatar entrega para a tela do motoboy;</li><li>criar entrega com fila;</li><li>montar fila de motoboys elegiveis;</li><li>ordenar motoboys por quantidade de entregas, distancia e data de cadastro;</li><li>buscar proxima entrega do motoboy;</li><li>aceitar entrega;</li><li>recusar entrega;</li><li>expirar oferta;</li><li>confirmar retirada;</li><li>confirmar entrega finalizada;</li><li>atualizar disponibilidade do motoboy;</li><li>atualizar localizacao;</li><li>coordenadas de links do Google Maps;</li><li>chamar notificacao de oferta.</li></ul>
+<p>Funcoes importantes:</p>
+<ul><li><code>createDeliveryWithQueue</code>: cria cliente, entrega e fila.</li><li><code>buildDeliveryQueue</code>: seleciona motoboys disponiveis e monta <code>delivery_queue</code>.</li><li><code>getNextDeliveryForCourier</code>: busca entrega aceita ou oferta aberta para um motoboy.</li><li><code>acceptQueuedDelivery</code>: primeiro motoboy que aceita assume a entrega.</li><li><code>rejectQueuedDelivery</code>: registra recusa.</li><li><code>expireQueuedDeliveryOffer</code>: expira oferta sem resposta.</li><li><code>notifyNextCourierOffer</code>: ativa/oferece entrega na fila.</li><li><code>setCourierAvailable</code>: muda online/offline.</li><li><code>updateCourierLocation</code>: salva latitude/longitude do motoboy.</li></ul>
+<p>Observacao importante sobre a fila atual:</p>
+<ul><li>A fila ainda existe em <code>delivery_queue</code>.</li><li>Ela registra quais motoboys eram elegiveis.</li><li>A entrega pode ser oferecida para varios motoboys online ao mesmo tempo.</li><li>Quem aceitar primeiro muda <code>deliveries.status</code> de <code>pending</code> para <code>assigned</code>.</li><li>Os outros nao conseguem aceitar depois, porque a entrega nao esta mais pendente.</li></ul>
+<p>Quando alterar:</p>
+<ul><li>regra de distribuicao;</li><li>quem recebe entrega;</li><li>aceite simultaneo;</li><li>expiracao;</li><li>recusa;</li><li>fila;</li><li>criterios de distancia e prioridade.</li></ul>
+<h3><code>src/regras_localizacao.js</code></h3>
+<p>Regras matematicas de localizacao.</p>
+<p>Responsabilidades:</p>
+<ul><li>validar coordenadas;</li><li>calcular distancia aproximada em km;</li><li>calcular diferenca de direcao;</li><li>verificar se motoboy esta perto da loja;</li><li>estimar tempo por distancia;</li><li>medir proximidade de um ponto com uma rota.</li></ul>
+<p>Quando alterar:</p>
+<ul><li>raio de proximidade;</li><li>calculo de distancia;</li><li>regras de localizacao e rota.</li></ul>
+<h3><code>src/regras_agrupamento_entregas.js</code></h3>
+<p>Regras para avaliar entregas compativeis com uma corrida em andamento.</p>
+<p>Responsabilidades:</p>
+<ul><li>verificar limite de entregas simultaneas;</li><li>verificar se nova entrega combina com rota atual;</li><li>calcular grau de compatibilidade;</li><li>sugerir ordem de coleta/entrega;</li><li>rejeitar entregas que aumentam demais a rota.</li></ul>
+<p>Quando alterar:</p>
+<ul><li>entregas agrupadas;</li><li>limite de entregas simultaneas;</li><li>criterio de compatibilidade;</li><li>ordem sugerida de rota.</li></ul>
+<h3><code>src/ValidaPedidoLoja.js</code></h3>
+<p>Validacoes do pedido criado pela loja.</p>
+<p>Responsabilidades:</p>
+<ul><li>validar horario previsto;</li><li>impedir horario menor que 10 minutos;</li><li>impedir horario maior que 12 horas;</li><li>validar taxa minima e maxima;</li><li>converter valor monetario.</li></ul>
+<p>Constantes importantes:</p>
+<ul><li><code>MINUTOS_MINIMOS_HORARIO_PREVISTO = 10</code></li><li><code>MINUTOS_MAXIMOS_HORARIO_PREVISTO = 720</code></li><li><code>VALOR_MINIMO_ENTREGA = 5</code></li><li><code>VALOR_MAXIMO_ENTREGA = 100</code></li></ul>
+<p>Quando alterar:</p>
+<ul><li>limite de horario;</li><li>taxa minima;</li><li>taxa maxima;</li><li>mensagens de validacao do pedido.</li></ul>
+<h3><code>src/xp_motoboy.js</code></h3>
+<p>Regras de pontos/XP do motoboy.</p>
+<p>Responsabilidades:</p>
+<ul><li>inserir eventos de XP;</li><li>somar pontos no <code>courier_points</code>;</li><li>dar XP por aceitar entrega;</li><li>dar XP por retirar pedido;</li><li>dar XP por entrega no prazo.</li></ul>
+<p>Quando alterar:</p>
+<ul><li>pontuacao;</li><li>motivos de XP;</li><li>regras de recompensa.</li></ul>
+<h2>12. Analise de Comprovante e Gemini</h2>
+<h3><code>src/analisa_comprovante_pedido.js</code></h3>
+<p>Integra com Gemini para ler foto de comprovante/pedido.</p>
+<p>Responsabilidades:</p>
+<ul><li>converter imagem para base64;</li><li>montar prompt para Gemini;</li><li>chamar API do Google Gemini;</li><li>tentar modelo fallback;</li><li>extrair JSON da resposta;</li><li>normalizar dados;</li><li>transformar analise em pedido da loja;</li><li>fornecer modo de teste com texto de comprovante iFood.</li></ul>
+<p>Quando alterar:</p>
+<ul><li>prompt de OCR;</li><li>modelo Gemini;</li><li>campos extraidos da foto;</li><li>tratamento de erro da IA.</li></ul>
+<h3><code>src/valid_dadoscomprovante_gemini.js</code></h3>
+<p>Valida se o Gemini encontrou os campos esperados.</p>
+<p>Responsabilidades:</p>
+<ul><li>identificar campos nao encontrados;</li><li>montar mensagem de aviso;</li><li>bloquear quando nenhum dado util foi extraido.</li></ul>
+<p>Quando alterar:</p>
+<ul><li>quais campos sao obrigatorios na analise;</li><li>mensagens de falha da leitura da foto.</li></ul>
+<h2>13. Utilitarios</h2>
+<h3><code>src/utils/validators.js</code></h3>
+<p>Funcoes gerais de validacao e mascaras.</p>
+<p>Contem:</p>
+<ul><li>CPF;</li><li>CNPJ;</li><li>CEP;</li><li>e-mail;</li><li>telefone;</li><li>mascaras de documento;</li><li>validacao de formularios de loja;</li><li>validacao de usuarios de acesso;</li><li>validacao de motoboy;</li><li>forca de senha com <code>zxcvbn</code>.</li></ul>
+<p>Quando alterar:</p>
+<ul><li>regras de CPF/CNPJ/telefone;</li><li>campos obrigatorios dos formularios;</li><li>politica de senha.</li></ul>
+<h3><code>src/utils/pageRouting.js</code></h3>
+<p>Define rotas por perfil.</p>
+<p>Responsabilidades:</p>
+<ul><li>converter hash da URL em pagina;</li><li>decidir tela inicial pelo role.</li></ul>
+<p>Quando alterar:</p>
+<ul><li>rota inicial de cada perfil;</li><li>nomes dos hashes da URL.</li></ul>
+<h2>14. Supabase: Banco de Dados</h2>
+<h3><code>supabase/schema.sql</code></h3>
+<p>Arquivo principal do banco.</p>
+<p>Contem:</p>
+<ul><li>criacao das tabelas;</li><li>colunas;</li><li>constraints;</li><li>indexes;</li><li>triggers;</li><li>funcoes auxiliares;</li><li>RLS;</li><li>policies;</li><li>storage policies;</li><li>publicacao realtime.</li></ul>
+<p>Tabelas principais:</p>
+<ul><li><code>cities</code>: cidades atendidas.</li><li><code>stores</code>: lojas.</li><li><code>couriers</code>: motoboys.</li><li><code>courier_points</code>: pontuacao total do motoboy.</li><li><code>profiles</code>: perfil de acesso ligado ao usuario auth.</li><li><code>access_invites</code>: convites de acesso.</li><li><code>customers</code>: clientes finais.</li><li><code>deliveries</code>: entregas.</li><li><code>delivery_events</code>: historico/status de entregas.</li><li><code>courier_xp_events</code>: eventos de XP.</li><li><code>delivery_rejections</code>: recusas de entrega.</li><li><code>delivery_queue</code>: fila/lista de motoboys elegiveis por entrega.</li><li><code>courier_push_subscriptions</code>: inscricoes de push notification.</li><li><code>system_settings</code>: configuracoes gerais.</li><li><code>audit_logs</code>: auditoria de alteracoes.</li></ul>
+<p>Status importantes:</p>
+<p><code>deliveries.status</code> pode incluir:</p>
+<ul><li><code>pending</code>;</li><li><code>assigned</code>;</li><li><code>picked_up</code>;</li><li><code>on_route</code>;</li><li><code>delivered</code>;</li><li><code>cancelled</code>.</li></ul>
+<p><code>delivery_queue.status</code> pode incluir:</p>
+<ul><li><code>waiting</code>;</li><li><code>offered</code>;</li><li><code>accepted</code>;</li><li><code>rejected</code>;</li><li><code>skipped</code>;</li><li><code>expired</code>.</li></ul>
+<p>Quando alterar:</p>
+<ul><li>novas tabelas;</li><li>novas colunas;</li><li>regras de seguranca;</li><li>realtime;</li><li>indices;</li><li>triggers;</li><li>storage.</li></ul>
+<h3><code>supabase/reset_access.sql</code></h3>
+<p>Script para recriar/garantir usuario administrador do sistema.</p>
+<p>Use com cuidado, porque mexe em acesso administrativo.</p>
+<h3><code>supabase/public_signup_policies.sql</code></h3>
+<p>Policies para permitir cadastro publico controlado de loja/motoboy.</p>
+<h3><code>supabase/liberar_oferta_para_todos_motoboys_online.sql</code></h3>
+<p>Script simples criado para remover a trava antiga que permitia apenas um motoboy com oferta ativa por entrega.</p>
+<p>Conteudo:</p>
+<pre><code>drop index if exists public.delivery_queue_one_offered_per_delivery_idx;</code></pre>
+<h2>15. Supabase: Migrations</h2>
+<p>Pasta: <code>supabase/migrations</code></p>
+<p>Cada arquivo registra uma mudanca incremental no banco.</p>
+<h3><code>001_add_cities.sql</code></h3>
+<p>Cria estrutura inicial de cidades.</p>
+<h3><code>002_access_control.sql</code></h3>
+<p>Adiciona controle de acesso/perfis.</p>
+<h3><code>003_store_type.sql</code></h3>
+<p>Adiciona/ajusta tipo de loja.</p>
+<h3><code>004_store_full_registration.sql</code></h3>
+<p>Expande cadastro completo de loja.</p>
+<h3><code>005_store_form_cleanup.sql</code></h3>
+<p>Ajustes de campos do formulario de loja.</p>
+<h3><code>006_access_user_documents.sql</code></h3>
+<p>Inclui documentos de usuario/acesso.</p>
+<h3><code>007_access_activation_and_password_invite.sql</code></h3>
+<p>Fluxo de ativacao e convite de senha.</p>
+<h3><code>008_password_setup_expiration.sql</code></h3>
+<p>Expiracao de link/configuracao de senha.</p>
+<h3><code>009_courier_full_registration.sql</code></h3>
+<p>Cadastro completo do motoboy.</p>
+<h3><code>010_courier_birth_date.sql</code></h3>
+<p>Campo de nascimento do motoboy.</p>
+<h3><code>011_courier_push_subscriptions.sql</code></h3>
+<p>Tabela de inscricoes push do motoboy.</p>
+<h3><code>012_courier_locations.sql</code></h3>
+<p>Tabela/localizacao do motoboy.</p>
+<h3><code>013_store_read_courier_points.sql</code></h3>
+<p>Permite loja ler pontos de motoboy quando necessario.</p>
+<h3><code>014_delivery_offer_rotation.sql</code></h3>
+<p>Indices/estrutura para rotacao de oferta.</p>
+<h3><code>015_single_active_delivery_offer.sql</code></h3>
+<p>Criou a regra antiga de apenas uma oferta ativa por entrega. Depois foi necessario remover essa trava para oferta simultanea.</p>
+<h3><code>016_advance_delivery_offer_rpc.sql</code></h3>
+<p>Cria RPC para avancar oferta na fila.</p>
+<h3><code>017_fix_advance_delivery_offer_rpc_ambiguity.sql</code></h3>
+<p>Corrige ambiguidade na RPC.</p>
+<h3><code>018_rename_advance_offer_rpc_courier_output.sql</code></h3>
+<p>Ajusta nome/retorno da RPC.</p>
+<h3><code>019_loop_delivery_offer_queue_after_rejection.sql</code></h3>
+<p>Permite repetir/continuar fila apos recusas/expiracoes.</p>
+<h3><code>020_enable_courier_stats_realtime.sql</code></h3>
+<p>Habilita realtime para tabelas usadas nos indicadores do motoboy.</p>
+<h2>16. Supabase: Edge Functions</h2>
+<p>Pasta: <code>supabase/functions</code></p>
+<h3><code>complete-password-setup/index.ts</code></h3>
+<p>Marca/valida conclusao da criacao de senha.</p>
+<h3><code>create-courier-invite/index.ts</code></h3>
+<p>Cria ou atualiza motoboy e usuario auth correspondente.</p>
+<p>Responsabilidades:</p>
+<ul><li>validar permissao;</li><li>criar/atualizar <code>couriers</code>;</li><li>criar/atualizar usuario no Supabase Auth;</li><li>criar/atualizar <code>profiles</code>;</li><li>devolver senha temporaria quando aplicavel.</li></ul>
+<h3><code>manage-access-user/index.ts</code></h3>
+<p>Gerencia usuarios de acesso.</p>
+<p>Pode:</p>
+<ul><li>atualizar perfil;</li><li>gerar nova senha;</li><li>remover/desativar usuario dependendo da acao.</li></ul>
+<h3><code>notify-courier-offer/index.ts</code></h3>
+<p>Envia push notification de nova entrega para motoboy.</p>
+<p>Responsabilidades:</p>
+<ul><li>buscar ofertas na <code>delivery_queue</code>;</li><li>marcar oferta como <code>offered</code>;</li><li>buscar inscricoes em <code>courier_push_subscriptions</code>;</li><li>montar payload;</li><li>enviar Web Push;</li><li>desativar inscricoes vencidas.</li></ul>
+<p>Quando alterar:</p>
+<ul><li>notificacao push;</li><li>mensagem da notificacao;</li><li>comportamento em segundo plano;</li><li>envio para um ou varios motoboys.</li></ul>
+<h3><code>public-signup/index.ts</code></h3>
+<p>Recebe cadastro publico de loja ou motoboy.</p>
+<p>Cria registro pendente/inativo para analise posterior.</p>
+<h3><code>reset-system-admin/index.ts</code></h3>
+<p>Funcao para recriar/resetar usuario administrador do sistema.</p>
+<p>Use com cuidado.</p>
+<h3><code>send-access-invite/index.ts</code></h3>
+<p>Envia/processa convite de acesso:</p>
+<ul><li>cria usuario Auth;</li><li>cria perfil;</li><li>marca convite como enviado;</li><li>gera senha temporaria.</li></ul>
+<h2>17. Fluxo Completo de Uma Entrega</h2>
+<p>1. Loja abre a tela <code>StoreHomeView</code>. 2. Loja cria pedido manual ou por foto. 3. <code>ValidaPedidoLoja.js</code> valida horario e taxa. 4. <code>createDeliveryWithQueue</code> cria: - <code>customers</code>; - <code>deliveries</code>; - <code>delivery_queue</code>. 5. <code>buildDeliveryQueue</code> busca motoboys: - da cidade; - ativos; - aprovados; - online (<code>availability_status = available</code>). 6. Sistema registra ordem em <code>queue_position</code>. 7. Sistema marca ofertas como <code>offered</code>. 8. Cada motoboy online ve a entrega na <code>CourierHomeView</code>. 9. Quem aceitar primeiro chama <code>acceptQueuedDelivery</code>. 10. <code>deliveries.status</code> muda de <code>pending</code> para <code>assigned</code>. 11. Outros motoboys nao conseguem assumir a mesma entrega. 12. Motoboy confirma retirada. 13. Motoboy confirma entrega. 14. Sistema registra eventos e XP.</p>
+<h2>18. Onde Pedir Alteracoes</h2>
+<p>Para mudar tela do lojista:</p>
+<ul><li><code>src/paginas/lojista/StoreHomeView.jsx</code></li><li><code>src/styles.css</code></li></ul>
+<p>Para mudar tela do motoboy:</p>
+<ul><li><code>src/paginas/motoboy/CourierHomeView.jsx</code></li><li><code>src/styles.css</code></li></ul>
+<p>Para mudar fila/oferta/aceite:</p>
+<ul><li><code>src/cadastra_entrega.js</code></li><li><code>supabase/functions/notify-courier-offer/index.ts</code></li><li><code>supabase/schema.sql</code></li><li>migrations em <code>supabase/migrations</code></li></ul>
+<p>Para mudar validacao de pedido:</p>
+<ul><li><code>src/ValidaPedidoLoja.js</code></li></ul>
+<p>Para mudar validacao de CPF/CNPJ/telefone/senha:</p>
+<ul><li><code>src/utils/validators.js</code></li></ul>
+<p>Para mudar leitura de foto/IA:</p>
+<ul><li><code>src/analisa_comprovante_pedido.js</code></li><li><code>src/valid_dadoscomprovante_gemini.js</code></li></ul>
+<p>Para mudar login/senha:</p>
+<ul><li><code>src/paginas/publico/AuthPublic.jsx</code></li><li>Edge Functions de acesso em <code>supabase/functions</code></li></ul>
+<p>Para mudar banco:</p>
+<ul><li><code>supabase/schema.sql</code></li><li><code>supabase/migrations</code></li></ul>
+<p>Para mudar deploy:</p>
+<ul><li><code>vercel.json</code></li><li><code>package.json</code></li></ul>
+<h2>19. Cuidados Antes de Alterar</h2>
+<ul><li>Sempre rodar <code>npm run build</code> depois de mudar frontend.</li><li>Se mudar banco, aplicar SQL no Supabase remoto.</li><li>Se mudar Edge Function, precisa deploy da function no Supabase.</li><li>Se mudar frontend, push para <code>main</code> dispara Vercel.</li><li>Cuidado com <code>.env.local</code> e <code>.env.production</code>, pois podem conter chaves.</li><li>Nao apagar migrations antigas sem entender o historico.</li><li>Se uma entrega antiga estiver com estado antigo na fila, teste com entrega nova.</li></ul>
+<h2>20. Resumo Rapido por Arquivo</h2>
+<table><thead><tr><th>Arquivo</th><th>O que faz</th></tr></thead><tbody><tr><td><code>src/main.jsx</code></td><td>Inicia o React.</td></tr><tr><td><code>src/App.jsx</code></td><td>Controla sessao, perfil, rotas e tela exibida.</td></tr><tr><td><code>src/supabaseClient.js</code></td><td>Configura cliente Supabase.</td></tr><tr><td><code>src/styles.css</code></td><td>Estilos visuais do app inteiro.</td></tr><tr><td><code>src/paginas/publico/AuthPublic.jsx</code></td><td>Login, senha, cadastro de conta.</td></tr><tr><td><code>src/paginas/publico/PublicSignupView.jsx</code></td><td>Pre-cadastro publico de loja/motoboy.</td></tr><tr><td><code>src/paginas/admin/AdminShell.jsx</code></td><td>Estrutura do painel admin.</td></tr><tr><td><code>src/paginas/admin/AdminPages.jsx</code></td><td>Telas administrativas.</td></tr><tr><td><code>src/paginas/lojista/StoreHomeView.jsx</code></td><td>Tela principal da loja.</td></tr><tr><td><code>src/paginas/motoboy/CourierHomeView.jsx</code></td><td>Tela principal do motoboy.</td></tr><tr><td><code>src/cadastra_entrega.js</code></td><td>Criacao, fila, aceite, recusa e conclusao de entregas.</td></tr><tr><td><code>src/ValidaPedidoLoja.js</code></td><td>Validacao de horario e taxa do pedido.</td></tr><tr><td><code>src/regras_localizacao.js</code></td><td>Distancia, coordenadas e proximidade.</td></tr><tr><td><code>src/regras_agrupamento_entregas.js</code></td><td>Compatibilidade de entregas agrupadas.</td></tr><tr><td><code>src/analisa_comprovante_pedido.js</code></td><td>Analise de foto com Gemini.</td></tr><tr><td><code>src/valid_dadoscomprovante_gemini.js</code></td><td>Valida retorno da IA.</td></tr><tr><td><code>src/xp_motoboy.js</code></td><td>Pontos/XP do motoboy.</td></tr><tr><td><code>src/utils/validators.js</code></td><td>Validadores e mascaras.</td></tr><tr><td><code>src/utils/pageRouting.js</code></td><td>Roteamento por perfil.</td></tr><tr><td><code>supabase/schema.sql</code></td><td>Estrutura completa do banco.</td></tr><tr><td><code>supabase/migrations/*</code></td><td>Historico incremental de mudancas do banco.</td></tr><tr><td><code>supabase/functions/*</code></td><td>Funcoes backend no Supabase.</td></tr><tr><td><code>public/sw.js</code></td><td>Service worker e notificacoes.</td></tr><tr><td><code>public/manifest.webmanifest</code></td><td>Configuracao PWA.</td></tr><tr><td><code>vercel.json</code></td><td>Deploy Vercel.</td></tr></tbody></table>
+</body>
+</html>

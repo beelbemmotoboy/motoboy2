@@ -1,0 +1,1227 @@
+Crie um sistema web app responsivo, mobile-first, chamado Beelbem Motoboy.
+
+O Beelbem Motoboy será um sistema para organizar entregas locais entre lojistas e motoboys. O lojista poderá cadastrar uma entrega manualmente ou tirar foto da comanda/pedido. O sistema deverá salvar a foto, preparar a estrutura para análise por IA/OCR via n8n, preencher os dados da entrega e procurar um motoboy disponível para aceitar a corrida.
+
+O sistema deve funcionar como um aplicativo mobile rodando no navegador, com foco em simplicidade, estabilidade e uso real por lojistas, motoboys, administradores de cidade e administrador geral do sistema.
+
+IMPORTANTE SOBRE O MVP:
+Este é um MVP funcional, mas com estrutura preparada para crescimento.
+
+Neste momento:
+- Não criar cálculo de rota avançado.
+- Não criar navegação curva a curva.
+- Não criar otimização complexa estilo Uber.
+- Não criar marketplace para consumidor final.
+- Não criar chat interno.
+- Não criar pagamento online automático completo.
+- Não criar integração obrigatória com WhatsApp.
+- Não criar IA/OCR real obrigatória dentro do Lovable.
+
+O mapa será usado para:
+- Acompanhamento visual das entregas.
+- Mostrar loja, motoboy e destino quando houver coordenadas.
+- Atualizar localização do motoboy durante a entrega.
+- Ajudar o lojista e o admin a saberem onde a entrega está.
+
+O sistema deve deixar a estrutura pronta para futuramente integrar:
+- n8n
+- IA/OCR para leitura da comanda
+- WhatsApp
+- cálculo automático de rota
+- cálculo automático de frete
+- pagamento Pix automatizado
+
+====================================================================
+1. PERFIS DO SISTEMA
+====================================================================
+
+Criar os seguintes tipos de usuário:
+
+1. Lojista
+Usuário que cadastra entregas, acompanha pedidos, vê financeiro e gerencia sua loja.
+
+2. Motoboy
+Usuário que fica disponível, recebe solicitações, aceita ou recusa entregas, atualiza localização e conclui entregas.
+
+3. Administrador da cidade
+Usuário responsável por acompanhar lojas, motoboys, entregas e financeiro de uma cidade específica.
+
+4. Administrador do sistema
+Usuário geral, com acesso a todas as cidades, lojas, motoboys, entregas e dados financeiros.
+
+Regras:
+- No cadastro público, permitir apenas cadastro de lojista e motoboy.
+- Não permitir que o usuário comum escolha ser administrador.
+- Administradores devem ser criados manualmente no banco de dados.
+- Após login, redirecionar cada usuário conforme seu tipo:
+  - lojista → painel do lojista
+  - motoboy → painel do motoboy
+  - admin_cidade → painel administrativo da cidade
+  - admin_sistema → painel administrativo geral
+
+====================================================================
+2. IDENTIDADE VISUAL E DESIGN
+====================================================================
+
+Criar uma interface moderna, limpa, profissional e mobile-first.
+
+Cores principais:
+- Fundo escuro principal: #212121
+- Amarelo/mel: #FFC928
+- Branco: #FFFFFF
+- Cinza claro para textos secundários
+- Verde para status positivo
+- Vermelho para alerta/cancelamento
+- Azul ou amarelo para informações em andamento
+
+Estilo:
+- Cards arredondados.
+- Botões grandes e fáceis de tocar.
+- Menu inferior fixo.
+- Ícones modernos.
+- Layout limpo, sem excesso de informação.
+- Aparência de aplicativo mobile.
+- Boa leitura em tela pequena.
+- Evitar telas muito carregadas.
+
+Nome exibido:
+Beelbem Motoboy
+
+Frase principal:
+"Entrega organizada. Pedido resolvido."
+
+Frase alternativa para telas comerciais:
+"Tirou foto da comanda. O Beelbem organiza a entrega."
+
+====================================================================
+3. TELAS PRINCIPAIS
+====================================================================
+
+Criar as seguintes telas:
+
+1. Tela de abertura
+2. Login
+3. Cadastro
+4. Recuperar senha
+5. Painel inicial do lojista
+6. Cadastro de entrega por foto
+7. Cadastro manual de entrega
+8. Lista de entregas do lojista
+9. Detalhes da entrega
+10. Mapa de acompanhamento
+11. Perfil do usuário
+12. Configurações
+13. Notificações
+14. Painel inicial do motoboy
+15. Solicitações do motoboy
+16. Minhas entregas do motoboy
+17. Meus pagamentos do motoboy
+18. Financeiro do lojista
+19. Painel administrativo da cidade
+20. Painel administrativo geral do sistema
+
+====================================================================
+4. TELA DE ABERTURA
+====================================================================
+
+Criar tela de abertura com:
+
+- Logo ou nome Beelbem Motoboy.
+- Frase:
+  "Entrega organizada. Pedido resolvido."
+- Botões:
+  - Entrar
+  - Criar conta
+  - Saiba mais
+
+Na tela de login, incluir opção:
+- Manter conectado
+
+====================================================================
+5. LOGIN, CADASTRO E RECUPERAR SENHA
+====================================================================
+
+Usar Supabase Auth.
+
+Tela de login:
+Campos:
+- E-mail
+- Senha
+
+Opções:
+- Entrar
+- Manter conectado
+- Recuperar senha
+- Criar conta
+
+Tela de cadastro:
+Permitir escolher:
+- Sou lojista
+- Sou motoboy
+
+Não mostrar opção de administrador no cadastro público.
+
+Campos comuns:
+- Nome completo
+- WhatsApp
+- E-mail
+- Senha
+- Confirmar senha
+- Cidade
+- Estado
+
+Campos extras para lojista:
+- Nome da loja
+- CPF ou CNPJ
+- Endereço da loja
+- Bairro
+- Cidade
+- Estado
+- Localização da loja
+- Logo da loja
+
+Campos extras para motoboy:
+- CPF
+- Data de nascimento
+- Placa da moto
+- Modelo da moto
+- Foto da CNH
+- Foto de perfil, opcional
+- Cidade de atuação
+- Status inicial: indisponível
+
+Tela de recuperar senha:
+- Campo de e-mail
+- Botão "Enviar link de recuperação"
+- Usar Supabase Auth para envio do link
+
+====================================================================
+6. PAINEL INICIAL DO LOJISTA
+====================================================================
+
+Objetivo:
+Permitir que o lojista cadastre entregas rapidamente e acompanhe a operação.
+
+Elementos:
+- Saudação com nome da loja.
+- Card com saldo/crédito disponível.
+- Botão principal:
+  "Cadastrar entrega por foto"
+- Botão secundário:
+  "Cadastrar entrega manualmente"
+- Cards de resumo:
+  - Entregas aguardando motoboy
+  - Entregas aguardando aceite
+  - Entregas em andamento
+  - Entregas concluídas hoje
+  - Valor gasto hoje com entregas
+
+Ações rápidas:
+- Nova entrega
+- Ver entregas
+- Ver mapa
+- Ver financeiro
+
+====================================================================
+7. CADASTRO DE ENTREGA POR FOTO
+====================================================================
+
+Fluxo:
+1. Lojista clica em "Cadastrar entrega por foto".
+2. Sistema abre câmera ou upload de imagem.
+3. Lojista tira foto da comanda/pedido.
+4. Sistema salva a imagem no Supabase Storage.
+5. Sistema mostra carregamento:
+   "Lendo informações da comanda..."
+6. Sistema chama uma função preparada para IA/OCR:
+   analisarComandaPorImagem
+7. Se a integração com IA/n8n ainda não estiver ativa, permitir preenchimento manual.
+8. Mostrar formulário preenchido para conferência.
+9. Lojista revisa e salva a entrega.
+10. Sistema procura motoboy disponível.
+
+Importante:
+A função analisarComandaPorImagem deve estar separada no código para futura integração com n8n.
+
+Estrutura esperada da função:
+- Receber a URL da imagem da comanda.
+- Enviar para um webhook do n8n, quando configurado.
+- Receber os dados extraídos.
+- Preencher o formulário.
+- Caso falhe, permitir preenchimento manual sem travar o sistema.
+
+Dados que a IA/OCR deverá tentar extrair futuramente:
+- Nome do cliente
+- WhatsApp do cliente
+- Endereço
+- Bairro
+- Cidade
+- Complemento
+- Referência
+- Valor do pedido
+- Forma de pagamento
+- Observações
+- Tempo ou horário desejado, se existir na comanda
+
+Formulário da entrega:
+- Nome do cliente
+- WhatsApp do cliente
+- Endereço de entrega
+- Número
+- Complemento
+- Bairro
+- Cidade
+- Referência
+- Valor do pedido
+- Forma de pagamento:
+  - Dinheiro
+  - Pix
+  - Cartão
+  - Pago online
+- Observações do pedido
+- Foto da comanda
+- Latitude da entrega, se existir
+- Longitude da entrega, se existir
+- Status inicial: aguardando_motoboy
+
+Botões:
+- Salvar entrega
+- Cancelar
+
+====================================================================
+8. CADASTRO MANUAL DE ENTREGA
+====================================================================
+
+Criar tela para cadastro manual com os mesmos campos do cadastro por foto, mas sem obrigar a imagem da comanda.
+
+Campos:
+- Nome do cliente
+- WhatsApp do cliente
+- Endereço de entrega
+- Número
+- Complemento
+- Bairro
+- Cidade
+- Referência
+- Valor do pedido
+- Forma de pagamento
+- Observações
+- Foto da comanda, opcional
+
+Após salvar:
+- Criar entrega no banco.
+- Procurar motoboy disponível.
+- Criar solicitação para motoboy.
+- Atualizar status da entrega.
+
+====================================================================
+9. LÓGICA PARA ENCONTRAR MOTOBOY
+====================================================================
+
+Criar função:
+procurarMotoboyDisponivel
+
+Objetivo:
+Escolher um motoboy adequado para receber a entrega.
+
+Regra inicial do MVP:
+- Buscar motoboys com status_motoboy = "disponivel".
+- Filtrar pela mesma cidade da loja.
+- Priorizar motoboys com localização recente.
+- Priorizar motoboy mais próximo da loja quando houver coordenadas.
+- Considerar rank/estrelas do motoboy, quando existir.
+- Se não houver coordenadas, usar cidade e bairro como referência textual.
+- Criar solicitação para o motoboy escolhido.
+- Alterar status da entrega para "aguardando_aceite".
+
+Critérios de escolha, em ordem:
+1. Motoboy disponível na mesma cidade.
+2. Motoboy com localização mais recente.
+3. Motoboy mais próximo da loja, se houver latitude e longitude.
+4. Melhor avaliação/rank, se houver.
+5. Motoboy com menor quantidade de entregas em andamento.
+6. Primeiro disponível, se não houver dados suficientes.
+
+Se o motoboy estiver em movimento para outra entrega:
+- Neste MVP, não criar roteirização complexa.
+- Apenas permitir que o sistema considere o motoboy como disponível se o status dele estiver "disponivel".
+- Futuramente, poderá existir status "disponivel_em_rota".
+
+Se nenhum motoboy estiver disponível:
+- Manter entrega com status "aguardando_motoboy".
+- Mostrar ao lojista:
+  "Nenhum motoboy disponível no momento. A entrega ficará na fila."
+
+Quando encontrar motoboy:
+- Criar registro em solicitacoes_de_entrega.
+- Mostrar ao lojista:
+  "Entrega enviada para um motoboy disponível."
+- Quando o motoboy aceitar, mostrar:
+  "Motoboy a caminho."
+
+Salvar também:
+- Horário em que a entrega foi criada.
+- Horário em que a solicitação foi enviada.
+- Horário em que o motoboy aceitou.
+- Tempo até aceite.
+
+====================================================================
+10. PAINEL INICIAL DO MOTOBOY
+====================================================================
+
+Criar painel do motoboy com:
+
+- Saudação com nome.
+- Foto de perfil, se houver.
+- Status atual:
+  - Disponível
+  - Indisponível
+  - Em entrega
+- Botão grande:
+  "Estou disponível"
+- Botão:
+  "Estou indisponível"
+- Card com solicitação atual, se existir.
+- Total de entregas realizadas no dia.
+- Total a receber.
+- Rank/estrelas do motoboy.
+- Botão:
+  "Atualizar minha localização"
+- Mini mapa mostrando:
+  - Localização atual do motoboy
+  - Lojas abertas na cidade, com miniatura da logo e nome
+
+Quando receber uma solicitação, exibir card com:
+- Nome da loja
+- Logo da loja, se houver
+- Endereço da loja
+- Bairro de entrega
+- Endereço de entrega
+- Valor do pedido
+- Forma de pagamento
+- Observações
+- Distância aproximada do motoboy até a loja, se houver coordenadas
+- Distância aproximada da loja até o destino, se houver coordenadas
+- Botões:
+  - Aceitar entrega
+  - Recusar
+
+Ao aceitar:
+- status_solicitacao = aceita
+- status_entrega = em_andamento
+- status_motoboy = em_entrega
+- vincular motoboy_id na entrega
+- registrar histórico
+- criar notificação para lojista
+
+Ao recusar:
+- status_solicitacao = recusada
+- registrar motivo opcional
+- sistema deve procurar outro motoboy disponível
+- se não houver outro, entrega volta para aguardando_motoboy
+
+====================================================================
+11. FLUXO DA ENTREGA
+====================================================================
+
+Status da entrega:
+
+1. aguardando_motoboy
+Entrega criada, mas ainda sem motoboy.
+
+2. aguardando_aceite
+Entrega enviada para um motoboy, aguardando resposta.
+
+3. em_andamento
+Motoboy aceitou e está realizando a entrega.
+
+4. entregue
+Motoboy marcou como entregue.
+
+5. concluida
+Entrega finalizada e validada no sistema.
+
+6. cancelada
+Entrega cancelada pelo lojista ou admin.
+
+Fluxo:
+1. Lojista cria entrega.
+2. Sistema salva com status aguardando_motoboy.
+3. Sistema procura motoboy.
+4. Sistema envia solicitação.
+5. Entrega muda para aguardando_aceite.
+6. Motoboy aceita.
+7. Entrega muda para em_andamento.
+8. Motoboy vai até a loja e depois até o cliente.
+9. Motoboy clica em "Entregue".
+10. Sistema salva coordenada do motoboy no momento da entrega.
+11. Sistema vincula essa coordenada ao pedido/cliente.
+12. Entrega muda para entregue ou concluida.
+13. Sistema calcula valor a pagar ao motoboy.
+14. Sistema atualiza financeiro do lojista e do motoboy.
+
+====================================================================
+12. MAPA DE ACOMPANHAMENTO
+====================================================================
+
+Criar tela "Mapa".
+
+Objetivo:
+Acompanhamento visual, sem rota avançada.
+
+Para lojista:
+- Mostrar a loja.
+- Mostrar entregas em andamento.
+- Mostrar motoboys vinculados às entregas da loja.
+- Mostrar destino aproximado das entregas, quando houver coordenadas.
+
+Para motoboy:
+- Mostrar sua localização atual.
+- Mostrar lojas abertas na cidade.
+- Mostrar entrega aceita, quando houver.
+
+Para admin cidade:
+- Mostrar lojas da cidade.
+- Mostrar motoboys da cidade.
+- Mostrar entregas em andamento da cidade.
+
+Para admin sistema:
+- Permitir visualizar por cidade.
+
+Não implementar agora:
+- Rota automática.
+- Navegação.
+- Tempo real complexo estilo Uber.
+- Cálculo de melhor caminho.
+
+Localização do motoboy:
+- Implementar rastreamento simples durante a entrega.
+- Quando o motoboy estiver com status em_entrega, atualizar latitude e longitude periodicamente.
+- Usar intervalo simples, por exemplo, a cada 5 segundos, se o navegador permitir.
+- Também criar botão manual:
+  "Atualizar minha localização"
+- Salvar última atualização no banco.
+- Se o usuário negar permissão de localização, mostrar aviso amigável.
+
+Ao clicar em "Entregue":
+- Capturar latitude e longitude atual.
+- Salvar na entrega como latitude_finalizacao e longitude_finalizacao.
+- Registrar data/hora da conclusão.
+- Vincular essa coordenada ao pedido e ao cliente.
+
+Caso não existam coordenadas:
+Mostrar:
+"Mapa preparado. A localização será exibida quando houver dados disponíveis."
+
+====================================================================
+13. MENU INFERIOR
+====================================================================
+
+Criar menu inferior mobile fixo.
+
+Menu do lojista:
+- Início
+- Nova entrega
+- Entregas
+- Mapa
+- Financeiro
+- Perfil
+
+Menu do motoboy:
+- Início
+- Solicitações
+- Minhas entregas
+- Mapa
+- Pagamentos
+- Perfil
+
+Menu do admin cidade:
+- Início
+- Lojas
+- Motoboys
+- Entregas
+- Financeiro
+- Configurações
+
+Menu do admin sistema:
+- Início
+- Cidades
+- Lojas
+- Motoboys
+- Entregas
+- Financeiro
+- Configurações
+
+Se o espaço do menu inferior ficar pequeno, usar 5 itens principais e colocar os demais em uma tela "Mais".
+
+====================================================================
+14. LISTA E DETALHES DAS ENTREGAS
+====================================================================
+
+Criar tela "Entregas" com abas:
+- Aguardando motoboy
+- Aguardando aceite
+- Em andamento
+- Concluídas
+- Canceladas
+
+Cada entrega deve aparecer em card com:
+- Nome do cliente
+- Bairro
+- Status
+- Valor do pedido
+- Forma de pagamento
+- Motoboy responsável, se houver
+- Horário de criação
+- Tempo até aceite, se houver
+- Botão "Ver detalhes"
+
+Tela de detalhes:
+- Dados completos do cliente
+- Dados da entrega
+- Foto da comanda
+- Status atual
+- Loja vinculada
+- Motoboy vinculado
+- Histórico da entrega
+- Coordenadas, quando existirem
+- Botão para cancelar, se permitido
+- Botão para concluir, se for motoboy em entrega
+
+====================================================================
+15. PERFIL DO USUÁRIO
+====================================================================
+
+Tela de perfil comum:
+- Nome
+- E-mail
+- WhatsApp
+- Tipo de usuário
+- Status da conta
+- Botão editar perfil
+- Botão sair
+
+Perfil do lojista:
+- Nome da loja
+- CPF/CNPJ
+- Endereço
+- Bairro
+- Cidade
+- Estado
+- Logo da loja
+- Latitude
+- Longitude
+- Crédito disponível
+- Status da loja
+
+Perfil do motoboy:
+- CPF
+- Data de nascimento
+- Placa da moto
+- Modelo da moto
+- Cidade de atuação
+- Status atual
+- Foto da CNH
+- Foto de perfil
+- Última localização registrada
+- Rank/estrelas
+- Total de entregas
+- Saldo disponível para resgate
+
+====================================================================
+16. CONFIGURAÇÕES
+====================================================================
+
+Criar tela simples com:
+- Dados da conta
+- Preferências de notificação
+- Termos de uso
+- Política de privacidade
+- Ajuda
+- Sair
+
+====================================================================
+17. NOTIFICAÇÕES
+====================================================================
+
+Criar notificações internas.
+
+Exemplos:
+- Nova entrega cadastrada
+- Entrega enviada para motoboy
+- Motoboy aceitou a entrega
+- Motoboy recusou a entrega
+- Entrega concluída
+- Nenhum motoboy disponível
+- Saldo do lojista baixo
+- Motoboy solicitou resgate
+- Resgate aprovado
+- Resgate pago
+
+As notificações podem ser internas no MVP.
+Não precisa implementar push notification agora.
+
+====================================================================
+18. FINANCEIRO DO LOJISTA
+====================================================================
+
+Criar tela "Financeiro" para lojista.
+
+Objetivo:
+Controlar crédito, entregas pagas e valores devidos.
+
+Elementos:
+- Crédito disponível
+- Total gasto hoje
+- Total gasto no mês
+- Entregas cobradas
+- Histórico de movimentações
+- Aviso quando o crédito estiver baixo
+- Botão:
+  "Solicitar recarga" ou "Informar depósito"
+
+Regra:
+- O lojista precisa ter crédito para usar o sistema.
+- Cada entrega pode gerar um valor a pagar ao motoboy.
+- No MVP, o pagamento não precisa ser automático.
+- O sistema deve registrar o valor devido e o saldo.
+
+Criar status para movimentações:
+- pendente
+- confirmado
+- cancelado
+
+====================================================================
+19. PAGAMENTOS DO MOTOBOY
+====================================================================
+
+Criar tela "Meus pagamentos" para o motoboy.
+
+Elementos:
+- Saldo disponível
+- Saldo pendente
+- Total recebido
+- Total de entregas concluídas
+- Histórico de pagamentos
+- Botão "Solicitar resgate"
+
+Regra de resgate:
+- O motoboy só pode solicitar resgate quando acumular no mínimo R$ 40,00.
+- O resgate será feito via Pix, mas no MVP será apenas registrado no sistema.
+- Admin cidade ou admin sistema poderá marcar o resgate como:
+  - solicitado
+  - aprovado
+  - pago
+  - recusado
+
+Campos do Pix:
+- Tipo de chave Pix
+- Chave Pix
+- Nome do titular
+
+====================================================================
+20. PAINEL ADMINISTRATIVO DA CIDADE
+====================================================================
+
+O admin cidade só pode ver dados da sua cidade.
+
+Funcionalidades:
+- Ver lojas da cidade.
+- Ver motoboys da cidade.
+- Ver entregas da cidade.
+- Ver mapa da cidade.
+- Ver financeiro da cidade.
+- Aprovar ou bloquear lojistas.
+- Aprovar ou bloquear motoboys.
+- Visualizar documentos do motoboy, como foto da CNH.
+- Alterar status de usuários:
+  - ativo
+  - inativo
+  - bloqueado
+- Alterar status de motoboys:
+  - disponivel
+  - indisponivel
+  - em_entrega
+- Ver solicitações de resgate.
+- Aprovar resgate.
+- Marcar resgate como pago.
+- Ver créditos dos lojistas.
+- Ver entregas pendentes.
+- Cancelar entrega, se necessário.
+
+====================================================================
+21. PAINEL ADMINISTRATIVO DO SISTEMA
+====================================================================
+
+O admin sistema pode ver tudo.
+
+Funcionalidades:
+- Dashboard geral.
+- Gestão de cidades.
+- Gestão de admins de cidade.
+- Ver todas as lojas.
+- Ver todos os motoboys.
+- Ver todas as entregas.
+- Ver financeiro geral.
+- Filtrar por cidade.
+- Bloquear usuários.
+- Criar administradores de cidade.
+- Ver resgates de todos os motoboys.
+- Ver créditos de todos os lojistas.
+- Ver indicadores:
+  - total de entregas
+  - entregas em andamento
+  - entregas concluídas
+  - valor movimentado
+  - valores a pagar
+  - valores pagos
+  - lojas ativas
+  - motoboys ativos
+
+====================================================================
+22. BANCO DE DADOS SUPABASE
+====================================================================
+
+Criar banco de dados com tabelas e campos em português.
+
+Tabela: cidades
+Campos:
+- id uuid primary key
+- nome text
+- estado text
+- ativa boolean default true
+- criado_em timestamp
+- atualizado_em timestamp
+
+Tabela: perfis_de_usuarios
+Campos:
+- id uuid primary key references auth.users(id)
+- nome_completo text
+- email text
+- whatsapp text
+- tipo_usuario text
+  valores: lojista, motoboy, admin_cidade, admin_sistema
+- status_usuario text
+  valores: ativo, inativo, bloqueado, pendente_aprovacao
+- cidade_id uuid references cidades(id)
+- criado_em timestamp
+- atualizado_em timestamp
+
+Tabela: lojas
+Campos:
+- id uuid primary key
+- perfil_usuario_id uuid references perfis_de_usuarios(id)
+- cidade_id uuid references cidades(id)
+- nome_loja text
+- cpf_cnpj text
+- endereco text
+- numero text
+- bairro text
+- cidade text
+- estado text
+- logo_url text
+- latitude numeric
+- longitude numeric
+- status_loja text
+  valores: ativa, inativa, bloqueada, pendente_aprovacao
+- credito_disponivel numeric default 0
+- criado_em timestamp
+- atualizado_em timestamp
+
+Tabela: motoboys
+Campos:
+- id uuid primary key
+- perfil_usuario_id uuid references perfis_de_usuarios(id)
+- cidade_id uuid references cidades(id)
+- cpf text
+- data_nascimento date
+- placa_moto text
+- modelo_moto text
+- foto_cnh_url text
+- foto_perfil_url text
+- cidade_atuacao text
+- status_motoboy text
+  valores: disponivel, indisponivel, em_entrega, bloqueado, pendente_aprovacao
+- latitude_atual numeric
+- longitude_atual numeric
+- ultima_atualizacao_localizacao timestamp
+- rank numeric default 5
+- total_entregas integer default 0
+- saldo_disponivel numeric default 0
+- saldo_pendente numeric default 0
+- chave_pix text
+- tipo_chave_pix text
+- nome_titular_pix text
+- criado_em timestamp
+- atualizado_em timestamp
+
+Tabela: entregas
+Campos:
+- id uuid primary key
+- loja_id uuid references lojas(id)
+- motoboy_id uuid references motoboys(id), nullable
+- cidade_id uuid references cidades(id)
+- nome_cliente text
+- whatsapp_cliente text
+- endereco_entrega text
+- numero_entrega text
+- complemento text
+- bairro_entrega text
+- cidade_entrega text
+- referencia text
+- valor_pedido numeric
+- valor_entrega numeric
+- forma_pagamento text
+  valores: dinheiro, pix, cartao, pago_online
+- observacoes text
+- foto_comanda_url text
+- latitude_entrega numeric
+- longitude_entrega numeric
+- latitude_finalizacao numeric
+- longitude_finalizacao numeric
+- status_entrega text
+  valores: aguardando_motoboy, aguardando_aceite, em_andamento, entregue, concluida, cancelada
+- criada_em timestamp
+- solicitada_em timestamp
+- aceita_em timestamp
+- entregue_em timestamp
+- concluida_em timestamp
+- atualizada_em timestamp
+
+Tabela: solicitacoes_de_entrega
+Campos:
+- id uuid primary key
+- entrega_id uuid references entregas(id)
+- motoboy_id uuid references motoboys(id)
+- status_solicitacao text
+  valores: enviada, aceita, recusada, expirada, cancelada
+- enviada_em timestamp
+- respondida_em timestamp
+- motivo_recusa text
+- criado_em timestamp
+
+Tabela: localizacoes_dos_motoboys
+Campos:
+- id uuid primary key
+- motoboy_id uuid references motoboys(id)
+- entrega_id uuid references entregas(id), nullable
+- latitude numeric
+- longitude numeric
+- velocidade numeric
+- precisao numeric
+- criado_em timestamp
+
+Tabela: notificacoes
+Campos:
+- id uuid primary key
+- perfil_usuario_id uuid references perfis_de_usuarios(id)
+- titulo text
+- mensagem text
+- tipo_notificacao text
+- lida boolean default false
+- criado_em timestamp
+
+Tabela: historico_de_entregas
+Campos:
+- id uuid primary key
+- entrega_id uuid references entregas(id)
+- status_anterior text
+- status_novo text
+- observacao text
+- criado_por uuid references perfis_de_usuarios(id)
+- criado_em timestamp
+
+Tabela: movimentacoes_financeiras
+Campos:
+- id uuid primary key
+- cidade_id uuid references cidades(id)
+- loja_id uuid references lojas(id), nullable
+- motoboy_id uuid references motoboys(id), nullable
+- entrega_id uuid references entregas(id), nullable
+- tipo_movimentacao text
+  valores: credito_lojista, debito_entrega, credito_motoboy, ajuste_admin, estorno
+- valor numeric
+- status_movimentacao text
+  valores: pendente, confirmado, cancelado
+- descricao text
+- criado_em timestamp
+- confirmado_em timestamp
+
+Tabela: resgates_motoboys
+Campos:
+- id uuid primary key
+- motoboy_id uuid references motoboys(id)
+- cidade_id uuid references cidades(id)
+- valor numeric
+- status_resgate text
+  valores: solicitado, aprovado, pago, recusado, cancelado
+- tipo_chave_pix text
+- chave_pix text
+- nome_titular_pix text
+- solicitado_em timestamp
+- aprovado_em timestamp
+- pago_em timestamp
+- observacao_admin text
+
+Tabela: configuracoes_do_sistema
+Campos:
+- id uuid primary key
+- chave text
+- valor text
+- criado_em timestamp
+- atualizado_em timestamp
+
+====================================================================
+23. SUPABASE STORAGE
+====================================================================
+
+Criar buckets:
+
+1. comandas
+Para salvar fotos das comandas dos pedidos.
+
+2. logos_lojas
+Para salvar logos das lojas.
+
+3. documentos_motoboys
+Para salvar foto da CNH.
+
+4. fotos_perfil
+Para salvar foto de perfil dos usuários/motoboys.
+
+Salvar as URLs nas respectivas tabelas.
+
+====================================================================
+24. REGRAS DE SEGURANÇA — RLS
+====================================================================
+
+Implementar Row Level Security de forma simples e segura.
+
+Regras:
+
+Lojista:
+- Só pode ver e editar o próprio perfil.
+- Só pode ver a própria loja.
+- Só pode ver entregas da própria loja.
+- Só pode criar entregas para a própria loja.
+- Só pode ver financeiro da própria loja.
+
+Motoboy:
+- Só pode ver e editar o próprio perfil.
+- Só pode ver suas próprias solicitações.
+- Só pode ver entregas vinculadas a ele.
+- Só pode atualizar sua própria localização.
+- Só pode solicitar resgate do próprio saldo.
+
+Admin cidade:
+- Só pode ver dados da cidade vinculada ao seu perfil.
+- Pode ver lojas, motoboys, entregas, financeiro e resgates da sua cidade.
+
+Admin sistema:
+- Pode ver tudo.
+- Pode gerenciar cidades.
+- Pode criar admins de cidade.
+- Pode bloquear usuários.
+
+====================================================================
+25. FUNÇÕES/SERVIÇOS IMPORTANTES
+====================================================================
+
+Criar funções ou serviços com nomes claros em português:
+
+- cadastrarEntregaPorFoto
+- cadastrarEntregaManual
+- salvarFotoDaComanda
+- analisarComandaPorImagem
+- procurarMotoboyDisponivel
+- calcularDistanciaAproximada
+- enviarSolicitacaoParaMotoboy
+- aceitarEntrega
+- recusarEntrega
+- concluirEntrega
+- marcarEntregaComoEntregue
+- atualizarLocalizacaoMotoboy
+- criarNotificacao
+- registrarHistoricoDaEntrega
+- registrarMovimentacaoFinanceira
+- solicitarResgateMotoboy
+- aprovarResgateMotoboy
+- marcarResgateComoPago
+- verificarCreditoDoLojista
+
+====================================================================
+26. VALIDAÇÕES
+====================================================================
+
+Validar:
+
+Cadastro:
+- Nome obrigatório.
+- WhatsApp obrigatório.
+- E-mail obrigatório.
+- Senha obrigatória.
+- Cidade obrigatória.
+- Tipo de usuário obrigatório.
+
+Lojista:
+- Nome da loja obrigatório.
+- CPF/CNPJ obrigatório.
+- Endereço obrigatório.
+- Cidade obrigatória.
+- Estado obrigatório.
+
+Motoboy:
+- CPF obrigatório.
+- Data de nascimento obrigatória.
+- Placa da moto obrigatória.
+- Modelo da moto obrigatório.
+- Foto da CNH obrigatória.
+- Foto de perfil opcional.
+
+Entrega:
+- Nome do cliente obrigatório.
+- Endereço obrigatório.
+- Bairro obrigatório.
+- Cidade obrigatória.
+- Valor do pedido deve ser número.
+- Forma de pagamento obrigatória.
+- Foto da comanda obrigatória apenas no cadastro por foto.
+- Foto da comanda opcional no cadastro manual.
+
+Financeiro:
+- Não permitir solicitar resgate abaixo de R$ 40,00.
+- Não permitir entrega se o lojista estiver bloqueado.
+- Avisar se o lojista estiver sem crédito.
+
+====================================================================
+27. EXPERIÊNCIA DO LOJISTA
+====================================================================
+
+O lojista deve conseguir:
+
+1. Criar conta.
+2. Fazer login.
+3. Cadastrar sua loja.
+4. Adicionar logo da loja.
+5. Cadastrar entrega por foto.
+6. Cadastrar entrega manual.
+7. Conferir dados da entrega antes de salvar.
+8. Enviar entrega para motoboy.
+9. Acompanhar status.
+10. Ver mapa de acompanhamento.
+11. Ver histórico de entregas.
+12. Ver financeiro.
+13. Ver crédito disponível.
+14. Ver valores gastos com entregas.
+15. Editar perfil.
+
+====================================================================
+28. EXPERIÊNCIA DO MOTOBOY
+====================================================================
+
+O motoboy deve conseguir:
+
+1. Criar conta.
+2. Enviar dados pessoais.
+3. Enviar foto da CNH.
+4. Fazer login.
+5. Marcar-se como disponível.
+6. Atualizar localização.
+7. Receber solicitação de entrega.
+8. Aceitar ou recusar.
+9. Ver dados da loja.
+10. Ver dados da entrega.
+11. Marcar entrega como entregue.
+12. Salvar coordenada no momento da entrega.
+13. Ver total de entregas do dia.
+14. Ver saldo disponível.
+15. Solicitar resgate a partir de R$ 40,00.
+16. Cadastrar chave Pix.
+17. Ver histórico de pagamentos.
+
+====================================================================
+29. EXPERIÊNCIA DO ADMIN CIDADE
+====================================================================
+
+O admin cidade deve conseguir:
+
+1. Ver dashboard da cidade.
+2. Aprovar ou bloquear lojistas.
+3. Aprovar ou bloquear motoboys.
+4. Ver entregas em andamento.
+5. Ver mapa da cidade.
+6. Ver financeiro da cidade.
+7. Ver créditos dos lojistas.
+8. Ver saldos dos motoboys.
+9. Aprovar resgates.
+10. Marcar resgates como pagos.
+11. Cancelar entregas problemáticas.
+12. Ver histórico de movimentações.
+
+====================================================================
+30. EXPERIÊNCIA DO ADMIN SISTEMA
+====================================================================
+
+O admin sistema deve conseguir:
+
+1. Ver dashboard geral.
+2. Criar e gerenciar cidades.
+3. Criar admins de cidade.
+4. Ver todas as lojas.
+5. Ver todos os motoboys.
+6. Ver todas as entregas.
+7. Ver financeiro geral.
+8. Filtrar informações por cidade.
+9. Bloquear usuários.
+10. Acompanhar operação geral.
+
+====================================================================
+31. PRIORIDADE DE DESENVOLVIMENTO
+====================================================================
+
+Desenvolver nesta ordem:
+
+1. Banco de dados Supabase.
+2. Autenticação Supabase.
+3. Perfis de usuários.
+4. Cadastro de lojista.
+5. Cadastro de motoboy.
+6. Upload de imagens no Supabase Storage.
+7. Cadastro manual de entrega.
+8. Cadastro de entrega por foto.
+9. Função preparada para análise de comanda por IA/n8n.
+10. Busca simples de motoboy disponível.
+11. Solicitação de entrega para motoboy.
+12. Aceitar/recusar entrega.
+13. Tela de entregas.
+14. Atualização de localização do motoboy.
+15. Mapa de acompanhamento.
+16. Financeiro simples do lojista.
+17. Pagamentos/resgate do motoboy.
+18. Painel admin cidade.
+19. Painel admin sistema.
+20. Regras de segurança RLS.
+
+====================================================================
+32. RESULTADO FINAL ESPERADO
+====================================================================
+
+Entregar um MVP funcional do Beelbem Motoboy, pronto para teste real com lojistas e motoboys locais.
+
+O sistema deve permitir:
+- Lojista cadastrar entrega por foto ou manualmente.
+- Sistema salvar foto da comanda.
+- Sistema preparar análise futura por IA/n8n.
+- Sistema procurar motoboy disponível.
+- Motoboy aceitar ou recusar entrega.
+- Lojista acompanhar a entrega.
+- Motoboy atualizar localização.
+- Mapa mostrar acompanhamento visual.
+- Motoboy concluir entrega.
+- Sistema registrar financeiro básico.
+- Motoboy solicitar resgate quando tiver no mínimo R$ 40,00.
+- Admin cidade acompanhar operação local.
+- Admin sistema acompanhar todas as cidades.
+
+Não adicionar funcionalidades extras fora deste escopo.
+Priorizar estabilidade, clareza, código organizado e funcionamento mobile.

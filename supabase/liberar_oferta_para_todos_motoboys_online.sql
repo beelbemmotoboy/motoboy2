@@ -1,0 +1,1 @@
+drop index if exists public.delivery_queue_one_offered_per_delivery_idx;

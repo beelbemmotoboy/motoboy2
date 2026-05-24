@@ -1,4 +1,4 @@
-const CACHE_NAME = 'beelbem-motoboy-v1';
+const CACHE_NAME = 'beelbem-motoboy-v2';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/beelbem-icon.png'];
 
 self.addEventListener('install', (event) => {
@@ -41,5 +41,43 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith(
     caches.match(request).then((cached) => cached || fetch(request))
+  );
+});
+
+self.addEventListener('push', (event) => {
+  let payload = {};
+  try {
+    payload = event.data?.json() || {};
+  } catch {
+    payload = {};
+  }
+  const title = payload.title || 'Nova entrega disponivel';
+  const options = {
+    body: payload.body || 'Abra o app para aceitar ou recusar o pedido.',
+    icon: '/beelbem-icon.png',
+    badge: '/beelbem-icon.png',
+    tag: payload.deliveryId ? `delivery-offer-${payload.deliveryId}` : 'delivery-offer',
+    renotify: true,
+    requireInteraction: true,
+    vibrate: [450, 160, 450, 160, 700],
+    data: { url: payload.url || '/#login' },
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const targetUrl = new URL(event.notification.data?.url || '/#login', self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clientList) => {
+        const appClient = clientList.find((client) => client.url.includes(self.location.origin));
+        if (appClient) {
+          return appClient.navigate(targetUrl).then((client) => (client || appClient).focus());
+        }
+        return self.clients.openWindow(targetUrl);
+      })
   );
 });
