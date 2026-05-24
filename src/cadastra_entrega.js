@@ -323,7 +323,7 @@ async function advanceWaitingOffersForCourier({ supabase, cityId, courierId }) {
   await Promise.all(deliveryIds.map((deliveryId) => notifyNextCourierOffer({
     supabase,
     deliveryId,
-    allowClientFallback: false,
+    allowClientFallback: true,
     allowServerInvoke: true,
   }).catch(() => undefined)));
 }
