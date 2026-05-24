@@ -246,6 +246,9 @@ export function CourierHomeView({ city, profile, onLogout }) {
   const [completedDeliveries, setCompletedDeliveries] = React.useState([]);
   const [completedDeliveriesLoading, setCompletedDeliveriesLoading] = React.useState(false);
   const [completedDeliveriesMessage, setCompletedDeliveriesMessage] = React.useState('');
+  const [courierDetails, setCourierDetails] = React.useState(null);
+  const [courierDetailsLoading, setCourierDetailsLoading] = React.useState(false);
+  const [courierDetailsMessage, setCourierDetailsMessage] = React.useState('');
   const [selectedDeliveryDetails, setSelectedDeliveryDetails] = React.useState(null);
   const deliveryPollingRef = React.useRef(false);
   const lastLocationSyncRef = React.useRef(0);
@@ -275,6 +278,56 @@ export function CourierHomeView({ city, profile, onLogout }) {
     fee: formatCurrencyDisplay(delivery.delivery_fee),
     raw: delivery,
   }));
+
+  const courierDetailSections = [
+    {
+      title: 'Cadastro',
+      rows: [
+        ['ID', courierDetails?.id || profile?.courier_id],
+        ['Nome', courierDetails?.name || courierName],
+        ['Nascimento', courierDetails?.birth_date ? formatDateTimeDisplay(courierDetails.birth_date).split(',')[0] : 'Nao informado'],
+        ['CPF', courierDetails?.cpf],
+        ['E-mail', courierDetails?.email || profile?.email],
+        ['Telefone', courierDetails?.phone],
+        ['Cidade', city?.name],
+        ['Criado em', formatDateTimeDisplay(courierDetails?.created_at)],
+        ['Atualizado em', formatDateTimeDisplay(courierDetails?.updated_at)],
+      ],
+    },
+    {
+      title: 'Status',
+      rows: [
+        ['Aprovacao', courierDetails?.approval_status],
+        ['Disponibilidade', courierDetails?.availability_status],
+        ['Ativo', courierDetails?.active === true ? 'Sim' : courierDetails?.active === false ? 'Nao' : 'Nao informado'],
+        ['Disponivel', courierDetails?.available === true ? 'Sim' : courierDetails?.available === false ? 'Nao' : 'Nao informado'],
+        ['WhatsApp validado', courierDetails?.whatsapp_validated === true ? 'Sim' : courierDetails?.whatsapp_validated === false ? 'Nao' : 'Nao informado'],
+        ['Validado em', formatDateTimeDisplay(courierDetails?.whatsapp_validated_at)],
+        ['Avaliacao', courierDetails?.rating],
+        ['Pontos', courierPoints],
+      ],
+    },
+    {
+      title: 'Veiculo',
+      rows: [
+        ['Tipo', courierDetails?.vehicle_type],
+        ['Placa', courierDetails?.vehicle_plate],
+        ['CNH valida ate', courierDetails?.cnh_valid_until ? formatDateTimeDisplay(courierDetails.cnh_valid_until).split(',')[0] : 'Nao informado'],
+        ['Observacoes', courierDetails?.vehicle_notes],
+        ['Arquivo CRLV', courierDetails?.crlv_file_path],
+        ['Arquivo CNH', courierDetails?.cnh_file_path],
+        ['Foto de rosto', courierDetails?.face_photo_path],
+      ],
+    },
+    {
+      title: 'Pix',
+      rows: [
+        ['Tipo de chave', courierDetails?.pix_key_type],
+        ['Chave Pix', courierDetails?.pix_key],
+        ['Titular', courierDetails?.pix_holder_name],
+      ],
+    },
+  ];
 
   const selectedDetailSections = selectedDeliveryDetails ? [
     {
@@ -789,7 +842,7 @@ export function CourierHomeView({ city, profile, onLogout }) {
   }, [city?.id, courierAvailable, hasAcceptedDelivery, hasPendingOffer, loadCurrentDelivery, profile?.courier_id]);
 
   React.useEffect(() => {
-    if (activePanel !== 'data' || !supabase || !profile?.courier_id) return undefined;
+    if (activePanel !== 'deliveries' || !supabase || !profile?.courier_id) return undefined;
 
     let stopped = false;
     async function loadCompletedDeliveries() {
@@ -815,6 +868,36 @@ export function CourierHomeView({ city, profile, onLogout }) {
     }
 
     loadCompletedDeliveries();
+    return () => {
+      stopped = true;
+    };
+  }, [activePanel, profile?.courier_id]);
+
+  React.useEffect(() => {
+    if (activePanel !== 'profile' || !supabase || !profile?.courier_id) return undefined;
+
+    let stopped = false;
+    async function loadCourierDetails() {
+      setCourierDetailsLoading(true);
+      setCourierDetailsMessage('');
+      const { data, error } = await supabase
+        .from('couriers')
+        .select('id, city_id, name, birth_date, cpf, email, phone, face_photo_path, whatsapp_validated, whatsapp_validated_at, vehicle_type, vehicle_plate, pix_key, pix_key_type, pix_holder_name, vehicle_notes, crlv_file_path, cnh_file_path, cnh_valid_until, approval_status, rating, active, available, availability_status, internal_notes, created_at, updated_at')
+        .eq('id', profile.courier_id)
+        .maybeSingle();
+
+      if (stopped) return;
+      setCourierDetailsLoading(false);
+      if (error) {
+        setCourierDetails(null);
+        setCourierDetailsMessage(`Nao foi possivel buscar os dados do motoboy: ${error.message}`);
+        return;
+      }
+      setCourierDetails(data);
+      setCourierDetailsMessage(data ? '' : 'Dados do motoboy nao encontrados.');
+    }
+
+    loadCourierDetails();
     return () => {
       stopped = true;
     };
@@ -999,7 +1082,15 @@ export function CourierHomeView({ city, profile, onLogout }) {
   function openCourierDataPanel() {
     setMenuOpen(false);
     setActionMessage('');
-    setActivePanel('data');
+    setSelectedDeliveryDetails(null);
+    setActivePanel('profile');
+  }
+
+  function openCourierDeliveriesPanel() {
+    setMenuOpen(false);
+    setActionMessage('');
+    setSelectedDeliveryDetails(null);
+    setActivePanel('deliveries');
   }
 
   function closeCourierDataPanel() {
@@ -1086,7 +1177,7 @@ export function CourierHomeView({ city, profile, onLogout }) {
             <button type="button" onClick={() => changeAvailability(true)}>Ficar disponivel On-line</button>
             <button type="button" onClick={() => changeAvailability(false)}>Ficar Off-line</button>
             <button type="button" onClick={openCourierDataPanel}>Meus dados</button>
-            <button type="button" onClick={() => setActionMessage('Minhas entregas sera implementado na proxima etapa.')}>Minhas entregas</button>
+            <button type="button" onClick={openCourierDeliveriesPanel}>Minhas entregas</button>
             <button type="button" onClick={() => setActionMessage('Relatorios sera implementado na proxima etapa.')}>Relatorios</button>
             <button type="button" onClick={onLogout}>Sair</button>
           </nav>
@@ -1125,12 +1216,42 @@ export function CourierHomeView({ city, profile, onLogout }) {
         </div>
       )}
 
-      {activePanel === 'data' ? (
+      {activePanel === 'profile' ? (
+        <section className="courier-data-window" aria-labelledby="courier-profile-title">
+          <div className="courier-data-toolbar">
+            <div>
+              <span>Cadastro do motoboy</span>
+              <h2 id="courier-profile-title">Meus dados</h2>
+            </div>
+            <button className="secondary-action" type="button" onClick={closeCourierDataPanel}>Voltar</button>
+          </div>
+
+          {courierDetailsLoading ? (
+            <p className="courier-action-message">Buscando dados do motoboy...</p>
+          ) : courierDetailsMessage ? (
+            <p className="courier-action-message">{courierDetailsMessage}</p>
+          ) : (
+            <div className="courier-data-detail-grid">
+              {courierDetailSections.map((section) => (
+                <article key={section.title}>
+                  <h3>{section.title}</h3>
+                  {section.rows.map(([label, value]) => (
+                    <p key={`${section.title}-${label}`}>
+                      <span>{label}</span>
+                      <strong>{formatRawValue(value)}</strong>
+                    </p>
+                  ))}
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      ) : activePanel === 'deliveries' ? (
         <section className="courier-data-window" aria-labelledby="courier-data-title">
           <div className="courier-data-toolbar">
             <div>
               <span>Historico do motoboy</span>
-              <h2 id="courier-data-title">Meus dados</h2>
+              <h2 id="courier-data-title">Minhas entregas</h2>
             </div>
             <button className="secondary-action" type="button" onClick={closeCourierDataPanel}>Voltar</button>
           </div>
