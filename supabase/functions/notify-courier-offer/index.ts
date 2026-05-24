@@ -60,13 +60,6 @@ Deno.serve(async (request) => {
     }
 
     let offer = await fetchNextQueueOffer({ supabaseUrl, serviceRoleKey, deliveryId });
-    if (!offer && repeat && offerMode.attempts < INDIVIDUAL_OFFER_LIMIT) {
-      const activeOffersBeforeReset = await fetchActiveQueueOffers({ supabaseUrl, serviceRoleKey, deliveryId });
-      if (activeOffersBeforeReset.length) return json({ notified: 0, skipped: 'active_offer', offerId: activeOffersBeforeReset[0].id });
-
-      await resetQueueForRepeat({ supabaseUrl, serviceRoleKey, deliveryId });
-      offer = await fetchNextQueueOffer({ supabaseUrl, serviceRoleKey, deliveryId });
-    }
     if (!offer) return json({ notified: 0, skipped: 'no_online_waiting_courier' });
 
     const markedOffer = await markQueueOfferAsOffered({ supabaseUrl, serviceRoleKey, offerId: offer.id });

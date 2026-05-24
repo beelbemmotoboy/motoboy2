@@ -718,11 +718,6 @@ export async function notifyNextCourierOffer({
     return { ok: true, alreadyOffered: true, offer: activeOffers[0], offers: activeOffers, broadcast: offerMode.broadcast };
   }
 
-  if (!offerMode.broadcast) {
-    const rpcResult = await advanceDeliveryOfferQueueRpc({ supabase, deliveryId });
-    if (!rpcResult.missingRpc) return rpcResult;
-  }
-
   if (allowClientFallback) {
     try {
       return await activateQueueOffersByMode({ supabase, deliveryId, offerMode });
@@ -905,10 +900,7 @@ async function activateNextQueueOffer({ supabase, deliveryId, offerMode }) {
 
     const activeOfferBeforeReset = await getActiveQueueOffer({ supabase, deliveryId });
     if (activeOfferBeforeReset) return { ok: true, alreadyOffered: true, offer: activeOfferBeforeReset };
-
-    await resetQueueForRepeat({ supabase, deliveryId });
-    didResetQueue = true;
-    rows = await fetchWaitingQueueRows({ supabase, deliveryId });
+    return { ok: false, reason: 'no-waiting-courier' };
   }
 
   for (const row of rows) {
