@@ -15,6 +15,7 @@ import {
   UserRound,
   WalletCards,
 } from 'lucide-react';
+import { supabase } from '../../../supabaseClient';
 import { buildOverviewData } from './overviewData';
 
 const metricIcons = {
@@ -42,16 +43,55 @@ function StatusDot({ tone }) {
   return <span className={`overview-status-dot ${tone}`} />;
 }
 
-function MetricCard({ metric }) {
+function calculateCourierStars(value) {
+  return Math.min(5, Math.max(1, Math.floor(Number(value || 0) / 250) + 1));
+}
+
+function formatXpValue(value) {
+  return Number.isInteger(Number(value)) ? Number(value).toFixed(0) : Number(value).toFixed(1).replace('.', ',');
+}
+
+async function createCourierDocumentPreviewUrl(path) {
+  if (!path || typeof path !== 'string') return '';
+  if (/^https?:\/\//i.test(path)) return path;
+  if (!path.includes('/') || !supabase?.storage) return '';
+  const { data, error } = await supabase.storage.from('courier-documents').createSignedUrl(path, 600);
+  return error ? '' : data?.signedUrl || '';
+}
+
+function isOnlineCourier(courier) {
+  return courier.active !== false && ['available', 'Disponivel'].includes(courier.availability);
+}
+
+function MetricCard({ metric, onOpenOnlineCouriers }) {
   const Icon = metricIcons[metric.icon] || Activity;
-  return (
-    <article className={`overview-metric ${metric.tone}`}>
+  const content = (
+    <>
       <span className="overview-metric-icon"><Icon size={22} /></span>
       <div>
         <p>{metric.label}</p>
         <strong>{metric.value}</strong>
         <small>{metric.trend}</small>
       </div>
+    </>
+  );
+
+  if (metric.id === 'couriers') {
+    return (
+      <button
+        className={`overview-metric overview-metric-action ${metric.tone}`}
+        type="button"
+        onClick={onOpenOnlineCouriers}
+        aria-label="Ver todos os motoboys online"
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <article className={`overview-metric ${metric.tone}`}>
+      {content}
     </article>
   );
 }
@@ -128,12 +168,12 @@ function ActiveDeliveriesTable({ rows }) {
   );
 }
 
-function OnlineCouriersTable({ rows }) {
+function OnlineCouriersTable({ rows, onViewAll }) {
   return (
     <section className="overview-panel overview-side-list" aria-labelledby="overview-couriers-title">
       <header>
         <h2 id="overview-couriers-title">Motoboys online</h2>
-        <button type="button">Ver todas</button>
+        <button type="button" onClick={onViewAll}>Ver todas</button>
       </header>
       <div className="overview-courier-list">
         {rows.map((row) => (
@@ -150,6 +190,63 @@ function OnlineCouriersTable({ rows }) {
         ))}
       </div>
     </section>
+  );
+}
+
+function OnlineCouriersModal({ rows, loading, message, onClose }) {
+  return (
+    <div className="courier-data-modal" role="dialog" aria-modal="true" aria-labelledby="overview-online-couriers-title">
+      <section>
+        <header>
+          <div>
+            <span>Disponiveis agora</span>
+            <h2 id="overview-online-couriers-title">Motoboys on-line</h2>
+          </div>
+          <button type="button" onClick={onClose}>Fechar</button>
+        </header>
+
+        <div className="courier-data-table-wrap">
+          <table className="courier-data-table online-couriers-table">
+            <thead>
+              <tr>
+                <th>Foto</th>
+                <th>Nome</th>
+                <th>XP Total</th>
+                <th>Estrelas</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((courier) => (
+                <tr key={courier.id}>
+                  <td>
+                    <span className="online-courier-photo">
+                      {courier.photoUrl ? <img src={courier.photoUrl} alt="" /> : <UserRound size={22} />}
+                    </span>
+                  </td>
+                  <td>{courier.name}</td>
+                  <td>{formatXpValue(courier.totalXp)}</td>
+                  <td>
+                    <span className="online-courier-stars" aria-label={`${courier.stars} estrelas`}>
+                      {Array.from({ length: 5 }).map((_, index) => (
+                        <Star key={index} size={18} fill={index < courier.stars ? 'currentColor' : 'none'} />
+                      ))}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {!rows.length && (
+                <tr>
+                  <td colSpan="4">{loading ? 'Buscando motoboys on-line...' : message || 'Nenhum dado encontrado.'}</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        {message && rows.length > 0 && (
+          <p className="courier-action-message">{message}</p>
+        )}
+      </section>
+    </div>
   );
 }
 
@@ -243,22 +340,95 @@ function CourierRanking({ rows }) {
 }
 
 export function Overview({ city, stores = [], couriers = [] }) {
+  const [onlineCouriersModalOpen, setOnlineCouriersModalOpen] = React.useState(false);
+  const [onlineCouriersLoading, setOnlineCouriersLoading] = React.useState(false);
+  const [onlineCouriersMessage, setOnlineCouriersMessage] = React.useState('');
+  const [onlineCouriers, setOnlineCouriers] = React.useState([]);
   const overview = React.useMemo(
     () => buildOverviewData({ city, stores, couriers }),
     [city, stores, couriers],
   );
 
+  async function mapLocalOnlineCouriers() {
+    const localRows = couriers.filter(isOnlineCourier);
+    const ids = localRows.map((courier) => courier.id).filter(Boolean);
+    const pointsByCourier = new Map();
+
+    if (supabase && ids.length) {
+      const { data } = await supabase
+        .from('courier_points')
+        .select('courier_id, total_points')
+        .in('courier_id', ids);
+      for (const item of data ?? []) pointsByCourier.set(item.courier_id, Number(item.total_points || 0));
+    }
+
+    return Promise.all(localRows.map(async (courier) => {
+      const totalXp = Number(pointsByCourier.get(courier.id) ?? courier.totalXp ?? 0);
+      return {
+        id: courier.id,
+        name: courier.fullName || courier.name || 'Motoboy',
+        photoUrl: await createCourierDocumentPreviewUrl(courier.facePhoto || courier.face_photo_path),
+        totalXp,
+        stars: calculateCourierStars(totalXp),
+      };
+    }));
+  }
+
+  async function openOnlineCouriersModal() {
+    setOnlineCouriersModalOpen(true);
+    setOnlineCouriersLoading(true);
+    setOnlineCouriersMessage('');
+    setOnlineCouriers([]);
+
+    if (!supabase || !city?.id) {
+      const localRows = await mapLocalOnlineCouriers();
+      setOnlineCouriers(localRows);
+      setOnlineCouriersLoading(false);
+      setOnlineCouriersMessage(localRows.length ? 'Mostrando dados locais dos motoboys on-line.' : 'Nao foi possivel buscar os motoboys on-line.');
+      return;
+    }
+
+    const { data, error } = await supabase.rpc('list_online_couriers_for_current_city', {
+      target_city_id: city.id,
+    });
+
+    if (error) {
+      const localRows = await mapLocalOnlineCouriers();
+      setOnlineCouriers(localRows);
+      setOnlineCouriersLoading(false);
+      setOnlineCouriersMessage(localRows.length ? `Mostrando dados locais. Atualizacao completa indisponivel: ${error.message}` : `Nao foi possivel buscar os motoboys on-line: ${error.message}`);
+      return;
+    }
+
+    const mappedCouriers = await Promise.all((data ?? []).map(async (courier) => {
+      const totalXp = Number(courier.total_points || 0);
+      return {
+        id: courier.id,
+        name: courier.name || 'Motoboy',
+        photoUrl: await createCourierDocumentPreviewUrl(courier.face_photo_path),
+        totalXp,
+        stars: calculateCourierStars(totalXp),
+      };
+    }));
+
+    setOnlineCouriers(mappedCouriers);
+    setOnlineCouriersLoading(false);
+    if (!mappedCouriers.length) setOnlineCouriersMessage('Nenhum motoboy on-line no momento.');
+  }
+
   return (
     <section className="overview-control" aria-label="Central de controle">
       <section className="overview-metrics" aria-label="Indicadores principais">
-        {overview.metrics.map((metric) => <MetricCard metric={metric} key={metric.id} />)}
+        {overview.metrics.map((metric) => (
+          <MetricCard metric={metric} key={metric.id} onOpenOnlineCouriers={openOnlineCouriersModal} />
+        ))}
       </section>
 
       <section className="overview-main-grid">
         <OverviewMap data={overview} />
         <aside className="overview-right-rail">
           <ActiveDeliveriesTable rows={overview.activeDeliveries} />
-          <OnlineCouriersTable rows={overview.onlineCouriers} />
+          <OnlineCouriersTable rows={overview.onlineCouriers} onViewAll={openOnlineCouriersModal} />
           <AlertsTable rows={overview.alerts} />
         </aside>
       </section>
@@ -268,6 +438,15 @@ export function Overview({ city, stores = [], couriers = [] }) {
         <StatusDistribution rows={overview.statusDistribution} />
         <CourierRanking rows={overview.ranking} />
       </section>
+
+      {onlineCouriersModalOpen && (
+        <OnlineCouriersModal
+          rows={onlineCouriers}
+          loading={onlineCouriersLoading}
+          message={onlineCouriersMessage}
+          onClose={() => setOnlineCouriersModalOpen(false)}
+        />
+      )}
     </section>
   );
 }
