@@ -147,6 +147,9 @@ export async function createDeliveryWithQueue({ supabase, city, store, requestFo
 }
 
 export async function buildDeliveryQueue({ supabase, cityId, deliveryId }) {
+  const rpcQueue = await buildDeliveryQueueRpc({ supabase, cityId, deliveryId });
+  if (!rpcQueue.missingRpc) return rpcQueue.queuedCount;
+
   const { data: deliveryForQueue, error: deliveryForQueueError } = await supabase
     .from('deliveries')
     .select('id, stores(latitude, longitude)')
@@ -212,6 +215,25 @@ export async function buildDeliveryQueue({ supabase, cityId, deliveryId }) {
   const { error: queueError } = await supabase.from('delivery_queue').insert(queueRows);
   if (queueError) throw new Error(`Entrega criada, mas nao foi possivel montar a fila: ${queueError.message}`);
   return queueRows.length;
+}
+
+async function buildDeliveryQueueRpc({ supabase, cityId, deliveryId }) {
+  if (!supabase?.rpc || !cityId || !deliveryId) return { missingRpc: true, queuedCount: 0 };
+
+  const { data, error } = await supabase.rpc('build_delivery_queue', {
+    p_city_id: cityId,
+    p_delivery_id: deliveryId,
+  });
+
+  if (error) {
+    const text = `${error.message || ''} ${error.details || ''} ${error.hint || ''}`;
+    const missingRpc = error.code === '42883'
+      || /build_delivery_queue|schema cache|function.*does not exist|could not find/i.test(text);
+    if (missingRpc) return { missingRpc: true, queuedCount: 0 };
+    throw new Error(`Nao foi possivel montar a fila no banco: ${error.message}`);
+  }
+
+  return { missingRpc: false, queuedCount: Number(data || 0) };
 }
 
 async function selecionarMotoboysPorRaioDaLojaComFallback({ supabase, couriers, localizacaoLoja }) {
