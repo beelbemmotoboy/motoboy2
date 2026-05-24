@@ -148,6 +148,10 @@ function formatMinutesDisplay(value) {
   return `${Math.max(0, Math.round(minutes))} min`;
 }
 
+function calculateCourierStars(value) {
+  return Math.min(5, Math.max(1, Math.floor(Number(value || 0) / 250) + 1));
+}
+
 function formatDateTimeDisplay(value) {
   if (!value) return 'Nao informado';
   const date = new Date(value);
@@ -176,6 +180,14 @@ async function createCourierDocumentPreviewUrl(path) {
   if (/^https?:\/\//i.test(path)) return path;
   if (!path.includes('/') || !supabase?.storage) return '';
   const { data, error } = await supabase.storage.from('courier-documents').createSignedUrl(path, 600);
+  return error ? '' : data?.signedUrl || '';
+}
+
+async function createStoreLogoPreviewUrl(path) {
+  if (!path || typeof path !== 'string') return '';
+  if (/^https?:\/\//i.test(path)) return path;
+  if (!path.includes('/') || !supabase?.storage) return '';
+  const { data, error } = await supabase.storage.from('user-documents').createSignedUrl(path, 600);
   return error ? '' : data?.signedUrl || '';
 }
 
@@ -236,6 +248,14 @@ export function CourierHomeView({ city, profile, onLogout }) {
   const [deadlineRemainingLabel, setDeadlineRemainingLabel] = React.useState('--:--');
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [scoreModalOpen, setScoreModalOpen] = React.useState(false);
+  const [onlineCouriersModalOpen, setOnlineCouriersModalOpen] = React.useState(false);
+  const [onlineCouriersLoading, setOnlineCouriersLoading] = React.useState(false);
+  const [onlineCouriersMessage, setOnlineCouriersMessage] = React.useState('');
+  const [onlineCouriers, setOnlineCouriers] = React.useState([]);
+  const [openStoresModalOpen, setOpenStoresModalOpen] = React.useState(false);
+  const [openStoresLoading, setOpenStoresLoading] = React.useState(false);
+  const [openStoresMessage, setOpenStoresMessage] = React.useState('');
+  const [openStores, setOpenStores] = React.useState([]);
   const [availabilityPromptOpen, setAvailabilityPromptOpen] = React.useState(false);
   const [currentDelivery, setCurrentDelivery] = React.useState(emptyDelivery());
   const [activeDeliveries, setActiveDeliveries] = React.useState([]);
@@ -262,6 +282,7 @@ export function CourierHomeView({ city, profile, onLogout }) {
   const [courierDetailsLoading, setCourierDetailsLoading] = React.useState(false);
   const [courierDetailsMessage, setCourierDetailsMessage] = React.useState('');
   const [courierDocumentPreviews, setCourierDocumentPreviews] = React.useState({});
+  const [courierPhotoUrl, setCourierPhotoUrl] = React.useState('');
   const [selectedDeliveryDetails, setSelectedDeliveryDetails] = React.useState(null);
   const deliveryPollingRef = React.useRef(false);
   const lastLocationSyncRef = React.useRef(0);
@@ -278,7 +299,7 @@ export function CourierHomeView({ city, profile, onLogout }) {
   const countdownLabel = `${String(Math.floor(countdownRemaining / 60)).padStart(2, '0')}:${String(countdownRemaining % 60).padStart(2, '0')}`;
   const compatibleOfferCountdownLabel = `${String(Math.floor(compatibleOfferCountdown / 60)).padStart(2, '0')}:${String(compatibleOfferCountdown % 60).padStart(2, '0')}`;
   const courierLevel = Math.max(1, Math.floor(Number(courierPoints || 0) / 500) + 1);
-  const courierStars = Math.min(5, Math.max(1, Math.floor(Number(courierPoints || 0) / 250) + 1));
+  const courierStars = calculateCourierStars(courierPoints);
   const formatXpValue = (value) => (
     Number.isInteger(Number(value)) ? Number(value).toFixed(0) : Number(value).toFixed(1).replace('.', ',')
   );
@@ -525,14 +546,17 @@ export function CourierHomeView({ city, profile, onLogout }) {
             .maybeSingle(),
           supabase
             .from('couriers')
-            .select('name, availability_status')
+            .select('name, availability_status, face_photo_path')
             .eq('id', profile.courier_id)
             .maybeSingle(),
         ]);
 
+        const nextPhotoUrl = await createCourierDocumentPreviewUrl(courierData?.face_photo_path);
+
         if (mounted) {
           setCourierPoints(Number(pointsData?.total_points ?? 0));
           if (courierData?.name) setCourierName(courierData.name);
+          setCourierPhotoUrl(nextPhotoUrl);
           if (courierData?.availability_status) {
             const isAvailable = courierData.availability_status === 'available';
             setCourierAvailableState(isAvailable);
@@ -587,6 +611,9 @@ export function CourierHomeView({ city, profile, onLogout }) {
       const nextCourier = payload.new?.id === profile.courier_id ? payload.new : null;
       if (!nextCourier || stopped) return;
       if (nextCourier.name) setCourierName(nextCourier.name);
+      const nextPhotoUrl = await createCourierDocumentPreviewUrl(nextCourier.face_photo_path);
+      if (stopped) return;
+      setCourierPhotoUrl(nextPhotoUrl);
       if (nextCourier.availability_status) {
         const isAvailable = nextCourier.availability_status === 'available';
         setCourierAvailableState(isAvailable);
@@ -1140,6 +1167,99 @@ export function CourierHomeView({ city, profile, onLogout }) {
     setActivePanel('deliveries');
   }
 
+  async function openOnlineCouriersModal() {
+    setOnlineCouriersModalOpen(true);
+    setOnlineCouriersLoading(true);
+    setOnlineCouriersMessage('');
+    setOnlineCouriers([]);
+
+    if (!supabase || !city?.id) {
+      setOnlineCouriersLoading(false);
+      setOnlineCouriersMessage('Nao foi possivel buscar os motoboys on-line.');
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('couriers')
+      .select('id, name, face_photo_path')
+      .eq('city_id', city.id)
+      .eq('active', true)
+      .eq('availability_status', 'available')
+      .order('name', { ascending: true });
+
+    if (error) {
+      setOnlineCouriersLoading(false);
+      setOnlineCouriersMessage(`Nao foi possivel buscar os motoboys on-line: ${error.message}`);
+      return;
+    }
+
+    const courierIds = (data ?? []).map((courier) => courier.id).filter(Boolean);
+    const pointsByCourier = new Map();
+    if (courierIds.length) {
+      const { data: pointsData, error: pointsError } = await supabase
+        .from('courier_points')
+        .select('courier_id, total_points')
+        .in('courier_id', courierIds);
+      if (pointsError) {
+        setOnlineCouriersMessage(`Nao foi possivel buscar o XP total: ${pointsError.message}`);
+      }
+      for (const item of pointsData ?? []) pointsByCourier.set(item.courier_id, Number(item.total_points || 0));
+    }
+
+    const mappedCouriers = await Promise.all((data ?? []).map(async (courier) => {
+      const totalXp = pointsByCourier.get(courier.id) ?? 0;
+      return {
+        id: courier.id,
+        name: courier.name || 'Motoboy',
+        photoUrl: await createCourierDocumentPreviewUrl(courier.face_photo_path),
+        totalXp,
+        stars: calculateCourierStars(totalXp),
+      };
+    }));
+
+    setOnlineCouriers(mappedCouriers);
+    setOnlineCouriersLoading(false);
+    if (!mappedCouriers.length) setOnlineCouriersMessage('Nenhum motoboy on-line no momento.');
+  }
+
+  async function openOpenStoresModal() {
+    setOpenStoresModalOpen(true);
+    setOpenStoresLoading(true);
+    setOpenStoresMessage('');
+    setOpenStores([]);
+
+    if (!supabase || !city?.id) {
+      setOpenStoresLoading(false);
+      setOpenStoresMessage('Nao foi possivel buscar as lojas abertas.');
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('stores')
+      .select('id, name, fantasy_name, district, logo_url')
+      .eq('city_id', city.id)
+      .eq('active', true)
+      .eq('is_open', true)
+      .order('fantasy_name', { ascending: true });
+
+    if (error) {
+      setOpenStoresLoading(false);
+      setOpenStoresMessage(`Nao foi possivel buscar as lojas abertas: ${error.message}`);
+      return;
+    }
+
+    const mappedStores = await Promise.all((data ?? []).map(async (store) => ({
+      id: store.id,
+      name: store.fantasy_name || store.name || 'Loja',
+      district: store.district || 'Nao informado',
+      logoUrl: await createStoreLogoPreviewUrl(store.logo_url),
+    })));
+
+    setOpenStores(mappedStores);
+    setOpenStoresLoading(false);
+    if (!mappedStores.length) setOpenStoresMessage('Nenhuma loja aberta no momento.');
+  }
+
   function closeCourierDataPanel() {
     setSelectedDeliveryDetails(null);
     setActivePanel('home');
@@ -1212,7 +1332,9 @@ export function CourierHomeView({ city, profile, onLogout }) {
     <LayoutMotoboy>
       <header className="courier-app-header">
         <button className="courier-profile-card" type="button" onClick={() => setMenuOpen((current) => !current)} aria-expanded={menuOpen} aria-label="Abrir menu do motoboy">
-          <span className={`courier-photo ${courierAvailable ? 'online' : 'offline'}`}><UserRound size={30} /></span>
+          <span className={`courier-photo ${courierAvailable ? 'online' : 'offline'}`}>
+            {courierPhotoUrl ? <img src={courierPhotoUrl} alt="" /> : <UserRound size={30} />}
+          </span>
           <span className={`courier-online-dot ${courierAvailable ? 'online' : 'offline'}`} />
           <div>
             <h1>{courierName}</h1>
@@ -1259,6 +1381,105 @@ export function CourierHomeView({ city, profile, onLogout }) {
               <strong>{formatXpValue(courierPoints)}</strong>
             </article>
             <button className="primary-action" type="button" onClick={() => setScoreModalOpen(false)}>Fechar</button>
+          </section>
+        </div>
+      )}
+
+      {onlineCouriersModalOpen && (
+        <div className="courier-data-modal" role="dialog" aria-modal="true" aria-labelledby="online-couriers-title">
+          <section>
+            <header>
+              <div>
+                <span>Disponiveis agora</span>
+                <h2 id="online-couriers-title">Motoboys on-line</h2>
+              </div>
+              <button type="button" onClick={() => setOnlineCouriersModalOpen(false)}>Fechar</button>
+            </header>
+
+            <div className="courier-data-table-wrap">
+              <table className="courier-data-table online-couriers-table">
+                <thead>
+                  <tr>
+                    <th>Foto</th>
+                    <th>Nome</th>
+                    <th>XP Total</th>
+                    <th>Estrelas</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {onlineCouriers.map((courier) => (
+                    <tr key={courier.id}>
+                      <td>
+                        <span className="online-courier-photo">
+                          {courier.photoUrl ? <img src={courier.photoUrl} alt="" /> : <UserRound size={22} />}
+                        </span>
+                      </td>
+                      <td>{courier.name}</td>
+                      <td>{formatXpValue(courier.totalXp)}</td>
+                      <td>
+                        <span className="online-courier-stars" aria-label={`${courier.stars} estrelas`}>
+                          {Array.from({ length: 5 }).map((_, index) => (
+                            <Star key={index} size={18} fill={index < courier.stars ? 'currentColor' : 'none'} />
+                          ))}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                  {!onlineCouriers.length && (
+                    <tr>
+                      <td colSpan="4">{onlineCouriersLoading ? 'Buscando motoboys on-line...' : onlineCouriersMessage || 'Nenhum dado encontrado.'}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            {onlineCouriersMessage && onlineCouriers.length > 0 && (
+              <p className="courier-action-message">{onlineCouriersMessage}</p>
+            )}
+          </section>
+        </div>
+      )}
+
+      {openStoresModalOpen && (
+        <div className="courier-data-modal" role="dialog" aria-modal="true" aria-labelledby="open-stores-title">
+          <section>
+            <header>
+              <div>
+                <span>Atendendo agora</span>
+                <h2 id="open-stores-title">Lojas abertas</h2>
+              </div>
+              <button type="button" onClick={() => setOpenStoresModalOpen(false)}>Fechar</button>
+            </header>
+
+            <div className="courier-data-table-wrap">
+              <table className="courier-data-table open-stores-table">
+                <thead>
+                  <tr>
+                    <th>Logo</th>
+                    <th>Nome da loja</th>
+                    <th>Bairro</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {openStores.map((store) => (
+                    <tr key={store.id}>
+                      <td>
+                        <span className="open-store-logo">
+                          {store.logoUrl ? <img src={store.logoUrl} alt="" /> : <Store size={22} />}
+                        </span>
+                      </td>
+                      <td>{store.name}</td>
+                      <td>{store.district}</td>
+                    </tr>
+                  ))}
+                  {!openStores.length && (
+                    <tr>
+                      <td colSpan="3">{openStoresLoading ? 'Buscando lojas abertas...' : openStoresMessage || 'Nenhum dado encontrado.'}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </section>
         </div>
       )}
@@ -1374,16 +1595,16 @@ export function CourierHomeView({ city, profile, onLogout }) {
       ) : (
       <>
       <section className="courier-mini-stats" aria-label="Indicadores do motoboy">
-        <article>
+        <button className="courier-mini-stat-card" type="button" onClick={openOnlineCouriersModal}>
           <UserRound size={30} />
           <strong>{courierStats.onlineCouriers}</strong>
           <span>Motoboys on-line</span>
-        </article>
-        <article>
+        </button>
+        <button className="courier-mini-stat-card" type="button" onClick={openOpenStoresModal}>
           <Store size={30} />
           <strong>{courierStats.openStores}</strong>
           <span>Lojas abertas</span>
-        </article>
+        </button>
         <article>
           <WalletCards size={30} />
           <strong>{courierStats.todayDeliveries}</strong>
