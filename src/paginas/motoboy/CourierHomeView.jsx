@@ -384,14 +384,6 @@ export function CourierHomeView({ city, profile, onLogout }) {
         ['Endereco salvo', selectedDeliveryDetails.customers?.address],
       ],
     },
-    {
-      title: 'Eventos',
-      rows: (selectedDeliveryDetails.delivery_events?.length ? selectedDeliveryDetails.delivery_events : [])
-        .map((event) => [
-          formatDateTimeDisplay(event.created_at),
-          [event.status, event.note].filter(Boolean).join(' - '),
-        ]),
-    },
   ] : [];
 
   function renderCourierDetailValue(label, value) {
@@ -875,7 +867,7 @@ export function CourierHomeView({ city, profile, onLogout }) {
       setCompletedDeliveriesMessage('');
       const { data, error } = await supabase
         .from('deliveries')
-        .select('id, order_code, status, created_at, updated_at, delivered_at, pickup_address, delivery_address, delivery_district, delivery_complement, customer_latitude, customer_longitude, delivery_deadline_at, estimated_minutes, delivery_fee, customers(id, name, phone, address), stores(id, name, fantasy_name, responsible_name, email, whatsapp, address, address_number, district, zip_code), delivery_events(id, status, note, created_at)')
+        .select('id, order_code, status, created_at, updated_at, delivered_at, pickup_address, delivery_address, delivery_district, delivery_complement, customer_latitude, customer_longitude, delivery_deadline_at, estimated_minutes, delivery_fee, customers(id, name, phone, address), stores(id, name, fantasy_name, responsible_name, email, whatsapp, address, address_number, district, zip_code)')
         .eq('courier_id', profile.courier_id)
         .eq('status', 'delivered')
         .order('delivered_at', { ascending: false, nullsFirst: false })
