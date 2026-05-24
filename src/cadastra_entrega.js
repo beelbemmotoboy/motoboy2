@@ -903,7 +903,11 @@ async function activateNextQueueOffer({ supabase, deliveryId, offerMode }) {
 
     const activeOfferBeforeReset = await getActiveQueueOffer({ supabase, deliveryId });
     if (activeOfferBeforeReset) return { ok: true, alreadyOffered: true, offer: activeOfferBeforeReset };
-    return { ok: false, reason: 'no-waiting-courier' };
+
+    await resetQueueForRepeat({ supabase, deliveryId });
+    didResetQueue = true;
+    rows = await fetchWaitingQueueRows({ supabase, deliveryId });
+    if (!rows.length) return { ok: false, reason: 'no-waiting-courier' };
   }
 
   for (const row of rows) {

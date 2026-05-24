@@ -174,7 +174,62 @@ begin
       and dq.status = 'waiting';
   end loop;
 
-  return query select false, 'no-waiting-courier', null::uuid, null::uuid, false;
+  update public.delivery_queue as dq
+  set
+    status = 'waiting',
+    offered_at = null,
+    answered_at = null
+  where dq.delivery_id = p_delivery_id
+    and dq.status in ('expired', 'rejected', 'skipped');
+
+  if not found then
+    return query select false, 'no-waiting-courier', null::uuid, null::uuid, false;
+    return;
+  end if;
+
+  for v_next_offer in
+    select dq.id, dq.courier_id
+    from public.delivery_queue dq
+    where dq.delivery_id = p_delivery_id
+      and dq.status = 'waiting'
+    order by dq.queue_position asc, dq.created_at asc
+  loop
+    if exists (
+      select 1
+      from public.couriers c
+      where c.id = v_next_offer.courier_id
+        and c.active = true
+        and c.approval_status = 'approved'
+        and c.availability_status in ('available', 'on_delivery')
+    ) then
+      update public.delivery_queue as dq
+      set
+        status = 'offered',
+        offered_at = v_now,
+        answered_at = null
+      where dq.id = v_next_offer.id
+        and dq.status = 'waiting'
+      returning dq.id, dq.courier_id, dq.offered_at
+      into v_marked_offer;
+
+      if found then
+        return query select true, 'offered-repeat', v_marked_offer.id, v_marked_offer.courier_id, true;
+        return;
+      end if;
+
+      return query select false, 'offer-already-advanced', null::uuid, null::uuid, false;
+      return;
+    end if;
+
+    update public.delivery_queue as dq
+    set
+      status = 'skipped',
+      answered_at = coalesce(dq.answered_at, v_now)
+    where dq.id = v_next_offer.id
+      and dq.status = 'waiting';
+  end loop;
+
+  return query select false, 'no-online-courier', null::uuid, null::uuid, true;
 end;
 $$;
 
