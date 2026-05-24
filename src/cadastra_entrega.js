@@ -817,7 +817,7 @@ async function advanceDeliveryOfferQueueRpc({ supabase, deliveryId }) {
 }
 
 async function getDeliveryOfferMode({ supabase, deliveryId }) {
-  const [{ data: delivery, error: deliveryError }, { count: attemptCount, error: attemptsError }] = await Promise.all([
+  const [{ data: delivery, error: deliveryError }, { data: queueAttempts, error: attemptsError }] = await Promise.all([
     supabase
       .from('deliveries')
       .select('id, created_at, status')
@@ -825,7 +825,7 @@ async function getDeliveryOfferMode({ supabase, deliveryId }) {
       .maybeSingle(),
     supabase
       .from('delivery_queue')
-      .select('id', { count: 'exact', head: true })
+      .select('id, offered_at')
       .eq('delivery_id', deliveryId)
       .not('offered_at', 'is', null),
   ]);
@@ -835,11 +835,16 @@ async function getDeliveryOfferMode({ supabase, deliveryId }) {
 
   const createdAt = delivery?.created_at ? new Date(delivery.created_at).getTime() : Date.now();
   const ageSeconds = Math.max(0, Math.floor((Date.now() - createdAt) / 1000));
-  const attempts = Number(attemptCount ?? 0);
+  const attempts = (queueAttempts ?? []).length;
+  const broadcastStartTime = createdAt + DELIVERY_BROADCAST_AFTER_SECONDS * 1000;
+  const broadcastAttempted = (queueAttempts ?? []).some((row) => (
+    row.offered_at && new Date(row.offered_at).getTime() >= broadcastStartTime
+  ));
   const broadcast = ageSeconds >= DELIVERY_BROADCAST_AFTER_SECONDS || attempts >= DELIVERY_INDIVIDUAL_OFFER_LIMIT;
 
   return {
     broadcast,
+    broadcastAttempted,
     ageSeconds,
     attempts,
     delivery,
@@ -865,6 +870,10 @@ async function getActiveQueueOffer({ supabase, deliveryId }) {
 }
 
 async function activateQueueOffersByMode({ supabase, deliveryId, offerMode }) {
+  if (offerMode?.broadcast && offerMode.broadcastAttempted) {
+    return { ok: false, reason: 'broadcast-expired', broadcast: true, attempts: offerMode.attempts };
+  }
+
   return offerMode?.broadcast
     ? activateBroadcastQueueOffers({ supabase, deliveryId, offerMode })
     : activateNextQueueOffer({ supabase, deliveryId, offerMode });
@@ -878,6 +887,10 @@ async function activateNextQueueOffer({ supabase, deliveryId, offerMode }) {
   let didResetQueue = false;
   if (!rows.length) {
     if ((offerMode?.attempts ?? 0) >= DELIVERY_INDIVIDUAL_OFFER_LIMIT) {
+      if (offerMode?.broadcastAttempted) {
+        return { ok: false, reason: 'broadcast-expired', broadcast: true, attempts: offerMode.attempts };
+      }
+
       return activateBroadcastQueueOffers({ supabase, deliveryId, offerMode: { ...offerMode, broadcast: true } });
     }
 

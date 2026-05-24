@@ -48,6 +48,10 @@ Deno.serve(async (request) => {
     }
 
     if (offerMode.broadcast) {
+      if (offerMode.broadcastAttempted) {
+        return json({ notified: 0, skipped: 'broadcast_expired', broadcast: true });
+      }
+
       const offers = await markBroadcastQueueOffers({ supabaseUrl, serviceRoleKey, deliveryId });
       if (!offers.length) return json({ notified: 0, skipped: 'no_online_waiting_courier', broadcast: true });
 
@@ -101,7 +105,7 @@ async function fetchDeliveryOfferMode({ supabaseUrl, serviceRoleKey, deliveryId,
   serviceRoleKey: string;
   deliveryId: string;
   offerTimeoutSeconds: number;
-}): Promise<{ broadcast: boolean; ageSeconds: number; attempts: number }> {
+}): Promise<{ broadcast: boolean; broadcastAttempted: boolean; ageSeconds: number; attempts: number }> {
   const deliveryUrl = new URL(`${supabaseUrl}/rest/v1/deliveries`);
   deliveryUrl.searchParams.set('select', 'id,created_at');
   deliveryUrl.searchParams.set('id', `eq.${deliveryId}`);
@@ -114,21 +118,23 @@ async function fetchDeliveryOfferMode({ supabaseUrl, serviceRoleKey, deliveryId,
   const ageSeconds = Math.max(0, Math.floor((Date.now() - createdAt) / 1000));
 
   const attemptsUrl = new URL(`${supabaseUrl}/rest/v1/delivery_queue`);
-  attemptsUrl.searchParams.set('select', 'id');
+  attemptsUrl.searchParams.set('select', 'id,offered_at');
   attemptsUrl.searchParams.set('delivery_id', `eq.${deliveryId}`);
   attemptsUrl.searchParams.set('offered_at', 'not.is.null');
 
-  const attemptsResponse = await fetch(attemptsUrl, {
-    method: 'HEAD',
-    headers: { ...serviceHeaders(serviceRoleKey), Prefer: 'count=exact' },
-  });
+  const attemptsResponse = await fetch(attemptsUrl, { headers: serviceHeaders(serviceRoleKey) });
   if (!attemptsResponse.ok) throw new Error(`Could not count delivery offer attempts: ${await attemptsResponse.text()}`);
-  const contentRange = attemptsResponse.headers.get('content-range') || '';
-  const attempts = Number(contentRange.split('/')[1] || 0);
+  const queueAttempts = await attemptsResponse.json() as Array<{ id: string; offered_at: string | null }>;
+  const attempts = queueAttempts.length;
   const broadcastAfterSeconds = INDIVIDUAL_OFFER_LIMIT * Number(offerTimeoutSeconds || 60);
+  const broadcastStartTime = createdAt + broadcastAfterSeconds * 1000;
+  const broadcastAttempted = queueAttempts.some((row) => (
+    row.offered_at && new Date(row.offered_at).getTime() >= broadcastStartTime
+  ));
 
   return {
     broadcast: ageSeconds >= broadcastAfterSeconds || attempts >= INDIVIDUAL_OFFER_LIMIT,
+    broadcastAttempted,
     ageSeconds,
     attempts,
   };
