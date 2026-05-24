@@ -29,6 +29,9 @@ const metricIcons = {
   clock: Clock3,
 };
 
+const ACTIVE_DELIVERY_STATUSES = ['pending', 'assigned', 'picked_up', 'on_route'];
+const ACTIVE_DELIVERY_SELECT = 'id, order_code, delivery_district, delivery_deadline_at, estimated_minutes, status, created_at, stores(name, fantasy_name), couriers(name)';
+
 function initials(name) {
   return String(name || 'BB')
     .split(' ')
@@ -49,6 +52,40 @@ function calculateCourierStars(value) {
 
 function formatXpValue(value) {
   return Number.isInteger(Number(value)) ? Number(value).toFixed(0) : Number(value).toFixed(1).replace('.', ',');
+}
+
+function formatDeliveryEta(delivery) {
+  if (delivery.delivery_deadline_at) {
+    const remaining = Math.ceil((new Date(delivery.delivery_deadline_at).getTime() - Date.now()) / 60000);
+    if (Number.isFinite(remaining)) return `${Math.max(0, remaining)} min`;
+  }
+
+  const estimated = Number(delivery.estimated_minutes);
+  if (Number.isFinite(estimated)) return `${Math.max(0, Math.round(estimated))} min`;
+  return '--';
+}
+
+function deliveryStatusView(status, deadlineAt) {
+  const deadline = deadlineAt ? new Date(deadlineAt).getTime() : null;
+  if (deadline && Number.isFinite(deadline) && deadline < Date.now() && status !== 'delivered') {
+    return { label: 'Atraso', tone: 'red' };
+  }
+  if (status === 'assigned') return { label: 'A caminho da loja', tone: 'green' };
+  if (['picked_up', 'on_route'].includes(status)) return { label: 'Indo para o cliente', tone: 'yellow' };
+  return { label: 'Aguardando aceite', tone: 'gray' };
+}
+
+function mapActiveDelivery(delivery) {
+  const status = deliveryStatusView(delivery.status, delivery.delivery_deadline_at);
+  return {
+    code: delivery.order_code || `#${String(delivery.id || '').slice(0, 6).toUpperCase()}`,
+    store: delivery.stores?.fantasy_name || delivery.stores?.name || 'Loja',
+    courier: delivery.couriers?.name || 'Sem motoboy',
+    district: delivery.delivery_district || 'Bairro nao informado',
+    status: status.label,
+    eta: formatDeliveryEta(delivery),
+    tone: status.tone,
+  };
 }
 
 async function createCourierDocumentPreviewUrl(path) {
@@ -142,12 +179,12 @@ function OverviewMap({ data }) {
   );
 }
 
-function ActiveDeliveriesTable({ rows }) {
+function ActiveDeliveriesTable({ rows, loading, message, onRefresh }) {
   return (
     <section className="overview-panel overview-side-list" aria-labelledby="overview-active-title">
       <header>
         <h2 id="overview-active-title">Entregas em curso</h2>
-        <button type="button">Ver todas</button>
+        <button type="button" onClick={onRefresh}>Ver todas</button>
       </header>
       <div className="overview-delivery-list">
         {rows.map((row) => (
@@ -163,6 +200,11 @@ function ActiveDeliveriesTable({ rows }) {
             <em>ETA {row.eta}</em>
           </article>
         ))}
+        {!rows.length && (
+          <p className="overview-empty-state">
+            {loading ? 'Buscando entregas em curso...' : message || 'Nenhuma entrega em curso.'}
+          </p>
+        )}
       </div>
     </section>
   );
@@ -344,10 +386,49 @@ export function Overview({ city, stores = [], couriers = [] }) {
   const [onlineCouriersLoading, setOnlineCouriersLoading] = React.useState(false);
   const [onlineCouriersMessage, setOnlineCouriersMessage] = React.useState('');
   const [onlineCouriers, setOnlineCouriers] = React.useState([]);
+  const [activeDeliveries, setActiveDeliveries] = React.useState([]);
+  const [activeDeliveriesLoading, setActiveDeliveriesLoading] = React.useState(false);
+  const [activeDeliveriesMessage, setActiveDeliveriesMessage] = React.useState('');
   const overview = React.useMemo(
     () => buildOverviewData({ city, stores, couriers }),
     [city, stores, couriers],
   );
+
+  const loadActiveDeliveries = React.useCallback(async () => {
+    setActiveDeliveriesLoading(true);
+    setActiveDeliveriesMessage('');
+
+    if (!supabase || !city?.id) {
+      setActiveDeliveries([]);
+      setActiveDeliveriesLoading(false);
+      setActiveDeliveriesMessage('Nao foi possivel buscar as entregas em curso.');
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('deliveries')
+      .select(ACTIVE_DELIVERY_SELECT)
+      .eq('city_id', city.id)
+      .in('status', ACTIVE_DELIVERY_STATUSES)
+      .order('created_at', { ascending: true })
+      .limit(12);
+
+    if (error) {
+      setActiveDeliveries([]);
+      setActiveDeliveriesLoading(false);
+      setActiveDeliveriesMessage(`Nao foi possivel buscar as entregas em curso: ${error.message}`);
+      return;
+    }
+
+    const mappedDeliveries = (data ?? []).map(mapActiveDelivery);
+    setActiveDeliveries(mappedDeliveries);
+    setActiveDeliveriesLoading(false);
+    setActiveDeliveriesMessage(mappedDeliveries.length ? '' : 'Nenhuma entrega em curso no momento.');
+  }, [city?.id]);
+
+  React.useEffect(() => {
+    loadActiveDeliveries();
+  }, [loadActiveDeliveries]);
 
   async function mapLocalOnlineCouriers() {
     const localRows = couriers.filter(isOnlineCourier);
@@ -427,7 +508,12 @@ export function Overview({ city, stores = [], couriers = [] }) {
       <section className="overview-main-grid">
         <OverviewMap data={overview} />
         <aside className="overview-right-rail">
-          <ActiveDeliveriesTable rows={overview.activeDeliveries} />
+          <ActiveDeliveriesTable
+            rows={activeDeliveries}
+            loading={activeDeliveriesLoading}
+            message={activeDeliveriesMessage}
+            onRefresh={loadActiveDeliveries}
+          />
           <OnlineCouriersTable rows={overview.onlineCouriers} onViewAll={openOnlineCouriersModal} />
           <AlertsTable rows={overview.alerts} />
         </aside>
