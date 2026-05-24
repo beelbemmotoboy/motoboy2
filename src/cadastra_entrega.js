@@ -931,6 +931,10 @@ async function activateNextQueueOffer({ supabase, deliveryId, offerMode }) {
       throw new Error(`Nao foi possivel oferecer entrega: ${error.message}`);
     }
     if (offer) return { ok: true, offer, repeated: didResetQueue };
+
+    const activeOffer = await getActiveQueueOffer({ supabase, deliveryId });
+    if (activeOffer) return { ok: true, alreadyOffered: true, offer: activeOffer };
+    return { ok: false, reason: 'offer-already-advanced' };
   }
 
   return { ok: false, reason: 'no-online-courier' };
