@@ -73,6 +73,10 @@ function initials(name) {
     .toUpperCase();
 }
 
+function firstName(name, fallback = 'Sem motoboy') {
+  return String(name || fallback).trim().split(/\s+/)[0] || fallback;
+}
+
 function StatusDot({ tone }) {
   return <span className={`overview-status-dot ${tone}`} />;
 }
@@ -108,10 +112,13 @@ function deliveryStatusView(status, deadlineAt) {
 
 function mapActiveDelivery(delivery) {
   const status = deliveryStatusView(delivery.status, delivery.delivery_deadline_at);
+  const courier = delivery.couriers?.name || '';
   return {
+    id: delivery.id,
     code: delivery.order_code || `#${String(delivery.id || '').slice(0, 6).toUpperCase()}`,
     store: delivery.stores?.fantasy_name || delivery.stores?.name || 'Loja',
-    courier: delivery.couriers?.name || 'Sem motoboy',
+    courier: courier || 'Sem motoboy',
+    courierFirstName: firstName(courier),
     district: delivery.delivery_district || 'Bairro nao informado',
     status: status.label,
     eta: formatDeliveryEta(delivery),
@@ -314,7 +321,7 @@ function buildMapMarkers(activeRows, couriers) {
       x: position.x,
       y: position.y,
       tone: deliveryStatusView(delivery.status, delivery.delivery_deadline_at).tone,
-      label: delivery.courier_id ? makeCourierDisplayCode(delivery.courier_id, index) : 'Pedido',
+      label: delivery.couriers?.name ? firstName(delivery.couriers.name) : 'Pedido',
     };
   });
 
@@ -328,7 +335,7 @@ function buildMapMarkers(activeRows, couriers) {
         x: position.x,
         y: position.y,
         tone: 'green',
-        label: courier.displayCode || makeCourierDisplayCode(courier.id, index),
+        label: firstName(courier.fullName || courier.name, courier.displayCode || makeCourierDisplayCode(courier.id, index)),
       };
     });
 
@@ -432,14 +439,9 @@ function ActiveDeliveriesTable({ rows, loading, message, onRefresh }) {
         {rows.map((row) => (
           <article key={row.code}>
             <StatusDot tone={row.tone} />
-            <strong>{row.code}</strong>
-            <div>
-              <span>{row.store}</span>
-              <small>{row.courier}</small>
-            </div>
+            <a href="#overview" onClick={(event) => event.preventDefault()} aria-label={`Abrir pedido ${row.code}`}>{row.code}</a>
+            <strong>{row.courierFirstName || firstName(row.courier)}</strong>
             <span>{row.district}</span>
-            <mark className={row.tone}>{row.status}</mark>
-            <em>ETA {row.eta}</em>
           </article>
         ))}
         {!rows.length && (

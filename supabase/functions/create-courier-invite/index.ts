@@ -99,18 +99,23 @@ serve(async (request) => {
     return json({ error: 'You cannot create couriers for this city' }, 403);
   }
 
+  const courierPayload = {
+    ...courier,
+    approval_status: courier.approval_status || 'approved',
+    active: true,
+  };
+
+  if (!existingCourierId) {
+    delete courierPayload.id;
+  }
+
   const courierMutation = existingCourierId
     ? adminClient
         .from('couriers')
-        .update({
-          ...courier,
-          approval_status: courier.approval_status || 'approved',
-          active: true,
-        })
-        .eq('id', existingCourierId)
+        .upsert(courierPayload, { onConflict: 'id' })
     : adminClient
         .from('couriers')
-        .insert(courier);
+        .insert(courierPayload);
 
   const { data: createdCourier, error: courierError } = await courierMutation
     .select('id, city_id, name, birth_date, cpf, phone, email, face_photo_path, whatsapp_validated, vehicle_type, vehicle_plate, pix_key, pix_key_type, pix_holder_name, vehicle_notes, crlv_file_path, cnh_file_path, cnh_valid_until, internal_notes, approval_status, availability_status, rating, active')
