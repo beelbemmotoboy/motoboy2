@@ -1,4 +1,4 @@
-const CACHE_NAME = 'beelbem-motoboy-v2';
+const CACHE_NAME = 'beelbem-motoboy-v3';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/beelbem-icon.png'];
 
 self.addEventListener('install', (event) => {
