@@ -39,7 +39,7 @@ const metricIcons = {
 };
 
 const ACTIVE_DELIVERY_STATUSES = ['pending', 'assigned', 'picked_up', 'on_route'];
-const ACTIVE_DELIVERY_SELECT = 'id, order_code, courier_id, delivery_district, delivery_deadline_at, estimated_minutes, status, created_at, stores(name, fantasy_name), couriers(id, name, rating)';
+const ACTIVE_DELIVERY_SELECT = 'id, order_code, courier_id, delivery_district, delivery_deadline_at, estimated_minutes, status, created_at, updated_at, customers(name), stores(name, fantasy_name), couriers(id, name, rating)';
 const TODAY_DELIVERY_SELECT = 'id, order_code, courier_id, status, delivery_district, delivery_deadline_at, estimated_minutes, delivery_fee, delivered_at, created_at, updated_at, customers(name), stores(name, fantasy_name), couriers(id, name, rating)';
 const STORE_SELECT = 'id, city_id, name, fantasy_name, active, is_open, logo_url, district';
 const COURIER_SELECT = 'id, city_id, name, face_photo_path, availability_status, rating, active';
@@ -122,13 +122,19 @@ function deliveryStatusView(status, deadlineAt) {
 function mapActiveDelivery(delivery) {
   const status = deliveryStatusView(delivery.status, delivery.delivery_deadline_at);
   const courier = delivery.couriers?.name || '';
+  const createdParts = formatShortDateTime(delivery.created_at);
+  const rawCode = delivery.order_code || String(delivery.id || '').slice(0, 6).toUpperCase();
   return {
     id: delivery.id,
-    code: delivery.order_code || `#${String(delivery.id || '').slice(0, 6).toUpperCase()}`,
+    code: String(rawCode).startsWith('PED-') ? rawCode : `PED-${rawCode}`,
     store: delivery.stores?.fantasy_name || delivery.stores?.name || 'Loja',
     courier: courier || 'Sem motoboy',
     courierFirstName: firstName(courier),
+    customer: delivery.customers?.name || 'Cliente nao informado',
     district: delivery.delivery_district || 'Bairro nao informado',
+    startedDate: createdParts.date,
+    startedTime: createdParts.time,
+    dateKey: createdParts.dateKey,
     status: status.label,
     eta: formatDeliveryEta(delivery),
     tone: status.tone,
@@ -535,12 +541,12 @@ function OverviewMap({ data }) {
   );
 }
 
-function ActiveDeliveriesTable({ rows, loading, message, onRefresh }) {
+function ActiveDeliveriesTable({ rows, loading, message, onViewAll }) {
   return (
     <section className="overview-panel overview-side-list" aria-labelledby="overview-active-title">
       <header>
         <h2 id="overview-active-title">Entregas em curso</h2>
-        <button type="button" onClick={() => onRefresh()}>Ver todas</button>
+        <button type="button" onClick={onViewAll}>Ver todas</button>
       </header>
       <div className="overview-delivery-list">
         {rows.map((row) => (
@@ -558,6 +564,56 @@ function ActiveDeliveriesTable({ rows, loading, message, onRefresh }) {
         )}
       </div>
     </section>
+  );
+}
+
+function ActiveDeliveriesModal({ rows, loading, message, updatedAt, onClose }) {
+  return (
+    <div className="courier-data-modal completed-deliveries-modal active-deliveries-modal" role="dialog" aria-modal="true" aria-labelledby="overview-all-active-deliveries-title">
+      <section>
+        <header className="completed-deliveries-header">
+          <div>
+            <span>Entregas</span>
+            <h2 id="overview-all-active-deliveries-title">Entregas em curso</h2>
+          </div>
+          <button type="button" onClick={onClose}><X size={19} />Fechar</button>
+        </header>
+
+        <div className="completed-deliveries-list" aria-label="Lista de entregas em curso">
+          {rows.map((delivery) => (
+            <article key={delivery.id} className="completed-delivery-row active-delivery-modal-row">
+              <span className={`completed-delivery-icon ${delivery.tone}`}><Package size={22} /></span>
+              <div className="completed-delivery-main">
+                <strong>{delivery.store}</strong>
+                <p>
+                  <span><Clock3 size={15} />{delivery.startedDate}, {delivery.startedTime}</span>
+                  <i />
+                  <span><User size={15} />{delivery.customer}</span>
+                  <i />
+                  <span><MapPin size={15} />{delivery.district}</span>
+                </p>
+              </div>
+              <span className="active-delivery-status">{delivery.status}</span>
+              <span className="completed-delivery-code">{delivery.code}</span>
+              <ChevronRight className="completed-delivery-arrow" size={24} />
+            </article>
+          ))}
+          {!rows.length && (
+            <p className="completed-deliveries-empty">
+              {loading ? 'Buscando entregas em curso...' : message || 'Nenhuma entrega em curso no momento.'}
+            </p>
+          )}
+        </div>
+
+        <footer className="completed-deliveries-footer">
+          <span><RefreshCcw size={18} />{formatUpdatedLabel(updatedAt)}</span>
+          <strong>Total: <b>{rows.length}</b> entregas</strong>
+        </footer>
+        {message && rows.length > 0 && (
+          <p className="completed-deliveries-message">{message}</p>
+        )}
+      </section>
+    </div>
   );
 }
 
@@ -772,6 +828,20 @@ async function fetchCompletedDeliveriesForPeriod({ cityId, startDate, endDate })
   return (data ?? []).map(mapCompletedDelivery);
 }
 
+async function fetchAllActiveDeliveries({ cityId }) {
+  if (!supabase || !cityId) throw new Error('Selecione uma cidade para listar as entregas em curso.');
+
+  const { data, error } = await supabase
+    .from('deliveries')
+    .select(ACTIVE_DELIVERY_SELECT)
+    .eq('city_id', cityId)
+    .in('status', ACTIVE_DELIVERY_STATUSES)
+    .order('created_at', { ascending: true });
+
+  if (error) throw new Error(`Nao foi possivel buscar todas as entregas em curso: ${error.message}`);
+  return (data ?? []).map(mapActiveDelivery);
+}
+
 function AlertsTable({ rows }) {
   return (
     <section className="overview-panel overview-alerts" aria-labelledby="overview-alerts-title">
@@ -889,6 +959,11 @@ export function Overview({ city, stores = [], couriers = [] }) {
   const [activeDeliveries, setActiveDeliveries] = React.useState([]);
   const [activeDeliveriesLoading, setActiveDeliveriesLoading] = React.useState(false);
   const [activeDeliveriesMessage, setActiveDeliveriesMessage] = React.useState('');
+  const [allActiveDeliveriesModalOpen, setAllActiveDeliveriesModalOpen] = React.useState(false);
+  const [allActiveDeliveries, setAllActiveDeliveries] = React.useState([]);
+  const [allActiveDeliveriesLoading, setAllActiveDeliveriesLoading] = React.useState(false);
+  const [allActiveDeliveriesMessage, setAllActiveDeliveriesMessage] = React.useState('');
+  const [allActiveDeliveriesUpdatedAt, setAllActiveDeliveriesUpdatedAt] = React.useState(null);
   const [overviewAlerts, setOverviewAlerts] = React.useState([]);
   const [hourlyDeliveries, setHourlyDeliveries] = React.useState(EMPTY_HOURLY_DELIVERIES);
   const [statusDistribution, setStatusDistribution] = React.useState(() => buildStatusDistribution([], []));
@@ -967,11 +1042,11 @@ export function Overview({ city, stores = [], couriers = [] }) {
         .order('created_at', { ascending: false }),
       supabase
         .from('deliveries')
-        .select(ACTIVE_DELIVERY_SELECT)
+        .select(ACTIVE_DELIVERY_SELECT, { count: 'exact' })
         .eq('city_id', city.id)
         .in('status', ACTIVE_DELIVERY_STATUSES)
         .order('created_at', { ascending: true })
-        .limit(20),
+        .limit(6),
       supabase
         .from('deliveries')
         .select(TODAY_DELIVERY_SELECT)
@@ -992,6 +1067,7 @@ export function Overview({ city, stores = [], couriers = [] }) {
 
     const storeRows = storesResult.error ? stores : (storesResult.data ?? []).map(mapStoreFromDb);
     const activeRows = activeDeliveriesResult.error ? [] : (activeDeliveriesResult.data ?? []);
+    const activeDeliveriesTotal = activeDeliveriesResult.error ? activeRows.length : Number(activeDeliveriesResult.count ?? activeRows.length);
     const todayRows = todayDeliveriesResult.error ? [] : (todayDeliveriesResult.data ?? []);
     const countedTodayRows = todayRows.filter((delivery) => delivery.status !== 'cancelled');
     const completedRows = todayRows.filter((delivery) => delivery.status === 'delivered');
@@ -1022,7 +1098,7 @@ export function Overview({ city, stores = [], couriers = [] }) {
       ...city,
       activeStores: storeRows.filter((store) => store.active !== false).length,
       availableCouriers: courierRows.filter(isOnlineCourier).length,
-      activeDeliveries: activeRows.length,
+      activeDeliveries: activeDeliveriesTotal,
       revenueToday,
       averageDeliveryMinutes: averageDeliveryMinutes(countedTodayRows),
       metrics: [
@@ -1188,6 +1264,32 @@ export function Overview({ city, stores = [], couriers = [] }) {
     }
   }
 
+  async function openAllActiveDeliveriesModal() {
+    setAllActiveDeliveriesModalOpen(true);
+    setAllActiveDeliveriesLoading(true);
+    setAllActiveDeliveriesMessage('');
+    setAllActiveDeliveries([]);
+
+    if (!supabase || !city?.id) {
+      setAllActiveDeliveries(activeDeliveries);
+      setAllActiveDeliveriesLoading(false);
+      setAllActiveDeliveriesUpdatedAt(new Date().toISOString());
+      setAllActiveDeliveriesMessage(activeDeliveries.length ? 'Mostrando dados locais das entregas em curso.' : 'Nenhuma entrega em curso no momento.');
+      return;
+    }
+
+    try {
+      const rows = await fetchAllActiveDeliveries({ cityId: city.id });
+      setAllActiveDeliveries(rows);
+      setAllActiveDeliveriesMessage(rows.length ? '' : 'Nenhuma entrega em curso no momento.');
+      setAllActiveDeliveriesUpdatedAt(new Date().toISOString());
+    } catch (error) {
+      setAllActiveDeliveriesMessage(error.message);
+    } finally {
+      setAllActiveDeliveriesLoading(false);
+    }
+  }
+
   async function loadCompletedDeliveriesForPeriod(startDate, endDate) {
     const { startDate: normalizedStart, endDate: normalizedEnd } = normalizeDateRange(startDate, endDate);
     setCompletedDeliveriesStartDate(normalizedStart);
@@ -1245,7 +1347,7 @@ export function Overview({ city, stores = [], couriers = [] }) {
             rows={activeDeliveries}
             loading={activeDeliveriesLoading}
             message={activeDeliveriesMessage}
-            onRefresh={loadOverviewData}
+            onViewAll={openAllActiveDeliveriesModal}
           />
           <OnlineCouriersTable rows={overview.onlineCouriers} onViewAll={openOnlineCouriersModal} />
           <AlertsTable rows={overview.alerts} />
@@ -1272,6 +1374,15 @@ export function Overview({ city, stores = [], couriers = [] }) {
           loading={openStoresLoading}
           message={openStoresMessage}
           onClose={() => setOpenStoresModalOpen(false)}
+        />
+      )}
+      {allActiveDeliveriesModalOpen && (
+        <ActiveDeliveriesModal
+          rows={allActiveDeliveries}
+          loading={allActiveDeliveriesLoading}
+          message={allActiveDeliveriesMessage}
+          updatedAt={allActiveDeliveriesUpdatedAt}
+          onClose={() => setAllActiveDeliveriesModalOpen(false)}
         />
       )}
       {completedDeliveriesModalOpen && (

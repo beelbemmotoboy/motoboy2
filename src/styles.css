@@ -2997,6 +2997,10 @@ button, a {
   background: rgba(1, 24, 12, 0.66);
 }
 
+.active-delivery-modal-row {
+  grid-template-columns: 52px minmax(0, 1fr) auto auto 22px;
+}
+
 .completed-delivery-icon {
   width: 46px;
   height: 46px;
@@ -3006,6 +3010,24 @@ button, a {
   place-items: center;
   color: #22f04b;
   background: rgba(32, 212, 90, 0.1);
+}
+
+.completed-delivery-icon.yellow {
+  color: #ffd200;
+  border-color: rgba(255, 210, 0, 0.86);
+  background: rgba(255, 210, 0, 0.1);
+}
+
+.completed-delivery-icon.red {
+  color: #ff4949;
+  border-color: rgba(255, 73, 73, 0.86);
+  background: rgba(255, 73, 73, 0.1);
+}
+
+.completed-delivery-icon.gray {
+  color: #a1a5ad;
+  border-color: rgba(161, 165, 173, 0.78);
+  background: rgba(161, 165, 173, 0.1);
 }
 
 .completed-delivery-main {
@@ -3064,6 +3086,18 @@ button, a {
   color: rgba(255, 255, 255, 0.66);
   font-size: 17px;
   font-weight: 750;
+  white-space: nowrap;
+}
+
+.active-delivery-status {
+  min-height: 26px;
+  border: 1px solid rgba(32, 212, 90, 0.28);
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: #22f04b;
+  background: rgba(32, 212, 90, 0.08);
+  font-size: 12px;
+  font-weight: 900;
   white-space: nowrap;
 }
 
