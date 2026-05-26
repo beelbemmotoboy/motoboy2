@@ -4,19 +4,28 @@ import {
   AlertTriangle,
   Bike,
   BriefcaseBusiness,
+  CalendarDays,
   CheckCircle2,
+  ChevronRight,
   Clock3,
   Layers,
   LocateFixed,
+  MapPin,
   Minus,
+  Package,
   Plus,
+  RefreshCcw,
   Star,
   Store,
+  User,
   UserRound,
   WalletCards,
+  X,
 } from 'lucide-react';
 import { supabase } from '../../../supabaseClient';
+import { fetchOpenStores, mapOpenStoresFromLocal, OpenStoresModal } from '../../../components/OpenStoresModal';
 import { buildOverviewData } from './overviewData';
+import { formatCurrency } from './overviewFormatters';
 
 const metricIcons = {
   briefcase: BriefcaseBusiness,
@@ -31,7 +40,7 @@ const metricIcons = {
 
 const ACTIVE_DELIVERY_STATUSES = ['pending', 'assigned', 'picked_up', 'on_route'];
 const ACTIVE_DELIVERY_SELECT = 'id, order_code, courier_id, delivery_district, delivery_deadline_at, estimated_minutes, status, created_at, stores(name, fantasy_name), couriers(id, name, rating)';
-const TODAY_DELIVERY_SELECT = 'id, order_code, courier_id, status, delivery_deadline_at, estimated_minutes, delivery_fee, delivered_at, created_at, updated_at, stores(name, fantasy_name), couriers(id, name, rating)';
+const TODAY_DELIVERY_SELECT = 'id, order_code, courier_id, status, delivery_district, delivery_deadline_at, estimated_minutes, delivery_fee, delivered_at, created_at, updated_at, customers(name), stores(name, fantasy_name), couriers(id, name, rating)';
 const STORE_SELECT = 'id, city_id, name, fantasy_name, active, is_open, logo_url, district';
 const COURIER_SELECT = 'id, city_id, name, face_photo_path, availability_status, rating, active';
 const EMPTY_HOURLY_DELIVERIES = Array.from({ length: 24 }, () => 0);
@@ -123,6 +132,77 @@ function mapActiveDelivery(delivery) {
     status: status.label,
     eta: formatDeliveryEta(delivery),
     tone: status.tone,
+  };
+}
+
+function formatDateTimeDisplay(value) {
+  if (!value) return 'Nao informado';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Nao informado';
+  return date.toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatDateInputValue(date = new Date()) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function formatShortDateTime(value) {
+  if (!value) return { date: '--/--', time: '--:--', dateKey: '' };
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return { date: '--/--', time: '--:--', dateKey: '' };
+  return {
+    date: date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+    time: date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+    dateKey: formatDateInputValue(date),
+  };
+}
+
+function formatDateFilterLabel(value) {
+  if (!value) return 'Selecionar data';
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  if (Number.isNaN(date.getTime())) return 'Selecionar data';
+  return date.toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).replace('.', '');
+}
+
+function formatUpdatedLabel(value) {
+  if (!value) return 'Atualizado agora';
+  const minutes = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 60000));
+  if (!Number.isFinite(minutes) || minutes < 1) return 'Atualizado agora';
+  return `Atualizado ha ${minutes} min`;
+}
+
+function mapCompletedDelivery(delivery) {
+  const finished = delivery.delivered_at || delivery.updated_at || delivery.created_at;
+  const finishedParts = formatShortDateTime(finished);
+  const rawCode = delivery.order_code || String(delivery.id || '').slice(0, 6).toUpperCase();
+  return {
+    id: delivery.id,
+    code: String(rawCode).startsWith('PED-') ? rawCode : `PED-${rawCode}`,
+    store: delivery.stores?.fantasy_name || delivery.stores?.name || 'Loja nao informada',
+    courier: delivery.couriers?.name || 'Sem motoboy',
+    customer: delivery.customers?.name || 'Cliente nao informado',
+    district: delivery.delivery_district || 'Bairro nao informado',
+    finishedAt: formatDateTimeDisplay(finished),
+    finishedDate: finishedParts.date,
+    finishedTime: finishedParts.time,
+    dateKey: finishedParts.dateKey,
+    duration: minutesBetween(delivery.created_at, finished),
+    fee: formatCurrency(delivery.delivery_fee),
   };
 }
 
@@ -349,7 +429,7 @@ function buildMapRoutes(activeRows) {
   }));
 }
 
-function MetricCard({ metric, onOpenOnlineCouriers }) {
+function MetricCard({ metric, onOpenOnlineCouriers, onOpenStores, onOpenCompletedDeliveries }) {
   const Icon = metricIcons[metric.icon] || Activity;
   const content = (
     <>
@@ -358,6 +438,7 @@ function MetricCard({ metric, onOpenOnlineCouriers }) {
         <p>{metric.label}</p>
         <strong>{metric.value}</strong>
         <small>{metric.trend}</small>
+        {metric.id === 'stores' && <span className="overview-metric-cta">Ver lojistas</span>}
       </div>
     </>
   );
@@ -369,6 +450,32 @@ function MetricCard({ metric, onOpenOnlineCouriers }) {
         type="button"
         onClick={onOpenOnlineCouriers}
         aria-label="Ver todos os motoboys online"
+      >
+        {content}
+      </button>
+    );
+  }
+
+  if (metric.id === 'stores') {
+    return (
+      <button
+        className={`overview-metric overview-metric-action ${metric.tone}`}
+        type="button"
+        onClick={onOpenStores}
+        aria-label="Ver lojas abertas"
+      >
+        {content}
+      </button>
+    );
+  }
+
+  if (metric.id === 'completed') {
+    return (
+      <button
+        className={`overview-metric overview-metric-action ${metric.tone}`}
+        type="button"
+        onClick={onOpenCompletedDeliveries}
+        aria-label="Ver entregas concluidas hoje"
       >
         {content}
       </button>
@@ -539,6 +646,132 @@ function OnlineCouriersModal({ rows, loading, message, onClose }) {
   );
 }
 
+function CompletedDeliveriesModal({
+  rows,
+  loading,
+  message,
+  startDate,
+  endDate,
+  updatedAt,
+  onStartDateChange,
+  onEndDateChange,
+  onClose,
+}) {
+  return (
+    <div className="courier-data-modal completed-deliveries-modal" role="dialog" aria-modal="true" aria-labelledby="overview-completed-deliveries-title">
+      <section>
+        <header className="completed-deliveries-header">
+          <div>
+            <span>Entregas</span>
+            <h2 id="overview-completed-deliveries-title">Entregas concluidas</h2>
+          </div>
+          <button type="button" onClick={onClose}><X size={19} />Fechar</button>
+        </header>
+
+        <div className="completed-deliveries-filters">
+          <label>
+            <span>Periodo inicial</span>
+            <div>
+              <CalendarDays size={20} />
+              <strong>{formatDateFilterLabel(startDate)}</strong>
+              <input type="date" value={startDate} onChange={(event) => onStartDateChange(event.target.value)} aria-label="Periodo inicial" />
+              <ChevronRight size={19} />
+            </div>
+          </label>
+          <label>
+            <span>Periodo final</span>
+            <div>
+              <CalendarDays size={20} />
+              <strong>{formatDateFilterLabel(endDate)}</strong>
+              <input type="date" value={endDate} onChange={(event) => onEndDateChange(event.target.value)} aria-label="Periodo final" />
+              <ChevronRight size={19} />
+            </div>
+          </label>
+        </div>
+
+        <div className="completed-deliveries-list" aria-label="Lista de entregas concluidas">
+          {rows.map((delivery) => (
+            <article key={delivery.id} className="completed-delivery-row">
+              <span className="completed-delivery-icon"><Package size={22} /></span>
+              <div className="completed-delivery-main">
+                <strong>{delivery.store}</strong>
+                <p>
+                  <span><Clock3 size={15} />{delivery.finishedDate}, {delivery.finishedTime}</span>
+                  <i />
+                  <span><User size={15} />{delivery.customer}</span>
+                  <i />
+                  <span><MapPin size={15} />{delivery.district}</span>
+                </p>
+              </div>
+              <span className="completed-delivery-code">{delivery.code}</span>
+              <ChevronRight className="completed-delivery-arrow" size={24} />
+            </article>
+          ))}
+          {!rows.length && (
+            <p className="completed-deliveries-empty">
+              {loading ? 'Buscando entregas concluidas...' : message || 'Nenhuma entrega concluida no periodo.'}
+            </p>
+          )}
+        </div>
+
+        <footer className="completed-deliveries-footer">
+          <span><RefreshCcw size={18} />{formatUpdatedLabel(updatedAt)}</span>
+          <strong>Total: <b>{rows.length}</b> entregas</strong>
+        </footer>
+        {message && rows.length > 0 && (
+          <p className="completed-deliveries-message">{message}</p>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function filterCompletedDeliveriesByDate(rows, startDate, endDate) {
+  return rows.filter((delivery) => {
+    if (!delivery.dateKey) return false;
+    return (!startDate || delivery.dateKey >= startDate) && (!endDate || delivery.dateKey <= endDate);
+  });
+}
+
+function normalizeDateRange(startDate, endDate) {
+  if (startDate && endDate && startDate > endDate) return { startDate: endDate, endDate: startDate };
+  return { startDate, endDate };
+}
+
+async function fetchCompletedDeliveriesForPeriod({ cityId, startDate, endDate }) {
+  if (!supabase || !cityId) throw new Error('Selecione uma cidade para listar as entregas concluidas.');
+  const { startDate: normalizedStart, endDate: normalizedEnd } = normalizeDateRange(startDate, endDate);
+  const start = normalizedStart ? new Date(`${normalizedStart}T00:00:00`) : new Date();
+  const end = normalizedEnd ? new Date(`${normalizedEnd}T00:00:00`) : new Date(start);
+  if (!normalizedStart) start.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+  end.setDate(end.getDate() + 1);
+
+  const { data, error } = await supabase
+    .from('deliveries')
+    .select(TODAY_DELIVERY_SELECT)
+    .eq('city_id', cityId)
+    .eq('status', 'delivered')
+    .gte('delivered_at', start.toISOString())
+    .lt('delivered_at', end.toISOString())
+    .order('delivered_at', { ascending: false });
+
+  if (error) {
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from('deliveries')
+      .select(TODAY_DELIVERY_SELECT)
+      .eq('city_id', cityId)
+      .eq('status', 'delivered')
+      .gte('updated_at', start.toISOString())
+      .lt('updated_at', end.toISOString())
+      .order('updated_at', { ascending: false });
+    if (fallbackError) throw new Error(`Nao foi possivel buscar as entregas concluidas: ${fallbackError.message}`);
+    return (fallbackData ?? []).map(mapCompletedDelivery);
+  }
+
+  return (data ?? []).map(mapCompletedDelivery);
+}
+
 function AlertsTable({ rows }) {
   return (
     <section className="overview-panel overview-alerts" aria-labelledby="overview-alerts-title">
@@ -639,6 +872,17 @@ export function Overview({ city, stores = [], couriers = [] }) {
   const [onlineCouriersLoading, setOnlineCouriersLoading] = React.useState(false);
   const [onlineCouriersMessage, setOnlineCouriersMessage] = React.useState('');
   const [onlineCouriers, setOnlineCouriers] = React.useState([]);
+  const [openStoresModalOpen, setOpenStoresModalOpen] = React.useState(false);
+  const [openStoresLoading, setOpenStoresLoading] = React.useState(false);
+  const [openStoresMessage, setOpenStoresMessage] = React.useState('');
+  const [openStores, setOpenStores] = React.useState([]);
+  const [completedDeliveriesModalOpen, setCompletedDeliveriesModalOpen] = React.useState(false);
+  const [completedDeliveries, setCompletedDeliveries] = React.useState([]);
+  const [completedDeliveriesLoading, setCompletedDeliveriesLoading] = React.useState(false);
+  const [completedDeliveriesMessage, setCompletedDeliveriesMessage] = React.useState('');
+  const [completedDeliveriesStartDate, setCompletedDeliveriesStartDate] = React.useState(() => formatDateInputValue(new Date()));
+  const [completedDeliveriesEndDate, setCompletedDeliveriesEndDate] = React.useState(() => formatDateInputValue(new Date()));
+  const [completedDeliveriesUpdatedAt, setCompletedDeliveriesUpdatedAt] = React.useState(null);
   const [liveCity, setLiveCity] = React.useState(city);
   const [liveStores, setLiveStores] = React.useState(stores);
   const [liveCouriers, setLiveCouriers] = React.useState(couriers);
@@ -668,6 +912,10 @@ export function Overview({ city, stores = [], couriers = [] }) {
     }),
     [liveCity, liveStores, liveCouriers, activeDeliveries, overviewAlerts, hourlyDeliveries, statusDistribution, ranking, mapMarkers, mapRoutes],
   );
+  const visibleCompletedDeliveries = React.useMemo(
+    () => filterCompletedDeliveriesByDate(completedDeliveries, completedDeliveriesStartDate, completedDeliveriesEndDate),
+    [completedDeliveries, completedDeliveriesStartDate, completedDeliveriesEndDate],
+  );
 
   React.useEffect(() => {
     setLiveCity(city);
@@ -693,6 +941,9 @@ export function Overview({ city, stores = [], couriers = [] }) {
       setRanking([]);
       setMapMarkers([]);
       setMapRoutes([]);
+      setCompletedDeliveries([]);
+      setCompletedDeliveriesMessage('Selecione uma cidade para listar as entregas concluidas hoje.');
+      setCompletedDeliveriesUpdatedAt(new Date().toISOString());
       setActiveDeliveriesMessage(city?.id ? 'Nao foi possivel buscar as entregas em curso.' : 'Selecione uma cidade para acompanhar as entregas.');
       return;
     }
@@ -792,6 +1043,15 @@ export function Overview({ city, stores = [], couriers = [] }) {
     setRanking(buildCourierRanking(countedTodayRows));
     setMapMarkers(buildMapMarkers(activeRows, courierRows));
     setMapRoutes(buildMapRoutes(activeRows));
+    setCompletedDeliveries(completedRows
+      .map(mapCompletedDelivery)
+      .sort((first, second) => `${second.dateKey} ${second.finishedTime}`.localeCompare(`${first.dateKey} ${first.finishedTime}`)));
+    setCompletedDeliveriesMessage(
+      todayDeliveriesResult.error
+        ? `Nao foi possivel buscar as entregas concluidas hoje: ${todayDeliveriesResult.error.message}`
+        : completedRows.length ? '' : 'Nenhuma entrega concluida hoje.',
+    );
+    setCompletedDeliveriesUpdatedAt(new Date().toISOString());
     setActiveDeliveriesLoading(false);
     if (loadErrors.length) {
       setActiveDeliveriesMessage(`Atualizacao parcial: ${loadErrors.map((error) => error.message).join(' | ')}`);
@@ -901,11 +1161,80 @@ export function Overview({ city, stores = [], couriers = [] }) {
     if (!mappedCouriers.length) setOnlineCouriersMessage('Nenhum motoboy on-line no momento.');
   }
 
+  async function openOpenStoresModal() {
+    setOpenStoresModalOpen(true);
+    setOpenStoresLoading(true);
+    setOpenStoresMessage('');
+    setOpenStores([]);
+
+    if (!supabase || !city?.id) {
+      const localRows = mapOpenStoresFromLocal(liveStores);
+      setOpenStores(localRows);
+      setOpenStoresLoading(false);
+      setOpenStoresMessage(localRows.length ? 'Mostrando dados locais das lojas abertas.' : 'Nao foi possivel buscar as lojas abertas.');
+      return;
+    }
+
+    try {
+      const mappedStores = await fetchOpenStores({ supabase, cityId: city.id });
+      setOpenStores(mappedStores);
+      setOpenStoresLoading(false);
+      if (!mappedStores.length) setOpenStoresMessage('Nenhuma loja aberta no momento.');
+    } catch (error) {
+      const localRows = mapOpenStoresFromLocal(liveStores);
+      setOpenStores(localRows);
+      setOpenStoresLoading(false);
+      setOpenStoresMessage(localRows.length ? `Mostrando dados locais. Atualizacao completa indisponivel: ${error.message}` : error.message);
+    }
+  }
+
+  async function loadCompletedDeliveriesForPeriod(startDate, endDate) {
+    const { startDate: normalizedStart, endDate: normalizedEnd } = normalizeDateRange(startDate, endDate);
+    setCompletedDeliveriesStartDate(normalizedStart);
+    setCompletedDeliveriesEndDate(normalizedEnd);
+
+    if (!supabase || !city?.id) {
+      const filteredRows = filterCompletedDeliveriesByDate(completedDeliveries, normalizedStart, normalizedEnd);
+      setCompletedDeliveriesMessage(filteredRows.length ? 'Mostrando dados locais das entregas concluidas.' : 'Nenhuma entrega concluida no periodo.');
+      setCompletedDeliveriesUpdatedAt(new Date().toISOString());
+      return;
+    }
+
+    setCompletedDeliveriesLoading(true);
+    setCompletedDeliveriesMessage('');
+    try {
+      const rows = await fetchCompletedDeliveriesForPeriod({
+        cityId: city.id,
+        startDate: normalizedStart,
+        endDate: normalizedEnd,
+      });
+      setCompletedDeliveries(rows);
+      setCompletedDeliveriesMessage(rows.length ? '' : 'Nenhuma entrega concluida no periodo.');
+      setCompletedDeliveriesUpdatedAt(new Date().toISOString());
+    } catch (error) {
+      setCompletedDeliveriesMessage(error.message);
+    } finally {
+      setCompletedDeliveriesLoading(false);
+    }
+  }
+
+  async function openCompletedDeliveriesModal() {
+    setCompletedDeliveriesModalOpen(true);
+    const today = formatDateInputValue(new Date());
+    await loadCompletedDeliveriesForPeriod(today, today);
+  }
+
   return (
     <section className="overview-control" aria-label="Central de controle">
       <section className="overview-metrics" aria-label="Indicadores principais">
         {overview.metrics.map((metric) => (
-          <MetricCard metric={metric} key={metric.id} onOpenOnlineCouriers={openOnlineCouriersModal} />
+          <MetricCard
+            metric={metric}
+            key={metric.id}
+            onOpenOnlineCouriers={openOnlineCouriersModal}
+            onOpenStores={openOpenStoresModal}
+            onOpenCompletedDeliveries={openCompletedDeliveriesModal}
+          />
         ))}
       </section>
 
@@ -935,6 +1264,27 @@ export function Overview({ city, stores = [], couriers = [] }) {
           loading={onlineCouriersLoading}
           message={onlineCouriersMessage}
           onClose={() => setOnlineCouriersModalOpen(false)}
+        />
+      )}
+      {openStoresModalOpen && (
+        <OpenStoresModal
+          rows={openStores}
+          loading={openStoresLoading}
+          message={openStoresMessage}
+          onClose={() => setOpenStoresModalOpen(false)}
+        />
+      )}
+      {completedDeliveriesModalOpen && (
+        <CompletedDeliveriesModal
+          rows={visibleCompletedDeliveries}
+          loading={completedDeliveriesLoading}
+          message={completedDeliveriesMessage}
+          startDate={completedDeliveriesStartDate}
+          endDate={completedDeliveriesEndDate}
+          updatedAt={completedDeliveriesUpdatedAt}
+          onStartDateChange={(value) => loadCompletedDeliveriesForPeriod(value, completedDeliveriesEndDate)}
+          onEndDateChange={(value) => loadCompletedDeliveriesForPeriod(completedDeliveriesStartDate, value)}
+          onClose={() => setCompletedDeliveriesModalOpen(false)}
         />
       )}
     </section>

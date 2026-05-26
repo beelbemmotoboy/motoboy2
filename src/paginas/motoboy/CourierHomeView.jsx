@@ -4,6 +4,7 @@ import { supabase } from '../../supabaseClient';
 import { acceptQueuedDelivery, avaliarEntregasCompativeisParaMotoboy, DELIVERY_OFFER_TIMEOUT_SECONDS, emptyDelivery, expireQueuedDeliveryOffer, formatDeliveryForCourier, getNextDeliveryForCourier, markDeliveryDelivered, markDeliveryPickedUp, rejectQueuedDelivery, setCourierAvailable, updateCourierLocation } from '../../cadastra_entrega';
 import { awardAcceptXp, awardOnTimeDeliveryXp, awardPickupXp } from '../../xp_motoboy';
 import { LayoutMotoboy } from '../../layouts/LayoutMotoboy';
+import { fetchOpenStores, OpenStoresModal } from '../../components/OpenStoresModal';
 
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || '';
 const ACTIVE_DELIVERY_STATUSES = ['assigned', 'picked_up', 'on_route'];
@@ -188,14 +189,6 @@ async function createCourierDocumentPreviewUrl(path) {
   if (/^https?:\/\//i.test(path)) return path;
   if (!path.includes('/') || !supabase?.storage) return '';
   const { data, error } = await supabase.storage.from('courier-documents').createSignedUrl(path, 600);
-  return error ? '' : data?.signedUrl || '';
-}
-
-async function createStoreLogoPreviewUrl(path) {
-  if (!path || typeof path !== 'string') return '';
-  if (/^https?:\/\//i.test(path)) return path;
-  if (!path.includes('/') || !supabase?.storage) return '';
-  const { data, error } = await supabase.storage.from('user-documents').createSignedUrl(path, 600);
   return error ? '' : data?.signedUrl || '';
 }
 
@@ -1266,36 +1259,15 @@ export function CourierHomeView({ city, profile, onLogout }) {
     setOpenStoresMessage('');
     setOpenStores([]);
 
-    if (!supabase || !city?.id) {
+    try {
+      const mappedStores = await fetchOpenStores({ supabase, cityId: city?.id });
+      setOpenStores(mappedStores);
       setOpenStoresLoading(false);
-      setOpenStoresMessage('Nao foi possivel buscar as lojas abertas.');
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from('stores')
-      .select('id, name, fantasy_name, district, logo_url')
-      .eq('city_id', city.id)
-      .eq('active', true)
-      .eq('is_open', true)
-      .order('fantasy_name', { ascending: true });
-
-    if (error) {
+      if (!mappedStores.length) setOpenStoresMessage('Nenhuma loja aberta no momento.');
+    } catch (error) {
       setOpenStoresLoading(false);
-      setOpenStoresMessage(`Nao foi possivel buscar as lojas abertas: ${error.message}`);
-      return;
+      setOpenStoresMessage(error.message);
     }
-
-    const mappedStores = await Promise.all((data ?? []).map(async (store) => ({
-      id: store.id,
-      name: store.fantasy_name || store.name || 'Loja',
-      district: store.district || 'Nao informado',
-      logoUrl: await createStoreLogoPreviewUrl(store.logo_url),
-    })));
-
-    setOpenStores(mappedStores);
-    setOpenStoresLoading(false);
-    if (!mappedStores.length) setOpenStoresMessage('Nenhuma loja aberta no momento.');
   }
 
   function closeCourierDataPanel() {
@@ -1479,47 +1451,12 @@ export function CourierHomeView({ city, profile, onLogout }) {
       )}
 
       {openStoresModalOpen && (
-        <div className="courier-data-modal" role="dialog" aria-modal="true" aria-labelledby="open-stores-title">
-          <section>
-            <header>
-              <div>
-                <span>Atendendo agora</span>
-                <h2 id="open-stores-title">Lojas abertas</h2>
-              </div>
-              <button type="button" onClick={() => setOpenStoresModalOpen(false)}>Fechar</button>
-            </header>
-
-            <div className="courier-data-table-wrap">
-              <table className="courier-data-table open-stores-table">
-                <thead>
-                  <tr>
-                    <th>Logo</th>
-                    <th>Nome da loja</th>
-                    <th>Bairro</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {openStores.map((store) => (
-                    <tr key={store.id}>
-                      <td>
-                        <span className="open-store-logo">
-                          {store.logoUrl ? <img src={store.logoUrl} alt="" /> : <Store size={22} />}
-                        </span>
-                      </td>
-                      <td>{store.name}</td>
-                      <td>{store.district}</td>
-                    </tr>
-                  ))}
-                  {!openStores.length && (
-                    <tr>
-                      <td colSpan="3">{openStoresLoading ? 'Buscando lojas abertas...' : openStoresMessage || 'Nenhum dado encontrado.'}</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        </div>
+        <OpenStoresModal
+          rows={openStores}
+          loading={openStoresLoading}
+          message={openStoresMessage}
+          onClose={() => setOpenStoresModalOpen(false)}
+        />
       )}
 
       {activePanel === 'profile' ? (
