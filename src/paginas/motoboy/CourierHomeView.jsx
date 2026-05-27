@@ -211,7 +211,9 @@ async function fetchCourierStats({ supabase, cityId, courierId }) {
       .select('id', { count: 'exact', head: true })
       .eq('city_id', cityId)
       .eq('active', true)
-      .eq('availability_status', 'available'),
+      .eq('available', true)
+      .eq('approval_status', 'approved')
+      .in('availability_status', ['available', 'on_delivery']),
     supabase
       .from('stores')
       .select('id', { count: 'exact', head: true })
@@ -1142,6 +1144,7 @@ export function CourierHomeView({ city, profile, onLogout }) {
     }
     await setCourierAvailable({ supabase, courierId: profile?.courier_id, available });
     setCourierAvailableState(available);
+    await loadCourierStats();
     setActionMessage(
       available && permission === 'denied'
         ? 'Status alterado para disponivel. Ative as notificacoes do navegador para receber alerta com a tela desligada.'
@@ -1166,6 +1169,7 @@ export function CourierHomeView({ city, profile, onLogout }) {
     }
     await setCourierAvailable({ supabase, courierId: profile?.courier_id, available });
     setCourierAvailableState(available);
+    await loadCourierStats();
     setMenuOpen(false);
     setActionMessage(
       available && permission === 'denied'
