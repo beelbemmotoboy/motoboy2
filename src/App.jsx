@@ -3,11 +3,12 @@ import { LoginView, ForgotPasswordView, CreateAccountView, CreatePasswordView } 
 import { AuthUnavailableView } from './paginas/publico/AuthUnavailableView';
 import { JoinView } from './paginas/publico/JoinView';
 import { PublicSignupView } from './paginas/publico/PublicSignupView';
+import { GarconCardapioPublico } from './paginas/publico/GarconCardapioPublico';
 import { LayoutAdmin } from './layouts/LayoutAdmin';
 import { StoreHomeView } from './paginas/lojista/StoreHomeView';
 import { CourierHomeView } from './paginas/motoboy/CourierHomeView';
 import { supabase } from './supabaseClient';
-import { pageFromLocation, resolveHomeByRole } from './utils/pageRouting';
+import { garconCardapioFromLocation, pageFromLocation, resolveHomeByRole } from './utils/pageRouting';
 import { maskCpf, maskPhone } from './utils/validators';
 import beeIcon from '../imagem/icone.png';
 
@@ -16,7 +17,8 @@ export function App() {
   const [authReady, setAuthReady] = React.useState(!supabase);
   const [currentUser, setCurrentUser] = React.useState(null);
   const [currentProfile, setCurrentProfile] = React.useState(null);
-  const publicPages = ['login', 'create-password', 'forgot-password', 'create-account', 'join', 'signup-store', 'signup-courier'];
+  const publicPages = ['login', 'create-password', 'forgot-password', 'create-account', 'join', 'signup-store', 'signup-courier', 'garcon-cardapio'];
+  const garconPublicRoute = garconCardapioFromLocation();
   const emptyCity = {
     id: '',
     name: 'Nenhuma cidade',
@@ -302,6 +304,10 @@ export function App() {
 
     loadCityRecords();
   }, [authReady, currentProfile, cityId]);
+
+  if (garconPublicRoute) {
+    return <GarconCardapioPublico empresaId={garconPublicRoute.empresaId} mesaId={garconPublicRoute.mesaId} />;
+  }
 
   if (supabase && !authReady) {
     return (

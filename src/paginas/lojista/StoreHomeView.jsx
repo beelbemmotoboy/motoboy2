@@ -5,6 +5,7 @@ import { advanceDeliveryOfferQueue, cancelPendingDeliveryOfferSearch, createDeli
 import { analisarComprovantePedidoComGemini, transformarAnaliseEmPedidoLoja } from '../../analisa_comprovante_pedido';
 import { isValidCep, isValidEmail, isValidPhone, maskCep, maskCnpj, maskPhone, onlyDigits } from '../../utils/validators';
 import { LayoutLojista } from '../../layouts/LayoutLojista';
+import { BeelbemGarconView } from './garcon/BeelbemGarconView';
 import { calcularMinutosAteHorarioPrevistoPedidoLoja, validarHorarioPrevistoPedidoLoja, validarPedidoLoja, validarTaxaEntregaPedidoLoja } from '../../ValidaPedidoLoja';
 import { validar_dadoscomprovante_gemini } from '../../valid_dadoscomprovante_gemini';
 
@@ -936,6 +937,19 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     );
   }
 
+  if (activePanel === 'garcon') {
+    return (
+      <BeelbemGarconView
+        city={city}
+        store={store}
+        profile={profile}
+        storeOpen={storeOpen}
+        onToggleStoreStatus={toggleStoreStatus}
+        onBack={() => setActivePanel('home')}
+      />
+    );
+  }
+
   if (activePanel === 'data') {
     return (
       <LayoutLojista dataPage>
@@ -1242,6 +1256,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
           <nav className="store-mobile-menu" aria-label="Menu lojista">
             <button type="button" onClick={() => { setActivePanel('data'); setMenuOpen(false); }}>Meus dados</button>
             <button type="button" onClick={() => { setActivePanel('deliveries'); setMenuOpen(false); }}>Minhas entregas</button>
+            <button type="button" onClick={() => { setActivePanel('garcon'); setMenuOpen(false); }}>Beelbem Garçon</button>
             <button type="button">Relatorios</button>
             <button type="button" onClick={onLogout}>Sair</button>
           </nav>

@@ -1938,6 +1938,741 @@ button, a {
   line-height: 1.35;
 }
 
+.garcon-shell {
+  width: min(1180px, 100%);
+  margin: 0 auto;
+  display: grid;
+  gap: 18px;
+}
+
+.garcon-title {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+}
+
+.garcon-title span {
+  color: #f4c21a;
+  font-size: 13px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.garcon-title h2 {
+  margin: 5px 0 4px;
+  font-size: clamp(28px, 5vw, 44px);
+}
+
+.garcon-title p {
+  margin: 0;
+  color: #cfcfcf;
+}
+
+.garcon-title button,
+.garcon-tabs button,
+.garcon-action-grid button,
+.garcon-panel header button,
+.garcon-row-actions button,
+.garcon-row-actions a,
+.garcon-product-flags button,
+.garcon-pedido-actions button {
+  min-height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font: inherit;
+  font-weight: 900;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.garcon-title button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.garcon-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  overflow-x: auto;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.garcon-tabs button {
+  flex: 0 0 auto;
+  min-height: 42px;
+  background: transparent;
+}
+
+.garcon-tabs button.active,
+.garcon-action-grid button {
+  background: #f4c21a;
+  color: #111;
+  border-color: #f4c21a;
+}
+
+.garcon-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(130px, 1fr));
+  gap: 12px;
+}
+
+.garcon-summary-card,
+.garcon-report-grid article {
+  min-height: 150px;
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.garcon-summary-card span {
+  width: 46px;
+  height: 46px;
+  border-radius: 8px;
+  display: inline-grid;
+  place-items: center;
+  background: rgba(244, 194, 26, 0.16);
+  color: #f4c21a;
+}
+
+.garcon-summary-card p,
+.garcon-report-grid span {
+  margin: 15px 0 6px;
+  color: #d4d4d4;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.garcon-summary-card strong,
+.garcon-report-grid strong {
+  display: block;
+  color: #fff;
+  font-size: clamp(25px, 4vw, 34px);
+  line-height: 1;
+}
+
+.garcon-action-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.garcon-action-grid button {
+  min-height: 70px;
+  font-size: 16px;
+}
+
+.garcon-two-column,
+.garcon-menu-grid,
+.garcon-report-columns {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.8fr) minmax(0, 1.2fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.garcon-menu-grid {
+  grid-template-columns: minmax(300px, 0.75fr) minmax(320px, 0.95fr);
+}
+
+.garcon-panel {
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.garcon-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.garcon-panel header span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 17px;
+  font-weight: 950;
+}
+
+.garcon-panel header button {
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+.garcon-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.garcon-form-grid label {
+  display: grid;
+  gap: 7px;
+  color: #d8d8d8;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.garcon-form-grid label.wide {
+  grid-column: 1 / -1;
+}
+
+.garcon-form-grid input,
+.garcon-form-grid select,
+.garcon-form-grid textarea {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: rgba(0, 0, 0, 0.28);
+  color: #fff;
+  font: inherit;
+  outline: 0;
+}
+
+.garcon-form-grid textarea {
+  min-height: 90px;
+  padding-top: 11px;
+  resize: vertical;
+}
+
+.garcon-form-grid input::placeholder,
+.garcon-form-grid textarea::placeholder {
+  color: #8f8f8f;
+}
+
+.garcon-list,
+.garcon-products-list,
+.garcon-pedidos-grid,
+.garcon-kitchen-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.garcon-row,
+.garcon-product-card,
+.garcon-pedido-card {
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.garcon-row.mesa {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 180px;
+  gap: 14px;
+}
+
+.garcon-row strong,
+.garcon-product-card strong,
+.garcon-pedido-card strong {
+  display: block;
+  color: #fff;
+}
+
+.garcon-row span,
+.garcon-product-card small,
+.garcon-product-card p,
+.garcon-pedido-meta span,
+.garcon-compact-list span {
+  color: #cfcfcf;
+  font-size: 13px;
+}
+
+.garcon-status {
+  width: fit-content;
+  min-height: 28px;
+  margin-top: 10px;
+  border: 0;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.garcon-status.ativa,
+.garcon-status.ativo,
+.garcon-status.livre,
+.garcon-status.pronto,
+.garcon-status.entregue {
+  background: rgba(33, 243, 62, 0.16);
+  color: #5dff72;
+}
+
+.garcon-status.ocupada,
+.garcon-status.confirmado,
+.garcon-status.em-preparo {
+  background: rgba(244, 194, 26, 0.18);
+  color: #f4c21a;
+}
+
+.garcon-status.inativa,
+.garcon-status.inativo,
+.garcon-status.cancelado {
+  background: rgba(255, 70, 79, 0.16);
+  color: #ff777e;
+}
+
+.garcon-status.novo {
+  background: rgba(83, 166, 255, 0.18);
+  color: #8cc3ff;
+}
+
+.garcon-qr-card {
+  display: grid;
+  gap: 8px;
+}
+
+.garcon-qr-card img {
+  width: 150px;
+  height: 150px;
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px;
+}
+
+.garcon-qr-card small {
+  max-width: 170px;
+  color: #cfcfcf;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.garcon-row-actions,
+.garcon-product-flags,
+.garcon-pedido-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.garcon-compact-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.garcon-compact-list button,
+.garcon-compact-list article {
+  min-height: 54px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.18);
+  color: #fff;
+  text-align: left;
+}
+
+.garcon-product-card {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+}
+
+.garcon-product-card img,
+.garcon-product-card > span {
+  width: 84px;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: rgba(244, 194, 26, 0.16);
+  color: #f4c21a;
+  object-fit: cover;
+}
+
+.garcon-product-card p {
+  margin: 7px 0;
+  line-height: 1.4;
+}
+
+.garcon-product-card b {
+  color: #f4c21a;
+}
+
+.garcon-product-flags {
+  grid-column: auto;
+  justify-content: flex-end;
+  max-width: 190px;
+}
+
+.garcon-pedidos-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.garcon-kitchen-grid {
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
+}
+
+.garcon-pedido-card.kitchen {
+  min-height: 320px;
+}
+
+.garcon-pedido-card header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.garcon-pedido-card header span {
+  color: #f4c21a;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.garcon-pedido-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.garcon-pedido-meta span,
+.garcon-pedido-meta strong {
+  min-height: 30px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.garcon-pedido-meta strong {
+  color: #f4c21a;
+}
+
+.garcon-pedido-itens {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.garcon-pedido-itens li {
+  border-left: 3px solid #f4c21a;
+  padding-left: 10px;
+}
+
+.garcon-pedido-itens span,
+.garcon-observacao {
+  display: block;
+  margin-top: 3px;
+  color: #cfcfcf;
+  font-size: 13px;
+}
+
+.garcon-pedido-actions {
+  margin-top: 14px;
+}
+
+.garcon-pedido-actions button {
+  min-height: 48px;
+}
+
+.garcon-report-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.garcon-report-columns {
+  margin-top: 18px;
+}
+
+.garcon-public-page {
+  min-height: 100svh;
+  padding: 18px min(4vw, 28px) 170px;
+  background: #f5f5f0;
+  color: #171717;
+}
+
+.garcon-public-loading {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.garcon-public-header {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 12px 0 16px;
+  background: #f5f5f0;
+}
+
+.garcon-public-logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: #f4c21a;
+  color: #111;
+  overflow: hidden;
+}
+
+.garcon-public-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.garcon-public-header span {
+  color: #927000;
+  font-size: 12px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.garcon-public-header h1 {
+  margin: 2px 0;
+  font-size: clamp(24px, 7vw, 38px);
+  line-height: 1.05;
+}
+
+.garcon-public-header p {
+  margin: 0;
+  color: #666;
+  font-weight: 800;
+}
+
+.garcon-public-success,
+.garcon-public-error {
+  margin: 0 0 14px;
+  border-radius: 8px;
+  padding: 12px;
+  font-weight: 900;
+}
+
+.garcon-public-success {
+  background: #dff7e6;
+  color: #116333;
+}
+
+.garcon-public-error {
+  background: #ffe0e1;
+  color: #9a2026;
+}
+
+.garcon-public-menu {
+  display: grid;
+  gap: 24px;
+}
+
+.garcon-public-category h2 {
+  margin: 0 0 4px;
+  font-size: 22px;
+}
+
+.garcon-public-category > p {
+  margin: 0 0 12px;
+  color: #666;
+}
+
+.garcon-public-products {
+  display: grid;
+  gap: 10px;
+}
+
+.garcon-public-product {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid #e4e1d7;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.garcon-public-product.unavailable {
+  opacity: 0.62;
+}
+
+.garcon-public-product img,
+.garcon-public-product > span {
+  width: 76px;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: #f7f0d0;
+  color: #927000;
+  object-fit: cover;
+}
+
+.garcon-public-product strong,
+.garcon-public-product small,
+.garcon-public-product b {
+  display: block;
+}
+
+.garcon-public-product small {
+  margin-top: 4px;
+  color: #666;
+  line-height: 1.35;
+}
+
+.garcon-public-product b {
+  margin-top: 8px;
+  color: #111;
+}
+
+.garcon-public-product button {
+  min-height: 42px;
+  border: 0;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 14px;
+  background: #111;
+  color: #fff;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.garcon-public-product button:disabled {
+  background: #aaa;
+  cursor: not-allowed;
+}
+
+.garcon-public-cart {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  z-index: 12;
+  width: min(560px, calc(100vw - 24px));
+  max-height: min(58vh, 520px);
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #e4e1d7;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 22px 55px rgba(0, 0, 0, 0.18);
+  transform: translateX(-50%);
+  overflow: auto;
+}
+
+.garcon-public-cart header,
+.garcon-cart-item > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.garcon-public-cart header span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 950;
+}
+
+.garcon-cart-item {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid #eee;
+}
+
+.garcon-cart-qty {
+  display: grid;
+  grid-template-columns: 36px 36px 36px 36px;
+  gap: 6px;
+  align-items: center;
+}
+
+.garcon-cart-qty button {
+  height: 34px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  color: #111;
+  cursor: pointer;
+}
+
+.garcon-cart-qty b {
+  text-align: center;
+}
+
+.garcon-cart-item textarea,
+.garcon-public-note textarea {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid #dedede;
+  border-radius: 8px;
+  padding: 10px;
+  color: #171717;
+  font: inherit;
+  resize: vertical;
+}
+
+.garcon-public-note {
+  display: grid;
+  gap: 7px;
+  color: #555;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.garcon-cart-empty {
+  margin: 0;
+  color: #666;
+  font-size: 14px;
+}
+
+.garcon-public-submit {
+  min-height: 50px;
+  border: 0;
+  border-radius: 8px;
+  background: #f4c21a;
+  color: #111;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.garcon-public-submit:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
+}
+
 @media (max-width: 760px) {
   .store-app-home {
     padding: 126px 20px 42px;
@@ -2089,6 +2824,47 @@ button, a {
   .request-icon {
     width: 53px;
     height: 53px;
+  }
+
+  .garcon-title,
+  .garcon-two-column,
+  .garcon-menu-grid,
+  .garcon-report-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .garcon-summary-grid,
+  .garcon-action-grid,
+  .garcon-pedidos-grid,
+  .garcon-kitchen-grid,
+  .garcon-report-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .garcon-row.mesa,
+  .garcon-product-card,
+  .garcon-public-product {
+    grid-template-columns: 1fr;
+  }
+
+  .garcon-product-flags {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    max-width: none;
+  }
+
+  .garcon-qr-card img {
+    width: 190px;
+    height: 190px;
+  }
+
+  .garcon-public-page {
+    padding: 12px 12px 190px;
+  }
+
+  .garcon-public-product button {
+    width: 100%;
+    justify-content: center;
   }
 }
 
