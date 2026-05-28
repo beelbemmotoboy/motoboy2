@@ -6965,6 +6965,81 @@ mark.amber {
   text-align: center;
 }
 
+.store-delivery-details-modal > section {
+  width: min(980px, 100%);
+}
+
+.store-delivery-details-meta {
+  min-height: 46px;
+  margin-bottom: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: rgba(255, 255, 255, 0.68);
+  background: rgba(0, 0, 0, 0.18);
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.store-delivery-details-meta strong {
+  color: #22f04b;
+  font-size: 18px;
+}
+
+.store-delivery-details-table {
+  overflow-x: auto;
+}
+
+.store-delivery-details-row {
+  min-width: 900px;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: minmax(190px, 1.3fr) 105px 105px 105px 125px 120px 130px;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.store-delivery-details-head {
+  min-height: 42px;
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 11px;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+.store-delivery-details-row strong,
+.store-delivery-details-row span,
+.store-delivery-details-row mark {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.store-delivery-details-row strong {
+  color: #fff;
+}
+
+.store-delivery-details-row mark {
+  width: fit-content;
+  min-height: 28px;
+  border: 1px solid rgba(161, 165, 173, 0.34);
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: #cbd2dc;
+  background: rgba(161, 165, 173, 0.08);
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .overview-main-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;

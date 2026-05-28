@@ -1,9 +1,10 @@
 import React from 'react';
-import { CalendarDays, ChevronRight, RefreshCcw, Search, WalletCards } from 'lucide-react';
+import { CalendarDays, ChevronRight, RefreshCcw, Search, WalletCards, X } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { formatCurrency, formatNumber } from './overview/overviewFormatters';
 
 const REVENUE_DELIVERY_SELECT = 'id, city_id, store_id, status, delivery_fee, created_at, delivered_at, updated_at, stores(id, name, fantasy_name)';
+const STORE_DELIVERY_DETAIL_SELECT = 'id, order_code, courier_id, status, delivery_fee, created_at, delivered_at, updated_at, couriers(id, name)';
 const CANCELLED_STATUSES = new Set(['cancelled', 'canceled', 'cancelada', 'cancelado']);
 const COMPLETED_STATUSES = new Set(['delivered', 'entregue', 'completed', 'concluida', 'concluido']);
 
@@ -32,6 +33,16 @@ function formatUpdatedLabel(value) {
   const minutes = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 60000));
   if (!Number.isFinite(minutes) || minutes < 1) return 'Atualizado agora';
   return `Atualizado ha ${minutes} min`;
+}
+
+function formatTime(value) {
+  if (!value) return '--:--';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '--:--';
+  return date.toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function normalizeStatus(status) {
@@ -106,12 +117,123 @@ function dateRangeToIso(startDate, endDate) {
   return { startIso: start.toISOString(), endIso: end.toISOString(), startDate: normalizedStart, endDate: normalizedEnd };
 }
 
-function openStoreDeliveryData(row) {
-  const params = new URLSearchParams({
-    loja: row.storeId,
-    dia: row.dateKey,
-  });
-  window.open(`/#dados_das_entregas_lojista?${params.toString()}`, '_blank', 'noopener,noreferrer');
+function eventTime(events, status) {
+  return events.find((event) => event.status === status)?.created_at || '';
+}
+
+function mapDeliveryDetail(delivery, eventsByDelivery) {
+  const events = eventsByDelivery.get(delivery.id) || [];
+  return {
+    id: delivery.id,
+    code: delivery.order_code || String(delivery.id || '').slice(0, 6).toUpperCase(),
+    courier: delivery.couriers?.name || 'Sem motoboy',
+    acceptedAt: eventTime(events, 'assigned') || delivery.updated_at,
+    pickedUpAt: eventTime(events, 'picked_up'),
+    deliveredAt: eventTime(events, 'delivered') || delivery.delivered_at,
+    date: formatDateLabel(rowDateKey(delivery)),
+    value: Number(delivery.delivery_fee || 0),
+    paid: 'Nao informado',
+  };
+}
+
+async function fetchStoreDeliveryDetails({ cityId, row }) {
+  if (!supabase || !cityId || !row?.storeId || !row?.dateKey) {
+    throw new Error('Nao foi possivel buscar os dados das entregas.');
+  }
+
+  const start = new Date(`${row.dateKey}T00:00:00`);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+
+  const { data, error } = await supabase
+    .from('deliveries')
+    .select(STORE_DELIVERY_DETAIL_SELECT)
+    .eq('city_id', cityId)
+    .eq('store_id', row.storeId)
+    .gte('created_at', start.toISOString())
+    .lt('created_at', end.toISOString())
+    .in('status', ['delivered', 'cancelled'])
+    .order('created_at', { ascending: true });
+
+  if (error) throw new Error(`Nao foi possivel buscar as entregas da loja: ${error.message}`);
+
+  const deliveries = data ?? [];
+  const deliveryIds = deliveries.map((delivery) => delivery.id).filter(Boolean);
+  const eventsByDelivery = new Map();
+
+  if (deliveryIds.length) {
+    const { data: eventsData, error: eventsError } = await supabase
+      .from('delivery_events')
+      .select('delivery_id, status, created_at')
+      .in('delivery_id', deliveryIds)
+      .in('status', ['assigned', 'picked_up', 'delivered'])
+      .order('created_at', { ascending: true });
+
+    if (eventsError) throw new Error(`Nao foi possivel buscar os horarios das entregas: ${eventsError.message}`);
+
+    for (const event of eventsData ?? []) {
+      const current = eventsByDelivery.get(event.delivery_id) || [];
+      current.push(event);
+      eventsByDelivery.set(event.delivery_id, current);
+    }
+  }
+
+  return deliveries.map((delivery) => mapDeliveryDetail(delivery, eventsByDelivery));
+}
+
+function StoreDeliveryDetailsModal({ row, rows, loading, message, onClose }) {
+  const total = rows.reduce((sum, delivery) => sum + delivery.value, 0);
+
+  return (
+    <div className="courier-data-modal completed-deliveries-modal store-delivery-details-modal" role="dialog" aria-modal="true" aria-labelledby="store-delivery-details-title">
+      <section>
+        <header className="completed-deliveries-header">
+          <div>
+            <span>Dados das entregas lojista</span>
+            <h2 id="store-delivery-details-title">{row.storeName}</h2>
+          </div>
+          <button type="button" onClick={onClose}><X size={19} />Fechar</button>
+        </header>
+
+        <div className="store-delivery-details-meta">
+          <span>{row.dateLabel}</span>
+          <strong>{formatCurrency(total)}</strong>
+        </div>
+
+        <div className="store-delivery-details-table" role="table" aria-label="Dados das entregas do lojista">
+          <div className="store-delivery-details-row store-delivery-details-head" role="row">
+            <span>Motoboy</span>
+            <span>Aceite</span>
+            <span>Retirada</span>
+            <span>Entrega</span>
+            <span>Data</span>
+            <span>Valor</span>
+            <span>Pagamento</span>
+          </div>
+          {rows.map((delivery) => (
+            <div className="store-delivery-details-row" role="row" key={delivery.id}>
+              <strong>{delivery.courier}</strong>
+              <span>{formatTime(delivery.acceptedAt)}</span>
+              <span>{formatTime(delivery.pickedUpAt)}</span>
+              <span>{formatTime(delivery.deliveredAt)}</span>
+              <span>{delivery.date}</span>
+              <span>{formatCurrency(delivery.value)}</span>
+              <mark>{delivery.paid}</mark>
+            </div>
+          ))}
+          {!rows.length && (
+            <p className="completed-deliveries-empty">
+              {loading ? 'Buscando dados das entregas...' : message || 'Nenhuma entrega encontrada.'}
+            </p>
+          )}
+        </div>
+
+        {message && rows.length > 0 && (
+          <p className="completed-deliveries-message">{message}</p>
+        )}
+      </section>
+    </div>
+  );
 }
 
 export function RevenueByStoreView({ city, stores = [] }) {
@@ -123,6 +245,10 @@ export function RevenueByStoreView({ city, stores = [] }) {
   const [message, setMessage] = React.useState('');
   const [updatedAt, setUpdatedAt] = React.useState(null);
   const [search, setSearch] = React.useState('');
+  const [detailsRow, setDetailsRow] = React.useState(null);
+  const [details, setDetails] = React.useState([]);
+  const [detailsLoading, setDetailsLoading] = React.useState(false);
+  const [detailsMessage, setDetailsMessage] = React.useState('');
 
   const visibleRows = React.useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -175,6 +301,23 @@ export function RevenueByStoreView({ city, stores = [] }) {
   React.useEffect(() => {
     loadRevenueRows();
   }, [loadRevenueRows]);
+
+  async function openStoreDeliveryData(row) {
+    setDetailsRow(row);
+    setDetails([]);
+    setDetailsMessage('');
+    setDetailsLoading(true);
+
+    try {
+      const detailRows = await fetchStoreDeliveryDetails({ cityId: city.id, row });
+      setDetails(detailRows);
+      setDetailsMessage(detailRows.length ? '' : 'Nenhuma entrega encontrada para esta loja no dia selecionado.');
+    } catch (error) {
+      setDetailsMessage(error.message);
+    } finally {
+      setDetailsLoading(false);
+    }
+  }
 
   return (
     <section className="revenue-page" aria-labelledby="revenue-page-title">
@@ -256,6 +399,16 @@ export function RevenueByStoreView({ city, stores = [] }) {
           )}
         </div>
       </section>
+
+      {detailsRow && (
+        <StoreDeliveryDetailsModal
+          row={detailsRow}
+          rows={details}
+          loading={detailsLoading}
+          message={detailsMessage}
+          onClose={() => setDetailsRow(null)}
+        />
+      )}
     </section>
   );
 }
