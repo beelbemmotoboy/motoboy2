@@ -2,7 +2,9 @@ import React from 'react';
 import { AlertTriangle, Bike, CalendarDays, Camera, Clock3, MapPin, Minus, Navigation, PencilLine, Plus, Search, ShieldCheck, Star, Store, UserRound, WalletCards } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { isValidCep, isValidCnpj, isValidCpf, isValidEmail, isValidPhone, maskCep, maskCnpj, maskCpf, maskPhone, onlyDigits, passwordStrength, validateAccessUserForm, validateCourierForm, validateStoreForm } from '../../utils/validators';
+import { ActiveDeliveriesView } from './ActiveDeliveriesView';
 import { Overview as OverviewControl } from './overview/OverviewView';
+import { RevenueByStoreView } from './RevenueByStoreView';
 
 const accessProfiles = [
   {
@@ -128,8 +130,16 @@ function slugifyCity(name, state) {
     .replace(/^-|-$/g, '');
 }
 
-export function Overview({ city, stores, couriers }) {
-  return <OverviewControl city={city} stores={stores} couriers={couriers} />;
+export function Overview({ city, stores, couriers, onOpenActiveDeliveries, onOpenRevenue }) {
+  return <OverviewControl city={city} stores={stores} couriers={couriers} onOpenActiveDeliveries={onOpenActiveDeliveries} onOpenRevenue={onOpenRevenue} />;
+}
+
+export function ActiveDeliveriesAdminView({ city }) {
+  return <ActiveDeliveriesView city={city} />;
+}
+
+export function RevenueView({ city, stores }) {
+  return <RevenueByStoreView city={city} stores={stores} />;
 }
 
 export function CitiesView({ cities, selectedCityId, onSelectCity, onChangeCities, loading, error }) {

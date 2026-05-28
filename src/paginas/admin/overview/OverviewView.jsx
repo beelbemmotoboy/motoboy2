@@ -435,7 +435,7 @@ function buildMapRoutes(activeRows) {
   }));
 }
 
-function MetricCard({ metric, onOpenOnlineCouriers, onOpenStores, onOpenCompletedDeliveries }) {
+function MetricCard({ metric, onOpenActiveDeliveries, onOpenOnlineCouriers, onOpenStores, onOpenCompletedDeliveries, onOpenRevenue }) {
   const Icon = metricIcons[metric.icon] || Activity;
   const content = (
     <>
@@ -462,6 +462,19 @@ function MetricCard({ metric, onOpenOnlineCouriers, onOpenStores, onOpenComplete
     );
   }
 
+  if (metric.id === 'active') {
+    return (
+      <button
+        className={`overview-metric overview-metric-action ${metric.tone}`}
+        type="button"
+        onClick={onOpenActiveDeliveries}
+        aria-label="Ver todas as entregas em andamento"
+      >
+        {content}
+      </button>
+    );
+  }
+
   if (metric.id === 'stores') {
     return (
       <button
@@ -482,6 +495,19 @@ function MetricCard({ metric, onOpenOnlineCouriers, onOpenStores, onOpenComplete
         type="button"
         onClick={onOpenCompletedDeliveries}
         aria-label="Ver entregas concluidas hoje"
+      >
+        {content}
+      </button>
+    );
+  }
+
+  if (metric.id === 'revenue') {
+    return (
+      <button
+        className={`overview-metric overview-metric-action ${metric.tone}`}
+        type="button"
+        onClick={onOpenRevenue}
+        aria-label="Abrir faturamento do dia por loja"
       >
         {content}
       </button>
@@ -937,7 +963,7 @@ function CourierRanking({ rows }) {
   );
 }
 
-export function Overview({ city, stores = [], couriers = [] }) {
+export function Overview({ city, stores = [], couriers = [], onOpenActiveDeliveries, onOpenRevenue }) {
   const [onlineCouriersModalOpen, setOnlineCouriersModalOpen] = React.useState(false);
   const [onlineCouriersLoading, setOnlineCouriersLoading] = React.useState(false);
   const [onlineCouriersMessage, setOnlineCouriersMessage] = React.useState('');
@@ -1333,9 +1359,11 @@ export function Overview({ city, stores = [], couriers = [] }) {
           <MetricCard
             metric={metric}
             key={metric.id}
+            onOpenActiveDeliveries={onOpenActiveDeliveries}
             onOpenOnlineCouriers={openOnlineCouriersModal}
             onOpenStores={openOpenStoresModal}
             onOpenCompletedDeliveries={openCompletedDeliveriesModal}
+            onOpenRevenue={onOpenRevenue}
           />
         ))}
       </section>
@@ -1347,7 +1375,7 @@ export function Overview({ city, stores = [], couriers = [] }) {
             rows={activeDeliveries}
             loading={activeDeliveriesLoading}
             message={activeDeliveriesMessage}
-            onViewAll={openAllActiveDeliveriesModal}
+            onViewAll={onOpenActiveDeliveries || openAllActiveDeliveriesModal}
           />
           <OnlineCouriersTable rows={overview.onlineCouriers} onViewAll={openOnlineCouriersModal} />
           <AlertsTable rows={overview.alerts} />

@@ -18,7 +18,7 @@ import {
   UsersRound,
   WalletCards,
 } from 'lucide-react';
-import { AccessView, CitiesView, CourierCenterView, CouriersView, MapOnlyView, Overview, StoreCenterView, StoresView } from '../paginas/admin/AdminPages';
+import { AccessView, ActiveDeliveriesAdminView, CitiesView, CourierCenterView, CouriersView, MapOnlyView, Overview, RevenueView, StoreCenterView, StoresView } from '../paginas/admin/AdminPages';
 import beeIcon from '../../imagem/icone.png';
 
 function initials(name) {
@@ -39,6 +39,8 @@ function pageTitle(page) {
   if (page === 'store-center') return 'Central de lojas';
   if (page === 'couriers') return 'Cadastro de entregadores';
   if (page === 'courier-center') return 'Central do entregador';
+  if (page === 'active-deliveries') return 'Entregas em andamento';
+  if (page === 'daily-revenue') return 'Faturamento do dia';
   return 'Visao geral';
 }
 
@@ -89,7 +91,7 @@ export function LayoutAdmin({
         </div>
         <nav className="nav-list" aria-label="Menu principal">
           <button className={page === 'overview' ? 'active' : ''} onClick={() => setPage('overview')}><Home size={18} />Visao geral</button>
-          <button><WalletCards size={18} />Entregas</button>
+          <button className={['active-deliveries', 'daily-revenue'].includes(page) ? 'active' : ''} onClick={() => setPage('active-deliveries')}><WalletCards size={18} />Entregas</button>
           <button className={['couriers', 'courier-center'].includes(page) ? 'active' : ''} onClick={() => setPage('courier-center')}><UserRound size={18} />Entregadores</button>
           <button className={page === 'map' ? 'active' : ''} onClick={() => setPage('map')}><MapPin size={18} />Mapa</button>
           <button className={page === 'cities' ? 'active' : ''} onClick={() => setPage('cities')}><Store size={18} />Cidades</button>
@@ -177,7 +179,9 @@ export function LayoutAdmin({
         {page === 'store-center' && <StoreCenterView city={selectedCity} stores={storeList} onChangeStores={setStoreList} onEditStore={(store) => { setStoreToEdit(store); setPage('stores'); }} />}
         {page === 'couriers' && <CouriersView city={selectedCity} cities={cityList} couriers={courierList} onChangeCouriers={setCourierList} courierToEdit={courierToEdit} onEditLoaded={() => setCourierToEdit(null)} />}
         {page === 'courier-center' && <CourierCenterView city={selectedCity} couriers={courierList} onChangeCouriers={setCourierList} onEditCourier={(courier) => { setCourierToEdit(courier); setPage('couriers'); }} />}
-        {page === 'overview' && <Overview city={selectedCity} stores={storeList} couriers={courierList} />}
+        {page === 'active-deliveries' && <ActiveDeliveriesAdminView city={selectedCity} />}
+        {page === 'daily-revenue' && <RevenueView city={selectedCity} stores={storeList} />}
+        {page === 'overview' && <Overview city={selectedCity} stores={storeList} couriers={courierList} onOpenActiveDeliveries={() => setPage('active-deliveries')} onOpenRevenue={() => setPage('daily-revenue')} />}
       </main>
     </div>
   );
