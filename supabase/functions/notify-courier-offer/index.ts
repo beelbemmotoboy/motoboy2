@@ -32,7 +32,7 @@ Deno.serve(async (request) => {
   }
 
   try {
-    const { deliveryId, offerTimeoutSeconds = 60, repeat = true } = await request.json();
+    const { deliveryId, offerTimeoutSeconds = 60, notifyActiveOffer = false } = await request.json();
     if (!deliveryId) return json({ error: 'deliveryId is required' }, 400);
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -44,6 +44,10 @@ Deno.serve(async (request) => {
     const offerMode = await fetchDeliveryOfferMode({ supabaseUrl, serviceRoleKey, deliveryId, offerTimeoutSeconds });
     const activeOffers = await fetchActiveQueueOffers({ supabaseUrl, serviceRoleKey, deliveryId });
     if (activeOffers.length) {
+      if (notifyActiveOffer) {
+        const result = await notifyOffers({ supabaseUrl, serviceRoleKey, offers: activeOffers });
+        return json({ ...result, offers: activeOffers.length, notifiedActiveOffer: true, broadcast: activeOffers.length > 1 });
+      }
       return json({ notified: 0, skipped: 'active_offer', offerId: activeOffers[0].id, offers: activeOffers.length, broadcast: offerMode.broadcast });
     }
 
@@ -310,7 +314,7 @@ async function notifyOffers({ supabaseUrl, serviceRoleKey, offers }: {
         offer.deliveries.stores?.fantasy_name || offer.deliveries.stores?.name || '',
         formatCurrency(Number(offer.deliveries.delivery_fee || 0)),
       ].filter(Boolean).join(' - '),
-      url: '/#login',
+      url: '/#courier-home',
       deliveryId: offer.deliveries.id,
     });
 

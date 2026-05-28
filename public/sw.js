@@ -60,7 +60,7 @@ self.addEventListener('push', (event) => {
     renotify: true,
     requireInteraction: true,
     vibrate: [450, 160, 450, 160, 700],
-    data: { url: payload.url || '/#login' },
+    data: { url: payload.url || '/#courier-home' },
   };
 
   event.waitUntil(self.registration.showNotification(title, options));
@@ -69,7 +69,7 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  const targetUrl = new URL(event.notification.data?.url || '/#login', self.location.origin).href;
+  const targetUrl = new URL(event.notification.data?.url || '/#courier-home', self.location.origin).href;
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true })
       .then((clientList) => {

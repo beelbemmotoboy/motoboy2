@@ -83,7 +83,7 @@ async function showCourierOfferNotification(delivery) {
     renotify: true,
     requireInteraction: true,
     vibrate: [450, 160, 450, 160, 700],
-    data: { url: '/#login' },
+    data: { url: '/#courier-home' },
   };
 
   try {

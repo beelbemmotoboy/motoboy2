@@ -143,6 +143,9 @@ export async function createDeliveryWithQueue({ supabase, city, store, requestFo
   if (deliveryError) throw new Error(`Nao foi possivel criar a entrega: ${deliveryError.message}`);
 
   const queuedCount = await buildDeliveryQueue({ supabase, cityId: city.id, deliveryId: delivery.id });
+  if (queuedCount > 0) {
+    await notifyActiveCourierOffer({ supabase, deliveryId: delivery.id }).catch(() => undefined);
+  }
   return { deliveryId: delivery.id, queuedCount };
 }
 
@@ -742,11 +745,16 @@ export async function notifyNextCourierOffer({
   }
 
   const rpcResult = await advanceDeliveryOfferQueueRpc({ supabase, deliveryId });
-  if (!rpcResult.missingRpc) return rpcResult;
+  if (!rpcResult.missingRpc) {
+    if (rpcResult.ok) await notifyActiveCourierOffer({ supabase, deliveryId }).catch(() => undefined);
+    return rpcResult;
+  }
 
   if (allowClientFallback) {
     try {
-      return await activateQueueOffersByMode({ supabase, deliveryId, offerMode });
+      const fallbackResult = await activateQueueOffersByMode({ supabase, deliveryId, offerMode });
+      if (fallbackResult.ok) await notifyActiveCourierOffer({ supabase, deliveryId }).catch(() => undefined);
+      return fallbackResult;
     } catch (error) {
       if (!allowServerInvoke) throw error;
     }
@@ -777,6 +785,23 @@ export async function notifyNextCourierOffer({
   }
 
   return { ok: Boolean(invokeResult?.data), data: invokeResult?.data, reason: 'server-handoff' };
+}
+
+async function notifyActiveCourierOffer({ supabase, deliveryId }) {
+  if (!supabase?.functions?.invoke || !deliveryId) return { ok: false, reason: 'missing-context' };
+  try {
+    const { data, error } = await supabase.functions.invoke('notify-courier-offer', {
+      body: {
+        deliveryId,
+        offerTimeoutSeconds: DELIVERY_OFFER_TIMEOUT_SECONDS,
+        notifyActiveOffer: true,
+      },
+    });
+    if (error) return { ok: false, reason: error.message };
+    return { ok: true, data };
+  } catch (error) {
+    return { ok: false, reason: error instanceof Error ? error.message : 'push-invoke-failed' };
+  }
 }
 
 export async function advanceDeliveryOfferQueue({ supabase, deliveryId }) {
