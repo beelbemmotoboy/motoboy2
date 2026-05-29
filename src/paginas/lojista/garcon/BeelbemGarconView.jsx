@@ -143,6 +143,8 @@ export function BeelbemGarconView({ city, store, profile, storeOpen = true, onTo
   const [produtos, setProdutos] = React.useState([]);
   const [ingredientes, setIngredientes] = React.useState([]);
   const [produtoIngredientes, setProdutoIngredientes] = React.useState([]);
+  const [gruposOpcoes, setGruposOpcoes] = React.useState([]);
+  const [opcoesProduto, setOpcoesProduto] = React.useState([]);
   const [pedidos, setPedidos] = React.useState([]);
   const [mesaEditandoId, setMesaEditandoId] = React.useState('');
   const [categoriaEditandoId, setCategoriaEditandoId] = React.useState('');
@@ -165,8 +167,11 @@ export function BeelbemGarconView({ city, store, profile, storeOpen = true, onTo
       .channel(`garcon-pedidos-${store.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos_garcon', filter: `empresa_id=eq.${store.id}` }, carregarPedidos)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'itens_pedido_garcon' }, carregarPedidos)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'opcoes_item_pedido_garcon' }, carregarPedidos)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ingredientes_cardapio', filter: `empresa_id=eq.${store.id}` }, carregarDados)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'produtos_ingredientes_cardapio', filter: `empresa_id=eq.${store.id}` }, carregarDados)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'grupos_de_opcoes', filter: `empresa_id=eq.${store.id}` }, carregarDados)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'opcoes_de_produto', filter: `empresa_id=eq.${store.id}` }, carregarDados)
       .subscribe();
 
     return () => {
@@ -198,6 +203,8 @@ export function BeelbemGarconView({ city, store, profile, storeOpen = true, onTo
     setProdutos(dados.produtos);
     setIngredientes(dados.ingredientes);
     setProdutoIngredientes(dados.produtoIngredientes);
+    setGruposOpcoes(dados.gruposOpcoes);
+    setOpcoesProduto(dados.opcoesProduto);
     setPedidos(dados.pedidos);
     setFormProduto((atual) => ({
       ...atual,
@@ -221,7 +228,17 @@ export function BeelbemGarconView({ city, store, profile, storeOpen = true, onTo
         criado_em,
         atualizado_em,
         mesas(nome, numero),
-        itens_pedido_garcon(id, produto_id, nome_produto, quantidade, preco_unitario, subtotal, observacao, criado_em)
+        itens_pedido_garcon(
+          id,
+          produto_id,
+          nome_produto,
+          quantidade,
+          preco_unitario,
+          subtotal,
+          observacao,
+          criado_em,
+          opcoes_item_pedido_garcon(id, grupo_nome, opcao_nome, preco_adicional)
+        )
       `)
       .eq('empresa_id', store.id)
       .gte('criado_em', inicioDoDiaIso())
@@ -651,6 +668,8 @@ export function BeelbemGarconView({ city, store, profile, storeOpen = true, onTo
         produtos={produtos}
         ingredientes={ingredientes}
         produtoIngredientes={produtoIngredientes}
+        gruposOpcoes={gruposOpcoes}
+        opcoesProduto={opcoesProduto}
         onReload={carregarDados}
         onMessage={setMensagem}
       />
@@ -685,6 +704,9 @@ export function BeelbemGarconView({ city, store, profile, storeOpen = true, onTo
           {itens.map((item) => (
             <li key={item.id}>
               <strong>{item.quantidade}x {item.nome_produto}</strong>
+              {(item.opcoes_item_pedido_garcon || []).map((opcao) => (
+                <span key={opcao.id}>{opcao.grupo_nome}: {opcao.opcao_nome}{Number(opcao.preco_adicional || 0) > 0 ? ` + ${formatarMoeda(opcao.preco_adicional)}` : ''}</span>
+              ))}
               {item.observacao && <span>{item.observacao}</span>}
             </li>
           ))}

@@ -6,6 +6,8 @@ export const CARDAPIO_SELECTS = {
   produtos: 'id, empresa_id, categoria_id, nome, descricao, preco, imagem_url, status, disponivel, permite_adicionais, tempo_medio_preparo, criado_em, atualizado_em',
   ingredientes: 'id, empresa_id, nome, descricao, unidade_medida, custo_unitario, estoque_minimo, status, criado_em, atualizado_em',
   produtoIngredientes: 'id, empresa_id, produto_id, ingrediente_id, tipo, quantidade, preco_adicional, obrigatorio, ingrediente:ingredientes_cardapio(id, nome, unidade_medida)',
+  gruposOpcoes: 'id, empresa_id, produto_id, nome, descricao, obrigatorio, multipla_escolha, minimo_escolhas, maximo_escolhas, ordem, status, criado_em, atualizado_em, produto:produtos_cardapio(id, nome)',
+  opcoesProduto: 'id, grupo_id, empresa_id, nome, descricao, preco_adicional, disponivel, ordem, status, criado_em, atualizado_em',
 };
 
 export function parseMoedaBrasileira(valor) {
@@ -25,16 +27,18 @@ export function precoParaEntrada(valor) {
 export async function carregarDadosGarcon({ empresaId, buscarPedidosDoDia }) {
   if (!supabase || !empresaId) throw new Error('Supabase nao disponivel para carregar o Garcon.');
 
-  const [mesasResult, categoriasResult, produtosResult, ingredientesResult, produtoIngredientesResult, pedidosResult] = await Promise.all([
+  const [mesasResult, categoriasResult, produtosResult, ingredientesResult, produtoIngredientesResult, gruposOpcoesResult, opcoesProdutoResult, pedidosResult] = await Promise.all([
     supabase.from('mesas').select(CARDAPIO_SELECTS.mesas).eq('empresa_id', empresaId).order('numero', { ascending: true }),
     supabase.from('categorias_cardapio').select(CARDAPIO_SELECTS.categorias).eq('empresa_id', empresaId).order('ordem', { ascending: true }),
     supabase.from('produtos_cardapio').select(CARDAPIO_SELECTS.produtos).eq('empresa_id', empresaId).order('nome', { ascending: true }),
     supabase.from('ingredientes_cardapio').select(CARDAPIO_SELECTS.ingredientes).eq('empresa_id', empresaId).order('nome', { ascending: true }),
     supabase.from('produtos_ingredientes_cardapio').select(CARDAPIO_SELECTS.produtoIngredientes).eq('empresa_id', empresaId).order('tipo', { ascending: true }),
+    supabase.from('grupos_de_opcoes').select(CARDAPIO_SELECTS.gruposOpcoes).eq('empresa_id', empresaId).order('ordem', { ascending: true }),
+    supabase.from('opcoes_de_produto').select(CARDAPIO_SELECTS.opcoesProduto).eq('empresa_id', empresaId).order('ordem', { ascending: true }),
     buscarPedidosDoDia(),
   ]);
 
-  const erros = [mesasResult.error, categoriasResult.error, produtosResult.error, ingredientesResult.error, produtoIngredientesResult.error, pedidosResult.error].filter(Boolean);
+  const erros = [mesasResult.error, categoriasResult.error, produtosResult.error, ingredientesResult.error, produtoIngredientesResult.error, gruposOpcoesResult.error, opcoesProdutoResult.error, pedidosResult.error].filter(Boolean);
   if (erros.length) throw new Error(erros.map((erro) => erro.message).join(' | '));
 
   return {
@@ -43,6 +47,8 @@ export async function carregarDadosGarcon({ empresaId, buscarPedidosDoDia }) {
     produtos: produtosResult.data ?? [],
     ingredientes: ingredientesResult.data ?? [],
     produtoIngredientes: produtoIngredientesResult.data ?? [],
+    gruposOpcoes: gruposOpcoesResult.data ?? [],
+    opcoesProduto: opcoesProdutoResult.data ?? [],
     pedidos: pedidosResult.data ?? [],
   };
 }
@@ -118,6 +124,60 @@ export async function removerIngredienteDoProduto({ empresaId, vinculoId }) {
     .from('produtos_ingredientes_cardapio')
     .delete()
     .eq('id', vinculoId)
+    .eq('empresa_id', empresaId);
+}
+
+export async function salvarGrupoDeOpcoes({ empresaId, grupoId, form }) {
+  const multiplaEscolha = form.multipla_escolha === 'sim';
+  const obrigatorio = form.obrigatorio === 'sim';
+  const payload = {
+    empresa_id: empresaId,
+    produto_id: form.produto_id,
+    nome: form.nome.trim(),
+    descricao: form.descricao.trim() || null,
+    obrigatorio,
+    multipla_escolha: multiplaEscolha,
+    minimo_escolhas: Number(form.minimo_escolhas || 0),
+    maximo_escolhas: multiplaEscolha ? Number(form.maximo_escolhas || 1) : 1,
+    ordem: Number(form.ordem || 1),
+    status: form.status || 'ativo',
+  };
+
+  return grupoId
+    ? supabase.from('grupos_de_opcoes').update(payload).eq('id', grupoId).eq('empresa_id', empresaId)
+    : supabase.from('grupos_de_opcoes').insert(payload);
+}
+
+export async function removerGrupoDeOpcoes({ empresaId, grupoId }) {
+  return supabase
+    .from('grupos_de_opcoes')
+    .delete()
+    .eq('id', grupoId)
+    .eq('empresa_id', empresaId);
+}
+
+export async function salvarOpcaoDeProduto({ empresaId, opcaoId, form }) {
+  const payload = {
+    empresa_id: empresaId,
+    grupo_id: form.grupo_id,
+    nome: form.nome.trim(),
+    descricao: form.descricao.trim() || null,
+    preco_adicional: parseMoedaBrasileira(form.preco_adicional),
+    disponivel: form.disponivel === 'sim',
+    ordem: Number(form.ordem || 1),
+    status: form.status || 'ativo',
+  };
+
+  return opcaoId
+    ? supabase.from('opcoes_de_produto').update(payload).eq('id', opcaoId).eq('empresa_id', empresaId)
+    : supabase.from('opcoes_de_produto').insert(payload);
+}
+
+export async function removerOpcaoDeProduto({ empresaId, opcaoId }) {
+  return supabase
+    .from('opcoes_de_produto')
+    .delete()
+    .eq('id', opcaoId)
     .eq('empresa_id', empresaId);
 }
 
@@ -242,7 +302,31 @@ export async function aplicarSugestoesCardapioIa({ empresaId, sugestoes }) {
       }
     }
 
-    for (const adicional of produto.adicionais || []) {
+    const adicionais = produto.adicionais || [];
+    let grupoAdicionaisId = null;
+    if (adicionais.length) {
+      const { data: grupoAdicionais, error: grupoError } = await supabase
+        .from('grupos_de_opcoes')
+        .insert({
+          empresa_id: empresaId,
+          produto_id: produtoCriado.id,
+          nome: 'Adicionais',
+          descricao: 'Opcoes adicionais importadas do cardapio.',
+          obrigatorio: false,
+          multipla_escolha: true,
+          minimo_escolhas: 0,
+          maximo_escolhas: Math.max(adicionais.length, 1),
+          ordem: 1,
+          status: 'ativo',
+        })
+        .select('id')
+        .single();
+
+      if (grupoError) throw grupoError;
+      grupoAdicionaisId = grupoAdicionais.id;
+    }
+
+    for (const [index, adicional] of adicionais.entries()) {
       const ingredienteId = await criarIngredienteSeNecessario({ empresaId, nome: adicional.nome || adicional });
       if (ingredienteId) {
         await supabase.from('produtos_ingredientes_cardapio').upsert({
@@ -254,6 +338,19 @@ export async function aplicarSugestoesCardapioIa({ empresaId, sugestoes }) {
           preco_adicional: parseMoedaBrasileira(adicional.preco),
           obrigatorio: false,
         }, { onConflict: 'produto_id,ingrediente_id,tipo' });
+      }
+
+      if (grupoAdicionaisId) {
+        const { error: opcaoError } = await supabase.from('opcoes_de_produto').insert({
+          empresa_id: empresaId,
+          grupo_id: grupoAdicionaisId,
+          nome: String(adicional.nome || adicional).trim(),
+          preco_adicional: parseMoedaBrasileira(adicional.preco),
+          disponivel: true,
+          ordem: index + 1,
+          status: 'ativo',
+        });
+        if (opcaoError) throw opcaoError;
       }
     }
   }

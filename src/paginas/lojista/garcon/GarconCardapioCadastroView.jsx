@@ -1,14 +1,29 @@
 import React from 'react';
-import { Bot, Edit3, FileSearch, Layers3, Plus, Trash2, Utensils } from 'lucide-react';
+import {
+  Bot,
+  CheckCircle2,
+  Edit3,
+  FileSearch,
+  Layers3,
+  MoreVertical,
+  Plus,
+  Salad,
+  Trash2,
+  Utensils,
+} from 'lucide-react';
 import {
   aplicarSugestoesCardapioIa,
   parseMoedaBrasileira,
   precoParaEntrada,
   registrarImportacaoCardapioIa,
+  removerGrupoDeOpcoes,
   removerIngredienteDoProduto,
+  removerOpcaoDeProduto,
   salvarCategoriaCardapio,
+  salvarGrupoDeOpcoes,
   salvarIngredienteCardapio,
   salvarIngredienteDoProduto,
+  salvarOpcaoDeProduto,
   salvarProdutoCardapio,
 } from './garconDb';
 import { analisarCardapioComIa, garconMenuAiStatus } from './garconMenuAi';
@@ -17,13 +32,7 @@ const STATUS_CADASTRO = ['ativa', 'inativa'];
 const STATUS_PRODUTO = ['ativo', 'inativo'];
 const STATUS_INGREDIENTE = ['ativo', 'inativo'];
 
-const FORM_CATEGORIA_INICIAL = {
-  nome: '',
-  descricao: '',
-  ordem: '1',
-  status: 'ativa',
-};
-
+const FORM_CATEGORIA_INICIAL = { nome: '', descricao: '', ordem: '1', status: 'ativa' };
 const FORM_PRODUTO_INICIAL = {
   nome: '',
   descricao: '',
@@ -35,27 +44,35 @@ const FORM_PRODUTO_INICIAL = {
   permite_adicionais: 'nao',
   tempo_medio_preparo: '',
 };
-
-const FORM_INGREDIENTE_INICIAL = {
+const FORM_INGREDIENTE_INICIAL = { nome: '', descricao: '', unidade_medida: 'un', custo_unitario: '', estoque_minimo: '', status: 'ativo' };
+const FORM_VINCULO_INICIAL = { produto_id: '', ingrediente_id: '', tipo: 'base', quantidade: '', preco_adicional: '', obrigatorio: 'sim' };
+const FORM_GRUPO_INICIAL = {
+  produto_id: '',
   nome: '',
   descricao: '',
-  unidade_medida: 'un',
-  custo_unitario: '',
-  estoque_minimo: '',
+  obrigatorio: 'nao',
+  multipla_escolha: 'nao',
+  minimo_escolhas: '0',
+  maximo_escolhas: '1',
+  ordem: '1',
   status: 'ativo',
 };
-
-const FORM_VINCULO_INICIAL = {
-  produto_id: '',
-  ingrediente_id: '',
-  tipo: 'base',
-  quantidade: '',
+const FORM_OPCAO_INICIAL = {
+  grupo_id: '',
+  nome: '',
+  descricao: '',
   preco_adicional: '',
-  obrigatorio: 'sim',
+  disponivel: 'sim',
+  ordem: '1',
+  status: 'ativo',
 };
 
 function formatarMoeda(valor) {
   return Number(valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function ordenarPorOrdemNome(lista) {
+  return [...lista].sort((a, b) => Number(a.ordem || 0) - Number(b.ordem || 0) || String(a.nome || '').localeCompare(String(b.nome || '')));
 }
 
 export function GarconCardapioCadastroView({
@@ -64,16 +81,22 @@ export function GarconCardapioCadastroView({
   produtos,
   ingredientes,
   produtoIngredientes,
+  gruposOpcoes = [],
+  opcoesProduto = [],
   onReload,
   onMessage,
 }) {
   const [categoriaEditandoId, setCategoriaEditandoId] = React.useState('');
   const [produtoEditandoId, setProdutoEditandoId] = React.useState('');
   const [ingredienteEditandoId, setIngredienteEditandoId] = React.useState('');
+  const [grupoEditandoId, setGrupoEditandoId] = React.useState('');
+  const [opcaoEditandoId, setOpcaoEditandoId] = React.useState('');
   const [formCategoria, setFormCategoria] = React.useState(FORM_CATEGORIA_INICIAL);
   const [formProduto, setFormProduto] = React.useState(FORM_PRODUTO_INICIAL);
   const [formIngrediente, setFormIngrediente] = React.useState(FORM_INGREDIENTE_INICIAL);
   const [formVinculo, setFormVinculo] = React.useState(FORM_VINCULO_INICIAL);
+  const [formGrupo, setFormGrupo] = React.useState(FORM_GRUPO_INICIAL);
+  const [formOpcao, setFormOpcao] = React.useState(FORM_OPCAO_INICIAL);
   const [arquivoIa, setArquivoIa] = React.useState(null);
   const [pesquisaIa, setPesquisaIa] = React.useState('');
   const [resultadoIa, setResultadoIa] = React.useState(null);
@@ -81,16 +104,35 @@ export function GarconCardapioCadastroView({
   const [gravandoIa, setGravandoIa] = React.useState(false);
 
   React.useEffect(() => {
-    setFormProduto((atual) => ({
-      ...atual,
-      categoria_id: atual.categoria_id || categorias[0]?.id || '',
-    }));
+    setFormProduto((atual) => ({ ...atual, categoria_id: atual.categoria_id || categorias[0]?.id || '' }));
     setFormVinculo((atual) => ({
       ...atual,
       produto_id: atual.produto_id || produtos[0]?.id || '',
       ingrediente_id: atual.ingrediente_id || ingredientes[0]?.id || '',
     }));
-  }, [categorias, ingredientes, produtos]);
+    setFormGrupo((atual) => ({ ...atual, produto_id: atual.produto_id || produtos[0]?.id || '' }));
+    setFormOpcao((atual) => ({ ...atual, grupo_id: atual.grupo_id || gruposOpcoes[0]?.id || '' }));
+  }, [categorias, ingredientes, produtos, gruposOpcoes]);
+
+  function produtoNome(id) {
+    return produtos.find((produto) => produto.id === id)?.nome || 'Produto';
+  }
+
+  function categoriaNome(id) {
+    return categorias.find((categoria) => categoria.id === id)?.nome || 'Sem categoria';
+  }
+
+  function vinculosDoProduto(produtoId) {
+    return produtoIngredientes.filter((item) => item.produto_id === produtoId);
+  }
+
+  function gruposDoProduto(produtoId) {
+    return ordenarPorOrdemNome(gruposOpcoes.filter((grupo) => grupo.produto_id === produtoId));
+  }
+
+  function opcoesDoGrupo(grupoId) {
+    return ordenarPorOrdemNome(opcoesProduto.filter((opcao) => opcao.grupo_id === grupoId));
+  }
 
   function limparCategoria() {
     setCategoriaEditandoId('');
@@ -107,6 +149,16 @@ export function GarconCardapioCadastroView({
     setFormIngrediente(FORM_INGREDIENTE_INICIAL);
   }
 
+  function limparGrupo() {
+    setGrupoEditandoId('');
+    setFormGrupo({ ...FORM_GRUPO_INICIAL, produto_id: formGrupo.produto_id || produtos[0]?.id || '' });
+  }
+
+  function limparOpcao() {
+    setOpcaoEditandoId('');
+    setFormOpcao({ ...FORM_OPCAO_INICIAL, grupo_id: formOpcao.grupo_id || gruposOpcoes[0]?.id || '' });
+  }
+
   async function salvarCategoria(event) {
     event.preventDefault();
     onMessage('');
@@ -114,7 +166,6 @@ export function GarconCardapioCadastroView({
       onMessage('Nome da categoria e obrigatorio.');
       return;
     }
-
     const result = await salvarCategoriaCardapio({ empresaId: store.id, categoriaId: categoriaEditandoId, form: formCategoria });
     if (result.error) {
       onMessage(`Nao foi possivel salvar a categoria: ${result.error.message}`);
@@ -133,7 +184,6 @@ export function GarconCardapioCadastroView({
       onMessage('Produto, categoria e preco valido sao obrigatorios.');
       return;
     }
-
     const result = await salvarProdutoCardapio({ empresaId: store.id, produtoId: produtoEditandoId, form: formProduto });
     if (result.error) {
       onMessage(`Nao foi possivel salvar o produto: ${result.error.message}`);
@@ -151,7 +201,6 @@ export function GarconCardapioCadastroView({
       onMessage('Nome do ingrediente e obrigatorio.');
       return;
     }
-
     const result = await salvarIngredienteCardapio({ empresaId: store.id, ingredienteId: ingredienteEditandoId, form: formIngrediente });
     if (result.error) {
       onMessage(`Nao foi possivel salvar o ingrediente: ${result.error.message}`);
@@ -169,7 +218,6 @@ export function GarconCardapioCadastroView({
       onMessage('Selecione produto e ingrediente para vincular.');
       return;
     }
-
     const result = await salvarIngredienteDoProduto({ empresaId: store.id, form: formVinculo });
     if (result.error) {
       onMessage(`Nao foi possivel vincular o ingrediente: ${result.error.message}`);
@@ -180,14 +228,83 @@ export function GarconCardapioCadastroView({
     onReload();
   }
 
-  async function removerVinculo(vinculo) {
-    const result = await removerIngredienteDoProduto({ empresaId: store.id, vinculoId: vinculo.id });
-    if (result.error) {
-      onMessage(`Nao foi possivel remover o vinculo: ${result.error.message}`);
+  async function salvarGrupo(event) {
+    event.preventDefault();
+    onMessage('');
+    const minimo = Number(formGrupo.minimo_escolhas || 0);
+    const maximo = Number(formGrupo.maximo_escolhas || 0);
+    if (!store?.id || !formGrupo.produto_id || !formGrupo.nome.trim()) {
+      onMessage('Produto e nome do grupo sao obrigatorios.');
       return;
     }
-    onMessage('Ingrediente removido do produto.');
+    if (formGrupo.obrigatorio === 'sim' && minimo <= 0) {
+      onMessage('Grupo obrigatorio precisa ter minimo de escolhas maior que zero.');
+      return;
+    }
+    if (formGrupo.multipla_escolha === 'nao' && maximo !== 1) {
+      onMessage('Grupo sem multipla escolha deve ter maximo igual a 1.');
+      return;
+    }
+    if (maximo < minimo) {
+      onMessage('Maximo de escolhas nao pode ser menor que o minimo.');
+      return;
+    }
+    const result = await salvarGrupoDeOpcoes({ empresaId: store.id, grupoId: grupoEditandoId, form: formGrupo });
+    if (result.error) {
+      onMessage(`Nao foi possivel salvar o grupo: ${result.error.message}`);
+      return;
+    }
+    limparGrupo();
+    onMessage('Grupo de opcoes salvo.');
     onReload();
+  }
+
+  async function salvarOpcao(event) {
+    event.preventDefault();
+    onMessage('');
+    if (!store?.id || !formOpcao.grupo_id || !formOpcao.nome.trim()) {
+      onMessage('Grupo e nome da opcao sao obrigatorios.');
+      return;
+    }
+    if (parseMoedaBrasileira(formOpcao.preco_adicional) < 0) {
+      onMessage('Preco adicional nao pode ser negativo.');
+      return;
+    }
+    const result = await salvarOpcaoDeProduto({ empresaId: store.id, opcaoId: opcaoEditandoId, form: formOpcao });
+    if (result.error) {
+      onMessage(`Nao foi possivel salvar a opcao: ${result.error.message}`);
+      return;
+    }
+    limparOpcao();
+    onMessage('Opcao salva.');
+    onReload();
+  }
+
+  async function removerVinculo(vinculo) {
+    const result = await removerIngredienteDoProduto({ empresaId: store.id, vinculoId: vinculo.id });
+    if (result.error) onMessage(`Nao foi possivel remover o vinculo: ${result.error.message}`);
+    else {
+      onMessage('Ingrediente removido do produto.');
+      onReload();
+    }
+  }
+
+  async function excluirGrupo(grupo) {
+    const result = await removerGrupoDeOpcoes({ empresaId: store.id, grupoId: grupo.id });
+    if (result.error) onMessage(`Nao foi possivel excluir o grupo: ${result.error.message}`);
+    else {
+      onMessage('Grupo excluido.');
+      onReload();
+    }
+  }
+
+  async function excluirOpcao(opcao) {
+    const result = await removerOpcaoDeProduto({ empresaId: store.id, opcaoId: opcao.id });
+    if (result.error) onMessage(`Nao foi possivel excluir a opcao: ${result.error.message}`);
+    else {
+      onMessage('Opcao excluida.');
+      onReload();
+    }
   }
 
   async function analisarArquivoCardapio() {
@@ -196,9 +313,8 @@ export function GarconCardapioCadastroView({
     setAnalisandoIa(true);
     try {
       const resultado = await analisarCardapioComIa({ arquivo: arquivoIa, pesquisa: pesquisaIa });
-      if (!resultado.ok) {
-        onMessage(resultado.motivo);
-      } else {
+      if (!resultado.ok) onMessage(resultado.motivo);
+      else {
         setResultadoIa(resultado);
         onMessage('Analise concluida. Confira os itens antes de gravar.');
       }
@@ -265,12 +381,32 @@ export function GarconCardapioCadastroView({
     });
   }
 
-  function categoriaNome(id) {
-    return categorias.find((categoria) => categoria.id === id)?.nome || 'Sem categoria';
+  function editarGrupo(grupo) {
+    setGrupoEditandoId(grupo.id);
+    setFormGrupo({
+      produto_id: grupo.produto_id || produtos[0]?.id || '',
+      nome: grupo.nome || '',
+      descricao: grupo.descricao || '',
+      obrigatorio: grupo.obrigatorio ? 'sim' : 'nao',
+      multipla_escolha: grupo.multipla_escolha ? 'sim' : 'nao',
+      minimo_escolhas: String(grupo.minimo_escolhas ?? 0),
+      maximo_escolhas: String(grupo.maximo_escolhas ?? 1),
+      ordem: String(grupo.ordem ?? 1),
+      status: grupo.status || 'ativo',
+    });
   }
 
-  function vinculosDoProduto(produtoId) {
-    return produtoIngredientes.filter((item) => item.produto_id === produtoId);
+  function editarOpcao(opcao) {
+    setOpcaoEditandoId(opcao.id);
+    setFormOpcao({
+      grupo_id: opcao.grupo_id || gruposOpcoes[0]?.id || '',
+      nome: opcao.nome || '',
+      descricao: opcao.descricao || '',
+      preco_adicional: precoParaEntrada(opcao.preco_adicional),
+      disponivel: opcao.disponivel ? 'sim' : 'nao',
+      ordem: String(opcao.ordem ?? 1),
+      status: opcao.status || 'ativo',
+    });
   }
 
   return (
@@ -290,9 +426,7 @@ export function GarconCardapioCadastroView({
             <input type="file" accept="image/*,application/pdf" onChange={(event) => setArquivoIa(event.target.files?.[0] || null)} />
           </label>
         </div>
-        <p className="garcon-ai-note">
-          Modelo: {garconMenuAiStatus.model}. A importacao fica pendente ate voce gravar o resultado analisado.
-        </p>
+        <p className="garcon-ai-note">Modelo: {garconMenuAiStatus.model}. A importacao fica pendente ate voce gravar o resultado analisado.</p>
         {resultadoIa?.dados && (
           <div className="garcon-ai-preview">
             <article><strong>{resultadoIa.dados.categorias.length}</strong><span>categorias</span></article>
@@ -306,7 +440,7 @@ export function GarconCardapioCadastroView({
       </section>
 
       <section className="garcon-menu-grid">
-        <form className="garcon-panel" onSubmit={salvarCategoria}>
+        <form className="garcon-panel garcon-menu-card" onSubmit={salvarCategoria}>
           <header>
             <span><Layers3 size={22} />Categorias</span>
             {categoriaEditandoId && <button type="button" onClick={limparCategoria}>Nova categoria</button>}
@@ -332,7 +466,7 @@ export function GarconCardapioCadastroView({
           </div>
         </form>
 
-        <form className="garcon-panel" onSubmit={salvarProduto}>
+        <form className="garcon-panel garcon-menu-card" onSubmit={salvarProduto}>
           <header>
             <span><Utensils size={22} />Produtos</span>
             {produtoEditandoId && <button type="button" onClick={limparProduto}>Novo produto</button>}
@@ -369,10 +503,129 @@ export function GarconCardapioCadastroView({
           </div>
           <button className="primary-action" type="submit">{produtoEditandoId ? 'Salvar produto' : 'Criar produto'}</button>
         </form>
+      </section>
 
+      <section className="garcon-panel garcon-options-panel">
+        <header>
+          <span><Salad size={22} />Ingredientes e adicionais</span>
+          <small>Grupos profissionais para escolhas obrigatorias, adicionais pagos e remocoes.</small>
+        </header>
+        <div className="garcon-options-grid">
+          <form onSubmit={salvarGrupo}>
+            <h3>Grupo de opcoes</h3>
+            <div className="garcon-form-grid">
+              <label>Produto
+                <select value={formGrupo.produto_id} onChange={(event) => setFormGrupo((atual) => ({ ...atual, produto_id: event.target.value }))}>
+                  <option value="">Selecione</option>
+                  {produtos.map((produto) => <option key={produto.id} value={produto.id}>{produto.nome}</option>)}
+                </select>
+              </label>
+              <label>Nome do grupo<input value={formGrupo.nome} onChange={(event) => setFormGrupo((atual) => ({ ...atual, nome: event.target.value }))} placeholder="Adicionais" /></label>
+              <label>Obrigatorio
+                <select value={formGrupo.obrigatorio} onChange={(event) => setFormGrupo((atual) => ({ ...atual, obrigatorio: event.target.value }))}>
+                  <option value="nao">nao</option>
+                  <option value="sim">sim</option>
+                </select>
+              </label>
+              <label>Multipla escolha
+                <select value={formGrupo.multipla_escolha} onChange={(event) => setFormGrupo((atual) => ({ ...atual, multipla_escolha: event.target.value, maximo_escolhas: event.target.value === 'nao' ? '1' : atual.maximo_escolhas }))}>
+                  <option value="nao">nao</option>
+                  <option value="sim">sim</option>
+                </select>
+              </label>
+              <label>Minimo<input inputMode="numeric" value={formGrupo.minimo_escolhas} onChange={(event) => setFormGrupo((atual) => ({ ...atual, minimo_escolhas: event.target.value }))} /></label>
+              <label>Maximo<input inputMode="numeric" value={formGrupo.maximo_escolhas} onChange={(event) => setFormGrupo((atual) => ({ ...atual, maximo_escolhas: event.target.value }))} /></label>
+              <label>Ordem<input inputMode="numeric" value={formGrupo.ordem} onChange={(event) => setFormGrupo((atual) => ({ ...atual, ordem: event.target.value }))} /></label>
+              <label>Status
+                <select value={formGrupo.status} onChange={(event) => setFormGrupo((atual) => ({ ...atual, status: event.target.value }))}>
+                  {STATUS_PRODUTO.map((status) => <option value={status} key={status}>{status}</option>)}
+                </select>
+              </label>
+              <label className="wide">Descricao opcional<input value={formGrupo.descricao} onChange={(event) => setFormGrupo((atual) => ({ ...atual, descricao: event.target.value }))} placeholder="Escolha o ponto, adicionais, remocoes..." /></label>
+            </div>
+            <div className="garcon-form-actions">
+              <button className="primary-action" type="submit">{grupoEditandoId ? 'Salvar grupo' : 'Criar grupo'}</button>
+              {grupoEditandoId && <button type="button" onClick={limparGrupo}>Cancelar edicao</button>}
+            </div>
+          </form>
+
+          <form onSubmit={salvarOpcao}>
+            <h3>Opcao do grupo</h3>
+            <div className="garcon-form-grid">
+              <label>Grupo
+                <select value={formOpcao.grupo_id} onChange={(event) => setFormOpcao((atual) => ({ ...atual, grupo_id: event.target.value }))}>
+                  <option value="">Selecione</option>
+                  {gruposOpcoes.map((grupo) => <option key={grupo.id} value={grupo.id}>{produtoNome(grupo.produto_id)} - {grupo.nome}</option>)}
+                </select>
+              </label>
+              <label>Nome da opcao<input value={formOpcao.nome} onChange={(event) => setFormOpcao((atual) => ({ ...atual, nome: event.target.value }))} placeholder="Bacon" /></label>
+              <label>Preco adicional<input inputMode="decimal" value={formOpcao.preco_adicional} onChange={(event) => setFormOpcao((atual) => ({ ...atual, preco_adicional: event.target.value }))} placeholder="0,00" /></label>
+              <label>Disponivel
+                <select value={formOpcao.disponivel} onChange={(event) => setFormOpcao((atual) => ({ ...atual, disponivel: event.target.value }))}>
+                  <option value="sim">sim</option>
+                  <option value="nao">nao</option>
+                </select>
+              </label>
+              <label>Ordem<input inputMode="numeric" value={formOpcao.ordem} onChange={(event) => setFormOpcao((atual) => ({ ...atual, ordem: event.target.value }))} /></label>
+              <label>Status
+                <select value={formOpcao.status} onChange={(event) => setFormOpcao((atual) => ({ ...atual, status: event.target.value }))}>
+                  {STATUS_PRODUTO.map((status) => <option value={status} key={status}>{status}</option>)}
+                </select>
+              </label>
+              <label className="wide">Descricao opcional<input value={formOpcao.descricao} onChange={(event) => setFormOpcao((atual) => ({ ...atual, descricao: event.target.value }))} placeholder="Ex.: + R$ 4,00 ou sem cebola" /></label>
+            </div>
+            <div className="garcon-form-actions">
+              <button className="primary-action" type="submit">{opcaoEditandoId ? 'Salvar opcao' : 'Adicionar opcao'}</button>
+              {opcaoEditandoId && <button type="button" onClick={limparOpcao}>Cancelar edicao</button>}
+            </div>
+          </form>
+        </div>
+
+        <div className="garcon-options-list">
+          {produtos.map((produto) => {
+            const grupos = gruposDoProduto(produto.id);
+            if (!grupos.length) return null;
+            return (
+              <article className="garcon-product-options" key={produto.id}>
+                <header>
+                  <strong>{produto.nome}</strong>
+                  <span>{categoriaNome(produto.categoria_id)}</span>
+                </header>
+                {grupos.map((grupo) => (
+                  <section key={grupo.id}>
+                    <div>
+                      <strong>{grupo.nome}</strong>
+                      <span>{grupo.obrigatorio ? 'obrigatorio' : 'opcional'} - {grupo.multipla_escolha ? 'multipla escolha' : 'escolha unica'} - {grupo.minimo_escolhas}/{grupo.maximo_escolhas}</span>
+                      <div>
+                        <button type="button" onClick={() => editarGrupo(grupo)}><Edit3 size={15} />Editar</button>
+                        <button type="button" onClick={() => excluirGrupo(grupo)}><Trash2 size={15} />Excluir</button>
+                      </div>
+                    </div>
+                    <ul>
+                      {opcoesDoGrupo(grupo.id).map((opcao) => (
+                        <li key={opcao.id}>
+                          <span>{opcao.nome}</span>
+                          <b>{Number(opcao.preco_adicional || 0) > 0 ? `+ ${formatarMoeda(opcao.preco_adicional)}` : formatarMoeda(0)}</b>
+                          <mark className={`garcon-status ${opcao.disponivel && opcao.status === 'ativo' ? 'ativo' : 'inativo'}`}>{opcao.disponivel ? 'disponivel' : 'indisponivel'}</mark>
+                          <button type="button" onClick={() => editarOpcao(opcao)}><Edit3 size={15} /></button>
+                          <button type="button" onClick={() => excluirOpcao(opcao)}><Trash2 size={15} /></button>
+                        </li>
+                      ))}
+                      {opcoesDoGrupo(grupo.id).length === 0 && <li><span>Nenhuma opcao cadastrada.</span></li>}
+                    </ul>
+                  </section>
+                ))}
+              </article>
+            );
+          })}
+          {gruposOpcoes.length === 0 && <p className="empty-state">Nenhum grupo de ingredientes ou adicionais cadastrado.</p>}
+        </div>
+      </section>
+
+      <section className="garcon-menu-grid compact">
         <form className="garcon-panel" onSubmit={salvarIngrediente}>
           <header>
-            <span><Utensils size={22} />Ingredientes</span>
+            <span><Utensils size={22} />Ingredientes base</span>
             {ingredienteEditandoId && <button type="button" onClick={limparIngrediente}>Novo ingrediente</button>}
           </header>
           <div className="garcon-form-grid">
@@ -391,7 +644,7 @@ export function GarconCardapioCadastroView({
         </form>
 
         <form className="garcon-panel" onSubmit={salvarVinculo}>
-          <header><span><Plus size={22} />Ingredientes do produto</span></header>
+          <header><span><Plus size={22} />Composicao do produto</span></header>
           <div className="garcon-form-grid">
             <label>Produto
               <select value={formVinculo.produto_id} onChange={(event) => setFormVinculo((atual) => ({ ...atual, produto_id: event.target.value }))}>
@@ -426,12 +679,12 @@ export function GarconCardapioCadastroView({
 
       <div className="garcon-products-list">
         {produtos.map((produto) => (
-          <article className="garcon-product-card" key={produto.id}>
+          <article className="garcon-product-card premium" key={produto.id}>
             {produto.imagem_url ? <img src={produto.imagem_url} alt="" /> : <span><Utensils size={28} /></span>}
             <div>
               <strong>{produto.nome}</strong>
               <small>{categoriaNome(produto.categoria_id)}</small>
-              <p>{produto.descricao || 'Sem descricao'}</p>
+              <p>{produto.descricao || 'Sem descricao cadastrada.'}</p>
               <b>{formatarMoeda(produto.preco)}</b>
               <div className="garcon-product-ingredients">
                 {vinculosDoProduto(produto.id).map((vinculo) => (
@@ -446,8 +699,12 @@ export function GarconCardapioCadastroView({
             <div className="garcon-product-flags">
               <mark className={`garcon-status ${produto.status}`}>{produto.status}</mark>
               <mark className={`garcon-status ${produto.disponivel ? 'livre' : 'inativa'}`}>{produto.disponivel ? 'disponivel' : 'indisponivel'}</mark>
-              <mark className={`garcon-status ${produto.permite_adicionais ? 'livre' : 'inativa'}`}>{produto.permite_adicionais ? 'adicionais' : 'sem adicionais'}</mark>
+              <button type="button" onClick={() => {
+                setFormGrupo((atual) => ({ ...atual, produto_id: produto.id }));
+                document.querySelector('.garcon-options-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }}><CheckCircle2 size={17} />Ingredientes</button>
               <button type="button" onClick={() => editarProduto(produto)}><Edit3 size={17} />Editar</button>
+              <button type="button" aria-label="Mais opcoes"><MoreVertical size={17} /></button>
             </div>
           </article>
         ))}
