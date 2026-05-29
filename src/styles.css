@@ -1153,6 +1153,25 @@ button, a {
   gap: 10px;
 }
 
+.store-closed-animation {
+  position: fixed;
+  left: 50%;
+  top: 46%;
+  z-index: 80;
+  transform: translate(-50%, -50%);
+  min-width: 170px;
+  padding: 20px 26px;
+  border: 2px solid rgba(255, 73, 73, 0.92);
+  border-radius: 24px;
+  color: #fff;
+  text-align: center;
+  font-size: clamp(34px, 9vw, 64px);
+  font-weight: 950;
+  background: radial-gradient(circle at center, #ff4949, #8f1515 72%);
+  box-shadow: 0 0 45px rgba(255, 73, 73, 0.82);
+  animation: xpPulse 3s ease-out forwards;
+}
+
 .delivery-request-modal {
   place-items: start center;
   overflow-y: auto;
@@ -2313,6 +2332,106 @@ button, a {
   color: #f4c21a;
 }
 
+.garcon-cardapio-cadastro {
+  display: grid;
+  gap: 18px;
+}
+
+.garcon-ai-import {
+  border-color: rgba(244, 194, 26, 0.5);
+}
+
+.garcon-ai-note {
+  margin: 10px 0 0;
+  color: rgba(15, 23, 42, 0.58);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.garcon-ai-preview {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.garcon-ai-preview article,
+.garcon-ai-preview button,
+.garcon-ingredients-list button,
+.garcon-product-ingredients button {
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.garcon-ai-preview article {
+  padding: 12px;
+  display: grid;
+  gap: 3px;
+}
+
+.garcon-ai-preview article strong {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.garcon-ai-preview article span,
+.garcon-ingredients-list span {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.garcon-ai-preview button {
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #1d1600;
+  background: #f4c21a;
+  font-weight: 900;
+}
+
+.garcon-product-ingredients {
+  margin-top: 9px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.garcon-product-ingredients button {
+  min-height: 28px;
+  padding: 5px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.garcon-ingredients-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.garcon-ingredients-list button {
+  min-height: 64px;
+  padding: 12px;
+  display: grid;
+  gap: 5px;
+  text-align: left;
+}
+
+.garcon-ingredients-list strong {
+  color: #0f172a;
+  font-size: 15px;
+  font-weight: 900;
+}
+
 .garcon-product-flags {
   grid-column: auto;
   justify-content: flex-end;
@@ -2837,7 +2956,9 @@ button, a {
   .garcon-action-grid,
   .garcon-pedidos-grid,
   .garcon-kitchen-grid,
-  .garcon-report-grid {
+  .garcon-report-grid,
+  .garcon-ai-preview,
+  .garcon-ingredients-list {
     grid-template-columns: 1fr;
   }
 

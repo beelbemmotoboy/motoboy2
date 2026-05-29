@@ -20,6 +20,8 @@ import {
 } from 'lucide-react';
 import { LayoutLojista } from '../../../layouts/LayoutLojista';
 import { supabase } from '../../../supabaseClient';
+import { GarconCardapioCadastroView } from './GarconCardapioCadastroView';
+import { carregarDadosGarcon } from './garconDb';
 
 const STATUS_MESA = ['ativa', 'livre', 'ocupada', 'inativa'];
 const STATUS_CADASTRO = ['ativa', 'inativa'];
@@ -139,6 +141,8 @@ export function BeelbemGarconView({ city, store, profile, storeOpen = true, onTo
   const [mesas, setMesas] = React.useState([]);
   const [categorias, setCategorias] = React.useState([]);
   const [produtos, setProdutos] = React.useState([]);
+  const [ingredientes, setIngredientes] = React.useState([]);
+  const [produtoIngredientes, setProdutoIngredientes] = React.useState([]);
   const [pedidos, setPedidos] = React.useState([]);
   const [mesaEditandoId, setMesaEditandoId] = React.useState('');
   const [categoriaEditandoId, setCategoriaEditandoId] = React.useState('');
@@ -161,6 +165,8 @@ export function BeelbemGarconView({ city, store, profile, storeOpen = true, onTo
       .channel(`garcon-pedidos-${store.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'pedidos_garcon', filter: `empresa_id=eq.${store.id}` }, carregarPedidos)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'itens_pedido_garcon' }, carregarPedidos)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ingredientes_cardapio', filter: `empresa_id=eq.${store.id}` }, carregarDados)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'produtos_ingredientes_cardapio', filter: `empresa_id=eq.${store.id}` }, carregarDados)
       .subscribe();
 
     return () => {
@@ -177,39 +183,25 @@ export function BeelbemGarconView({ city, store, profile, storeOpen = true, onTo
     }
 
     setCarregando(true);
-    const [mesasResult, categoriasResult, produtosResult, pedidosResult] = await Promise.all([
-      supabase
-        .from('mesas')
-        .select('id, empresa_id, nome, numero, descricao, status, qr_code_url, criado_em, atualizado_em')
-        .eq('empresa_id', store.id)
-        .order('numero', { ascending: true }),
-      supabase
-        .from('categorias_cardapio')
-        .select('id, empresa_id, nome, descricao, ordem, status, criado_em, atualizado_em')
-        .eq('empresa_id', store.id)
-        .order('ordem', { ascending: true }),
-      supabase
-        .from('produtos_cardapio')
-        .select('id, empresa_id, categoria_id, nome, descricao, preco, imagem_url, status, disponivel, tempo_medio_preparo, criado_em, atualizado_em')
-        .eq('empresa_id', store.id)
-        .order('nome', { ascending: true }),
-      buscarPedidosDoDia(),
-    ]);
-    setCarregando(false);
-
-    const erros = [mesasResult.error, categoriasResult.error, produtosResult.error, pedidosResult.error].filter(Boolean);
-    if (erros.length) {
-      setMensagem(`Nao foi possivel carregar o Garcon: ${erros.map((erro) => erro.message).join(' | ')}`);
+    let dados;
+    try {
+      dados = await carregarDadosGarcon({ empresaId: store.id, buscarPedidosDoDia });
+    } catch (error) {
+      setCarregando(false);
+      setMensagem(`Nao foi possivel carregar o Garcon: ${error.message}`);
       return;
     }
+    setCarregando(false);
 
-    setMesas(mesasResult.data ?? []);
-    setCategorias(categoriasResult.data ?? []);
-    setProdutos(produtosResult.data ?? []);
-    setPedidos(pedidosResult.data ?? []);
+    setMesas(dados.mesas);
+    setCategorias(dados.categorias);
+    setProdutos(dados.produtos);
+    setIngredientes(dados.ingredientes);
+    setProdutoIngredientes(dados.produtoIngredientes);
+    setPedidos(dados.pedidos);
     setFormProduto((atual) => ({
       ...atual,
-      categoria_id: atual.categoria_id || categoriasResult.data?.[0]?.id || '',
+      categoria_id: atual.categoria_id || dados.categorias?.[0]?.id || '',
     }));
   }
 
@@ -653,87 +645,19 @@ export function BeelbemGarconView({ city, store, profile, storeOpen = true, onTo
 
   function renderCardapio() {
     return (
-      <section className="garcon-menu-grid">
-        <form className="garcon-panel" onSubmit={salvarCategoria}>
-          <header>
-            <span><Layers3 size={22} />Categorias</span>
-            {categoriaEditandoId && <button type="button" onClick={limparCategoria}>Nova categoria</button>}
-          </header>
-          <div className="garcon-form-grid">
-            <label>Nome da categoria<input value={formCategoria.nome} onChange={(event) => setFormCategoria((atual) => ({ ...atual, nome: event.target.value }))} placeholder="Bebidas" /></label>
-            <label>Ordem<input inputMode="numeric" value={formCategoria.ordem} onChange={(event) => setFormCategoria((atual) => ({ ...atual, ordem: event.target.value }))} /></label>
-            <label>Status
-              <select value={formCategoria.status} onChange={(event) => setFormCategoria((atual) => ({ ...atual, status: event.target.value }))}>
-                {STATUS_CADASTRO.map((status) => <option value={status} key={status}>{status}</option>)}
-              </select>
-            </label>
-            <label className="wide">Descricao opcional<input value={formCategoria.descricao} onChange={(event) => setFormCategoria((atual) => ({ ...atual, descricao: event.target.value }))} /></label>
-          </div>
-          <button className="primary-action" type="submit">{categoriaEditandoId ? 'Salvar categoria' : 'Criar categoria'}</button>
-          <div className="garcon-compact-list">
-            {categorias.map((categoria) => (
-              <button type="button" key={categoria.id} onClick={() => editarCategoria(categoria)}>
-                <strong>{categoria.nome}</strong>
-                <span>{categoria.status} · ordem {categoria.ordem}</span>
-              </button>
-            ))}
-          </div>
-        </form>
-
-        <form className="garcon-panel" onSubmit={salvarProduto}>
-          <header>
-            <span><Utensils size={22} />Produtos</span>
-            {produtoEditandoId && <button type="button" onClick={limparProduto}>Novo produto</button>}
-          </header>
-          <div className="garcon-form-grid">
-            <label>Nome do produto<input value={formProduto.nome} onChange={(event) => setFormProduto((atual) => ({ ...atual, nome: event.target.value }))} placeholder="X-Burger" /></label>
-            <label>Preco<input inputMode="decimal" value={formProduto.preco} onChange={(event) => setFormProduto((atual) => ({ ...atual, preco: event.target.value }))} placeholder="29,90" /></label>
-            <label>Categoria
-              <select value={formProduto.categoria_id} onChange={(event) => setFormProduto((atual) => ({ ...atual, categoria_id: event.target.value }))}>
-                <option value="">Selecione</option>
-                {categorias.map((categoria) => <option key={categoria.id} value={categoria.id}>{categoria.nome}</option>)}
-              </select>
-            </label>
-            <label>Status
-              <select value={formProduto.status} onChange={(event) => setFormProduto((atual) => ({ ...atual, status: event.target.value }))}>
-                {STATUS_PRODUTO.map((status) => <option value={status} key={status}>{status}</option>)}
-              </select>
-            </label>
-            <label>Disponivel
-              <select value={formProduto.disponivel} onChange={(event) => setFormProduto((atual) => ({ ...atual, disponivel: event.target.value }))}>
-                <option value="sim">sim</option>
-                <option value="nao">nao</option>
-              </select>
-            </label>
-            <label>Tempo medio (min)<input inputMode="numeric" value={formProduto.tempo_medio_preparo} onChange={(event) => setFormProduto((atual) => ({ ...atual, tempo_medio_preparo: event.target.value }))} /></label>
-            <label className="wide">Imagem opcional<input value={formProduto.imagem_url} onChange={(event) => setFormProduto((atual) => ({ ...atual, imagem_url: event.target.value }))} placeholder="https://..." /></label>
-            <label className="wide">Descricao<textarea value={formProduto.descricao} onChange={(event) => setFormProduto((atual) => ({ ...atual, descricao: event.target.value }))} /></label>
-          </div>
-          <button className="primary-action" type="submit">{produtoEditandoId ? 'Salvar produto' : 'Criar produto'}</button>
-        </form>
-
-        <div className="garcon-products-list">
-          {produtos.map((produto) => (
-            <article className="garcon-product-card" key={produto.id}>
-              {produto.imagem_url ? <img src={produto.imagem_url} alt="" /> : <span><Utensils size={28} /></span>}
-              <div>
-                <strong>{produto.nome}</strong>
-                <small>{categoriaNome(produto.categoria_id)}</small>
-                <p>{produto.descricao || 'Sem descricao'}</p>
-                <b>{formatarMoeda(produto.preco)}</b>
-              </div>
-              <div className="garcon-product-flags">
-                <mark className={`garcon-status ${produto.status}`}>{produto.status}</mark>
-                <mark className={`garcon-status ${produto.disponivel ? 'livre' : 'inativa'}`}>{produto.disponivel ? 'disponivel' : 'indisponivel'}</mark>
-                <button type="button" onClick={() => editarProduto(produto)}><Edit3 size={17} />Editar</button>
-              </div>
-            </article>
-          ))}
-          {produtos.length === 0 && <p className="empty-state">Nenhum produto cadastrado.</p>}
-        </div>
-      </section>
+      <GarconCardapioCadastroView
+        store={store}
+        categorias={categorias}
+        produtos={produtos}
+        ingredientes={ingredientes}
+        produtoIngredientes={produtoIngredientes}
+        onReload={carregarDados}
+        onMessage={setMensagem}
+      />
     );
+
   }
+
 
   function renderPedidoCard(pedido, cozinha = false) {
     const itens = itensDoPedido(pedido);

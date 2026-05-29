@@ -162,6 +162,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
   const [storeOpen, setStoreOpen] = React.useState(store?.isOpen ?? true);
   const [showOpenPrompt, setShowOpenPrompt] = React.useState(store?.isOpen === false);
   const [statusMessage, setStatusMessage] = React.useState('');
+  const [closedAnimation, setClosedAnimation] = React.useState(false);
   const [requestModalOpen, setRequestModalOpen] = React.useState(false);
   const [requestSaving, setRequestSaving] = React.useState(false);
   const [requestMessage, setRequestMessage] = React.useState('');
@@ -210,6 +211,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
   React.useEffect(() => {
     setStoreOpen(store?.isOpen ?? true);
     setShowOpenPrompt(store?.isOpen === false);
+    setClosedAnimation(false);
     setStatusMessage('');
     setStoreDataForm({
       email: store?.email || profile?.email || '',
@@ -553,7 +555,38 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     }
 
     setStatusMessage(nextStatus ? 'Loja aberta para entregas.' : 'Loja fechada para entregas.');
-    if (nextStatus) setShowOpenPrompt(false);
+    if (nextStatus) {
+      setShowOpenPrompt(false);
+    } else {
+      setClosedAnimation(true);
+      window.setTimeout(() => setClosedAnimation(false), 3000);
+    }
+  }
+
+  async function closeStoreBeforeLogout() {
+    setMenuOpen(false);
+    setStoreOpen(false);
+    setShowOpenPrompt(false);
+    setClosedAnimation(true);
+    setStatusMessage('');
+
+    if (supabase && store?.id) {
+      const { error } = await supabase
+        .from('stores')
+        .update({ is_open: false })
+        .eq('id', store.id);
+      if (error) {
+        setClosedAnimation(false);
+        setStoreOpen(true);
+        setStatusMessage(`Nao foi possivel fechar a loja antes de sair: ${error.message}`);
+        return;
+      }
+    }
+
+    window.setTimeout(() => {
+      setClosedAnimation(false);
+      onLogout();
+    }, 1600);
   }
 
   function storeGeoErrorMessage(error) {
@@ -1258,7 +1291,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
             <button type="button" onClick={() => { setActivePanel('deliveries'); setMenuOpen(false); }}>Minhas entregas</button>
             <button type="button" onClick={() => { setActivePanel('garcon'); setMenuOpen(false); }}>Beelbem Garçon</button>
             <button type="button">Relatorios</button>
-            <button type="button" onClick={onLogout}>Sair</button>
+            <button type="button" onClick={closeStoreBeforeLogout}>Sair</button>
           </nav>
         )}
         <button className={`store-connected-pill ${storeOpen ? 'open' : 'closed'}`} type="button" onClick={toggleStoreStatus}>
@@ -1290,6 +1323,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
         </div>
       )}
       {statusMessage && <p className={`store-status-message ${statusMessage.startsWith('Nao') ? 'error' : 'success'}`}>{statusMessage}</p>}
+      {closedAnimation && <div className="store-closed-animation">Fechado</div>}
 
       <section className="store-status-grid" aria-label="Resumo das entregas">
         {liveDeliveryStats.map((item) => {
