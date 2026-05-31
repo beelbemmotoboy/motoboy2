@@ -1557,19 +1557,19 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
         tabIndex={-1}
       />
       <section className="store-status-grid" aria-label="Resumo das entregas">
-        <button className="store-request-card store-status-request-card photo" type="button" onClick={openPhotoCamera}>
-          <span className="request-icon"><Camera size={36} /></span>
-          <span>
-            <strong>Solicitação por foto</strong>
-          </span>
-          <ArrowRight size={30} />
+        <button className="store-status-card store-status-action-card photo clickable" type="button" onClick={openPhotoCamera} aria-label="Solicitação por foto">
+          <div className="store-status-card-top">
+            <div className="store-status-icon"><Camera size={32} /></div>
+            <p>Solicitação por foto</p>
+          </div>
+          <strong><Plus size={44} /></strong>
         </button>
-        <button className="store-request-card store-status-request-card manual" type="button" onClick={() => openDeliveryRequest('page')}>
-          <span className="request-icon"><PencilLine size={36} /></span>
-          <span>
-            <strong>Solicitação manual</strong>
-          </span>
-          <ArrowRight size={30} />
+        <button className="store-status-card store-status-action-card manual clickable" type="button" onClick={() => openDeliveryRequest('page')} aria-label="Solicitação manual">
+          <div className="store-status-card-top">
+            <div className="store-status-icon"><PencilLine size={32} /></div>
+            <p>Solicitação manual</p>
+          </div>
+          <strong><Plus size={44} /></strong>
         </button>
         {liveDeliveryStats.map((item) => {
           const detailConfig = STATUS_DETAIL_CONFIG[item.key];

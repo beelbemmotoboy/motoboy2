@@ -213,8 +213,7 @@ button, a {
 
 .store-menu-button,
 .store-connected-pill,
-.store-map-actions button,
-.store-request-card {
+.store-map-actions button {
   border: 0;
   font: inherit;
   cursor: pointer;
@@ -672,35 +671,6 @@ button, a {
   text-align: left;
 }
 
-.store-status-request-card {
-  min-height: 132px;
-  padding: 17px 12px 15px;
-  grid-template-columns: 41px minmax(0, 1fr) 24px;
-  gap: 9px;
-  border-color: rgba(255, 255, 255, 0.16);
-  box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.04), 0 12px 28px rgba(0, 0, 0, 0.34);
-}
-
-.store-status-request-card .request-icon {
-  width: 41px;
-  height: 41px;
-}
-
-.store-status-request-card strong {
-  font-size: 13px;
-  line-height: 1.18;
-}
-
-.store-status-request-card small {
-  margin-top: 6px;
-  font-size: 11px;
-  line-height: 1.2;
-}
-
-.store-status-request-card > svg {
-  justify-self: end;
-}
-
 .store-status-card:disabled {
   cursor: default;
   opacity: 1;
@@ -729,6 +699,16 @@ button, a {
   box-shadow: inset 0 0 22px rgba(0, 174, 255, 0.08), 0 0 18px rgba(0, 174, 255, 0.14);
 }
 
+.store-status-action-card.photo {
+  border-color: rgba(0, 244, 55, 0.65);
+  box-shadow: inset 0 0 22px rgba(0, 244, 55, 0.1), 0 0 18px rgba(0, 244, 55, 0.16);
+}
+
+.store-status-action-card.manual {
+  border-color: rgba(255, 204, 0, 0.58);
+  box-shadow: inset 0 0 22px rgba(255, 204, 0, 0.08), 0 0 18px rgba(255, 204, 0, 0.14);
+}
+
 .store-status-card-top {
   display: grid;
   grid-template-columns: 41px 1fr;
@@ -752,6 +732,16 @@ button, a {
 .store-status-card.blue .store-status-icon {
   color: #42d7ff;
   background: rgba(0, 174, 255, 0.24);
+}
+
+.store-status-action-card.photo .store-status-icon {
+  color: #fff;
+  background: rgba(0, 201, 47, 0.42);
+}
+
+.store-status-action-card.manual .store-status-icon {
+  color: #ffcc00;
+  background: rgba(255, 204, 0, 0.28);
 }
 
 .store-status-card.yellow .store-status-icon {
@@ -785,6 +775,18 @@ button, a {
 .store-status-card.blue strong { color: #42d7ff; }
 .store-status-card.yellow strong { color: #ffc400; }
 .store-status-card.red strong { color: #ff3039; }
+.store-status-action-card strong {
+  display: grid;
+  place-items: center;
+}
+
+.store-status-action-card strong svg {
+  width: 38px;
+  height: 38px;
+}
+
+.store-status-action-card.photo strong { color: #13e532; }
+.store-status-action-card.manual strong { color: #ffc400; }
 
 .status-detail-modal {
   position: fixed;
@@ -2126,66 +2128,6 @@ button, a {
   height: 1px;
   opacity: 0;
   pointer-events: none;
-}
-
-.store-request-card {
-  min-height: 132px;
-  padding: 20px 24px;
-  border: 1px solid currentColor;
-  border-radius: 16px;
-  display: grid;
-  grid-template-columns: 90px minmax(0, 1fr) 49px;
-  align-items: center;
-  gap: 20px;
-  text-align: left;
-}
-
-.store-request-card.photo {
-  color: #16e83a;
-  background: linear-gradient(135deg, rgba(0, 164, 39, 0.42), rgba(0, 36, 10, 0.74));
-}
-
-.store-request-card.manual {
-  color: #ffc400;
-  background: linear-gradient(135deg, rgba(142, 107, 0, 0.34), rgba(29, 20, 0, 0.76));
-}
-
-.request-icon {
-  width: 83px;
-  height: 83px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: rgba(0, 0, 0, 0.24);
-  color: #fff;
-}
-
-.store-request-card.manual .request-icon {
-  color: #ffc400;
-}
-
-.store-request-card strong {
-  display: block;
-  color: #fff;
-  font-size: clamp(21px, 4vw, 32px);
-  line-height: 1.1;
-}
-
-.store-request-card small {
-  display: block;
-  margin-top: 10px;
-  color: rgba(255, 255, 255, 0.68);
-  font-size: clamp(14px, 2.8vw, 21px);
-  line-height: 1.35;
-}
-
-.store-status-grid .store-status-request-card > span:not(.request-icon) {
-  min-width: 0;
-}
-
-.store-status-grid .store-status-request-card strong {
-  font-size: 12px;
-  line-height: 1.15;
 }
 
 .garcon-shell {
@@ -3659,14 +3601,6 @@ button, a {
     border-radius: 10px;
   }
 
-  .store-status-request-card {
-    min-height: 78px;
-    grid-template-columns: 24px minmax(0, 1fr) 18px;
-    gap: 5px;
-    padding: 8px 6px;
-    border-radius: 10px;
-  }
-
   .store-status-card-top {
     grid-template-columns: 24px minmax(0, 1fr);
     gap: 5px;
@@ -3677,18 +3611,7 @@ button, a {
     height: 24px;
   }
 
-  .store-status-request-card .request-icon {
-    width: 24px;
-    height: 24px;
-  }
-
   .store-status-icon svg {
-    width: 15px;
-    height: 15px;
-  }
-
-  .store-status-request-card .request-icon svg,
-  .store-status-request-card > svg {
     width: 15px;
     height: 15px;
   }
@@ -3698,18 +3621,14 @@ button, a {
     line-height: 1.12;
   }
 
-  .store-status-request-card strong {
-    font-size: 10px;
-    line-height: 1.12;
-  }
-
-  .store-status-request-card small {
-    display: none;
-  }
-
   .store-status-card strong {
     margin-top: 11px;
     font-size: 24px;
+  }
+
+  .store-status-action-card strong svg {
+    width: 24px;
+    height: 24px;
   }
 
   .status-detail-modal {
@@ -3798,18 +3717,6 @@ button, a {
   .store-map-actions button:first-child {
     width: 42px;
     height: 42px;
-  }
-
-  .store-request-card {
-    min-height: 101px;
-    grid-template-columns: 57px minmax(0, 1fr) 32px;
-    gap: 13px;
-    padding: 15px;
-  }
-
-  .request-icon {
-    width: 53px;
-    height: 53px;
   }
 
   .garcon-title,
