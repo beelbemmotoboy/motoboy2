@@ -166,6 +166,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     endDate: todayIso,
   });
   const [liveDeliveries, setLiveDeliveries] = React.useState([]);
+  const [onlineCourierCount, setOnlineCourierCount] = React.useState(0);
   const [pendingAcceptanceCount, setPendingAcceptanceCount] = React.useState(0);
   const [liveDeliveriesMessage, setLiveDeliveriesMessage] = React.useState('');
   const [pendingOfferPrompt, setPendingOfferPrompt] = React.useState(null);
@@ -375,6 +376,36 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
       window.clearInterval(intervalId);
     };
   }, [store?.id]);
+
+  React.useEffect(() => {
+    if (!supabase || !city?.id) {
+      setOnlineCourierCount(0);
+      return undefined;
+    }
+
+    let stopped = false;
+
+    async function loadOnlineCourierCount() {
+      const { count, error } = await supabase
+        .from('couriers')
+        .select('id', { count: 'exact', head: true })
+        .eq('city_id', city.id)
+        .eq('active', true)
+        .eq('available', true)
+        .eq('approval_status', 'approved')
+        .in('availability_status', ['available', 'on_delivery']);
+
+      if (stopped) return;
+      setOnlineCourierCount(error ? 0 : Number(count ?? 0));
+    }
+
+    loadOnlineCourierCount();
+    const intervalId = window.setInterval(loadOnlineCourierCount, 10000);
+    return () => {
+      stopped = true;
+      window.clearInterval(intervalId);
+    };
+  }, [city?.id]);
 
   React.useEffect(() => {
     if (!statusDetailsOpen) return undefined;
@@ -1476,9 +1507,16 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
             <button type="button" onClick={closeStoreBeforeLogout}>Sair</button>
           </nav>
         )}
-        <button className={`store-connected-pill ${storeOpen ? 'open' : 'closed'}`} type="button" onClick={toggleStoreStatus}>
-          <span />{storeOpen ? 'Aberto' : 'Fechado'}
-        </button>
+        <div className="store-header-status-actions">
+          <div className="store-online-couriers-pill" aria-label={`${onlineCourierCount} motoboys online`}>
+            <UserRound size={20} />
+            <strong>{String(onlineCourierCount).padStart(2, '0')}</strong>
+            <span>Motoboys online</span>
+          </div>
+          <button className={`store-connected-pill ${storeOpen ? 'open' : 'closed'}`} type="button" onClick={toggleStoreStatus}>
+            <span />{storeOpen ? 'Aberto' : 'Fechado'}
+          </button>
+        </div>
       </header>
       {showOpenPrompt && (
         <div className="store-open-prompt" role="dialog" aria-modal="true" aria-labelledby="store-open-title">
