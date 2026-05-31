@@ -1560,16 +1560,14 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
         <button className="store-request-card store-status-request-card photo" type="button" onClick={openPhotoCamera}>
           <span className="request-icon"><Camera size={36} /></span>
           <span>
-            <strong>Solicitar entrega por foto</strong>
-            <small>Foto da comanda</small>
+            <strong>Solicitação por foto</strong>
           </span>
           <ArrowRight size={30} />
         </button>
         <button className="store-request-card store-status-request-card manual" type="button" onClick={() => openDeliveryRequest('page')}>
           <span className="request-icon"><PencilLine size={36} /></span>
           <span>
-            <strong>Solicitar manualmente</strong>
-            <small>Preencher dados</small>
+            <strong>Solicitação manual</strong>
           </span>
           <ArrowRight size={30} />
         </button>

@@ -2179,6 +2179,15 @@ button, a {
   line-height: 1.35;
 }
 
+.store-status-grid .store-status-request-card > span:not(.request-icon) {
+  min-width: 0;
+}
+
+.store-status-grid .store-status-request-card strong {
+  font-size: 12px;
+  line-height: 1.15;
+}
+
 .garcon-shell {
   width: min(1180px, 100%);
   margin: 0 auto;
