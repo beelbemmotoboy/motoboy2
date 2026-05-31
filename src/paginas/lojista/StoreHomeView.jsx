@@ -1508,7 +1508,33 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
       {statusMessage && <p className={`store-status-message ${statusMessage.startsWith('Nao') ? 'error' : 'success'}`}>{statusMessage}</p>}
       {closedAnimation && <div className="store-closed-animation">Fechado</div>}
 
+      <input
+        ref={photoCaptureInputRef}
+        className="camera-capture-input"
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={updatePhotoRequestFile}
+        aria-hidden="true"
+        tabIndex={-1}
+      />
       <section className="store-status-grid" aria-label="Resumo das entregas">
+        <button className="store-request-card store-status-request-card photo" type="button" onClick={openPhotoCamera}>
+          <span className="request-icon"><Camera size={36} /></span>
+          <span>
+            <strong>Solicitar entrega por foto</strong>
+            <small>Foto da comanda</small>
+          </span>
+          <ArrowRight size={30} />
+        </button>
+        <button className="store-request-card store-status-request-card manual" type="button" onClick={() => openDeliveryRequest('page')}>
+          <span className="request-icon"><PencilLine size={36} /></span>
+          <span>
+            <strong>Solicitar manualmente</strong>
+            <small>Preencher dados</small>
+          </span>
+          <ArrowRight size={30} />
+        </button>
         {liveDeliveryStats.map((item) => {
           const detailConfig = STATUS_DETAIL_CONFIG[item.key];
           return (
@@ -1529,6 +1555,12 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
           );
         })}
       </section>
+      {requestMessage && <p className={requestMessage.includes('criada') ? 'success-message' : 'field-error'}>{requestMessage}</p>}
+      {requestModalOpen && (
+        <div className="store-open-prompt delivery-request-modal" role="dialog" aria-modal="true" aria-labelledby="delivery-request-title">
+          {renderDeliveryRequestForm()}
+        </div>
+      )}
 
       {statusDetailsOpen && (
         <div className="status-detail-modal" role="dialog" aria-modal="true" aria-labelledby="status-detail-title">
@@ -1713,40 +1745,6 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
         </div>
       </section>
 
-      <section className="store-request-actions" aria-label="Solicitar entrega">
-        <input
-          ref={photoCaptureInputRef}
-          className="camera-capture-input"
-          type="file"
-          accept="image/*"
-          capture="environment"
-          onChange={updatePhotoRequestFile}
-          aria-hidden="true"
-          tabIndex={-1}
-        />
-        <button className="store-request-card photo" type="button" onClick={openPhotoCamera}>
-          <span className="request-icon"><Camera size={52} /></span>
-          <span>
-            <strong>Solicitar por foto</strong>
-            <small>Agilize o cadastro do pedido com a foto da comanda.</small>
-          </span>
-          <ArrowRight size={42} />
-        </button>
-        <button className="store-request-card manual" type="button" onClick={() => openDeliveryRequest('page')}>
-          <span className="request-icon"><PencilLine size={52} /></span>
-          <span>
-            <strong>Solicitar manualmente</strong>
-            <small>Preencha os dados do pedido manualmente.</small>
-          </span>
-          <ArrowRight size={42} />
-        </button>
-      </section>
-      {requestMessage && <p className={requestMessage.includes('criada') ? 'success-message' : 'field-error'}>{requestMessage}</p>}
-      {requestModalOpen && (
-        <div className="store-open-prompt delivery-request-modal" role="dialog" aria-modal="true" aria-labelledby="delivery-request-title">
-          {renderDeliveryRequestForm()}
-        </div>
-      )}
     </LayoutLojista>
   );
 }
