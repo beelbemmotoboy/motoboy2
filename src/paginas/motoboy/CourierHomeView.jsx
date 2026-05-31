@@ -1,7 +1,7 @@
 import React from 'react';
-import { Bike, Clock3, LogOut, Mail, MapPin, Navigation, Search, Star, Store, UserRound, WalletCards } from 'lucide-react';
+import { AlertTriangle, Bike, Clock3, LogOut, Mail, MapPin, Navigation, Search, Star, Store, UserRound, WalletCards } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
-import { acceptQueuedDelivery, avaliarEntregasCompativeisParaMotoboy, DELIVERY_OFFER_TIMEOUT_SECONDS, emptyDelivery, expireQueuedDeliveryOffer, formatDeliveryForCourier, getNextDeliveryForCourier, markDeliveryDelivered, markDeliveryPickedUp, rejectQueuedDelivery, setCourierAvailable, updateCourierLocation } from '../../cadastra_entrega';
+import { acceptQueuedDelivery, acknowledgeDeliveryCancellation, avaliarEntregasCompativeisParaMotoboy, DELIVERY_OFFER_TIMEOUT_SECONDS, emptyDelivery, expireQueuedDeliveryOffer, formatDeliveryForCourier, getNextDeliveryForCourier, markDeliveryDelivered, markDeliveryPickedUp, rejectQueuedDelivery, setCourierAvailable, updateCourierLocation } from '../../cadastra_entrega';
 import { awardAcceptXp, awardOnTimeDeliveryXp, awardPickupXp } from '../../xp_motoboy';
 import { LayoutMotoboy } from '../../layouts/LayoutMotoboy';
 import { fetchOpenStores, OpenStoresModal } from '../../components/OpenStoresModal';
@@ -131,6 +131,79 @@ function triggerCourierOfferAlert(delivery) {
   } catch {
     // Mobile browsers may block audio until there is user interaction; vibration still runs when supported.
   }
+}
+
+async function showCourierCancellationNotification(delivery) {
+  if (typeof window === 'undefined' || !('Notification' in window) || Notification.permission !== 'granted') {
+    return;
+  }
+
+  const title = 'Pedido cancelado pela loja';
+  const body = [
+    delivery?.code ? `Pedido: ${delivery.code}` : '',
+    delivery?.store ? `Loja: ${delivery.store}` : '',
+    delivery?.cancellationReason ? `Motivo: ${delivery.cancellationReason}` : '',
+  ].filter(Boolean).join(' - ');
+  const options = {
+    body: body || 'Abra o app para confirmar o cancelamento.',
+    icon: '/beelbem-icon.png',
+    badge: '/beelbem-icon.png',
+    tag: `delivery-cancelled-${delivery?.id || 'current'}`,
+    renotify: true,
+    requireInteraction: true,
+    vibrate: [700, 180, 700, 180, 700],
+    data: { url: '/#courier-home' },
+  };
+
+  try {
+    if ('serviceWorker' in navigator) {
+      const registration = await navigator.serviceWorker.ready;
+      await registration.showNotification(title, options);
+      return;
+    }
+
+    new Notification(title, options);
+  } catch {
+    // In-page alert remains visible even when the browser blocks notifications.
+  }
+}
+
+function playCourierCancellationSiren() {
+  if (typeof window === 'undefined') return;
+
+  if (navigator.vibrate) {
+    navigator.vibrate([700, 180, 700, 180, 700]);
+  }
+
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return;
+
+  try {
+    const audioContext = new AudioContextClass();
+    const now = audioContext.currentTime;
+    [0, 0.38].forEach((offset) => {
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      oscillator.type = 'sawtooth';
+      oscillator.frequency.setValueAtTime(620, now + offset);
+      oscillator.frequency.linearRampToValueAtTime(1240, now + offset + 0.18);
+      oscillator.frequency.linearRampToValueAtTime(620, now + offset + 0.36);
+      gain.gain.setValueAtTime(0.0001, now + offset);
+      gain.gain.exponentialRampToValueAtTime(0.22, now + offset + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.36);
+      oscillator.connect(gain).connect(audioContext.destination);
+      oscillator.start(now + offset);
+      oscillator.stop(now + offset + 0.38);
+    });
+    window.setTimeout(() => audioContext.close(), 950);
+  } catch {
+    // Browsers can require a prior user gesture for audio.
+  }
+}
+
+function triggerCourierCancellationAlert(delivery, { notify = false } = {}) {
+  if (notify) showCourierCancellationNotification(delivery);
+  playCourierCancellationSiren();
 }
 
 function formatCurrencyDisplay(value) {
@@ -292,10 +365,12 @@ export function CourierHomeView({ city, profile, onLogout }) {
   const deliveryPollingRef = React.useRef(false);
   const lastLocationSyncRef = React.useRef(0);
   const lastAlertedDeliveryRef = React.useRef('');
+  const lastAlertedCancellationRef = React.useRef('');
   const compatibleOfferDismissedRef = React.useRef(new Set());
   const compatibleOfferLoadingRef = React.useRef(false);
   const expiringOfferRef = React.useRef('');
   const hasPendingOffer = Boolean(currentDelivery.id && currentDelivery.status === 'pending');
+  const hasCancellationAlert = Boolean(currentDelivery.id && currentDelivery.status === 'cancelled' && !currentDelivery.cancellationAcknowledgedAt);
   const hasAcceptedDelivery = Boolean(activeDeliveries.length || (currentDelivery.id && ACTIVE_DELIVERY_STATUSES.includes(currentDelivery.status)));
   const visibleDeliveryCards = activeDeliveries.length
     ? activeDeliveries
@@ -765,6 +840,27 @@ export function CourierHomeView({ city, profile, onLogout }) {
   }, [currentDelivery.id, currentDelivery.offeredAt, currentDelivery.queueId, hasPendingOffer]);
 
   React.useEffect(() => {
+    if (!hasCancellationAlert || !currentDelivery.id) {
+      lastAlertedCancellationRef.current = '';
+      return undefined;
+    }
+
+    const alertKey = `${currentDelivery.id}-${currentDelivery.cancelledAt || currentDelivery.cancellationRequestedAt || ''}`;
+    const shouldNotify = lastAlertedCancellationRef.current !== alertKey;
+    lastAlertedCancellationRef.current = alertKey;
+    triggerCourierCancellationAlert(currentDelivery, { notify: shouldNotify });
+
+    const intervalId = window.setInterval(() => {
+      triggerCourierCancellationAlert(currentDelivery);
+    }, 1300);
+
+    return () => {
+      window.clearInterval(intervalId);
+      if (navigator.vibrate) navigator.vibrate(0);
+    };
+  }, [currentDelivery.cancelledAt, currentDelivery.cancellationRequestedAt, currentDelivery.id, hasCancellationAlert]);
+
+  React.useEffect(() => {
     if (!supabase || !profile?.courier_id || !city?.id || !hasPendingOffer) return undefined;
 
     let stopped = false;
@@ -1124,6 +1220,33 @@ export function CourierHomeView({ city, profile, onLogout }) {
       setActionMessage(`Entrega finalizada. +${xpGained} XP`);
       setCurrentDelivery(emptyDelivery());
       loadCurrentDelivery();
+    } catch (error) {
+      setActionMessage(error.message);
+    } finally {
+      setDeliveryLoading(false);
+    }
+  }
+
+  async function confirmDeliveryCancellation() {
+    if (!currentDelivery.id || !profile?.courier_id || !supabase) {
+      setActionMessage('Cancelamento nao encontrado para confirmar.');
+      return;
+    }
+
+    setActionMessage('');
+    setDeliveryLoading(true);
+    try {
+      const result = await acknowledgeDeliveryCancellation({
+        supabase,
+        cityId: city.id,
+        delivery: currentDelivery,
+        courierId: profile.courier_id,
+        courierName,
+      });
+      if (!result.hasActiveDeliveries) setCourierAvailableState(true);
+      setActionMessage('Cancelamento confirmado. A sirene foi encerrada.');
+      setCurrentDelivery(emptyDelivery());
+      await loadCurrentDelivery();
     } catch (error) {
       setActionMessage(error.message);
     } finally {
@@ -1627,6 +1750,35 @@ export function CourierHomeView({ city, profile, onLogout }) {
               <button type="button" className="secondary-action" onClick={() => confirmAvailability(false)}>Nao</button>
             </span>
           </div>
+        </div>
+      )}
+
+      {hasCancellationAlert && (
+        <div className="courier-offer-modal courier-cancellation-modal" role="dialog" aria-modal="true" aria-labelledby="courier-cancellation-title">
+          <section className="courier-offer-panel courier-cancellation-panel">
+            <p className="courier-offer-kicker">Cancelamento da loja</p>
+            <h2 id="courier-cancellation-title">Pedido {currentDelivery.code}</h2>
+            <div className="courier-offer-details">
+              <article>
+                <Store size={28} />
+                <span>Loja</span>
+                <strong>{currentDelivery.store}</strong>
+              </article>
+              <article>
+                <UserRound size={28} />
+                <span>Cliente</span>
+                <strong>{currentDelivery.customer}</strong>
+              </article>
+              <article>
+                <AlertTriangle size={28} />
+                <span>Motivo</span>
+                <strong>{currentDelivery.cancellationReason || 'Motivo nao informado'}</strong>
+              </article>
+            </div>
+            <button className="courier-cancel-confirm-button" type="button" onClick={confirmDeliveryCancellation} disabled={deliveryLoading}>
+              {deliveryLoading ? 'Confirmando...' : 'Confirmar cancelamento'}
+            </button>
+          </section>
         </div>
       )}
 

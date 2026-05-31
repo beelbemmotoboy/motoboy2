@@ -35,6 +35,10 @@ export function emptyDelivery() {
     status: 'empty',
     queueId: '',
     offeredAt: null,
+    cancellationReason: '',
+    cancellationRequestedAt: '',
+    cancelledAt: '',
+    cancellationAcknowledgedAt: '',
   };
 }
 
@@ -83,6 +87,10 @@ export function formatDeliveryForCourier(delivery, queueId = '') {
     status: delivery.status,
     queueId,
     offeredAt: delivery.offered_at || null,
+    cancellationReason: delivery.cancellation_reason || '',
+    cancellationRequestedAt: delivery.cancellation_requested_at || '',
+    cancelledAt: delivery.cancelled_at || '',
+    cancellationAcknowledgedAt: delivery.cancellation_acknowledged_at || '',
   };
 }
 
@@ -283,6 +291,8 @@ export async function getNextDeliveryForCourier({ supabase, cityId, courierId })
   if (!supabase || !cityId || !courierId) return emptyDelivery();
 
   const baseSelect = 'id, order_code, delivery_address, delivery_district, delivery_complement, customer_latitude, customer_longitude, delivery_deadline_at, estimated_minutes, delivery_fee, status, created_at, customers(name, address), stores(name, fantasy_name, whatsapp, address, address_number, district, latitude, longitude)';
+  const pendingCancellation = await getPendingCancellationForCourier({ supabase, cityId, courierId });
+  if (pendingCancellation) return pendingCancellation;
   await advanceWaitingOffersForCourier({ supabase, cityId, courierId });
 
   const { data: queueRows, error: queueError } = await supabase
@@ -330,6 +340,27 @@ export async function getNextDeliveryForCourier({ supabase, cityId, courierId })
   if (assignedData?.length) return formatDeliveryForCourier(assignedData[0]);
 
   return emptyDelivery();
+}
+
+async function getPendingCancellationForCourier({ supabase, cityId, courierId }) {
+  const select = 'id, order_code, delivery_address, delivery_district, delivery_complement, customer_latitude, customer_longitude, delivery_deadline_at, estimated_minutes, delivery_fee, status, created_at, cancellation_reason, cancellation_requested_at, cancelled_at, cancellation_acknowledged_at, customers(name, address), stores(name, fantasy_name, whatsapp, address, address_number, district, latitude, longitude)';
+  const { data, error } = await supabase
+    .from('deliveries')
+    .select(select)
+    .eq('city_id', cityId)
+    .eq('courier_id', courierId)
+    .eq('status', 'cancelled')
+    .is('cancellation_acknowledged_at', null)
+    .order('cancelled_at', { ascending: true, nullsFirst: false })
+    .limit(1);
+
+  if (error) {
+    const text = `${error.message || ''} ${error.details || ''} ${error.hint || ''}`;
+    if (/cancellation_|schema cache|column/i.test(text)) return null;
+    throw new Error(`Nao foi possivel buscar cancelamentos: ${error.message}`);
+  }
+
+  return data?.length ? formatDeliveryForCourier(data[0]) : null;
 }
 
 async function advanceWaitingOffersForCourier({ supabase, cityId, courierId }) {
@@ -659,6 +690,99 @@ export async function markDeliveryDelivered({ supabase, cityId, delivery, courie
   });
 
   await supabase.from('couriers').update({ availability_status: 'available', available: true }).eq('id', courierId);
+}
+
+export async function cancelStoreDelivery({ supabase, cityId, storeId, deliveryId, reason }) {
+  if (!supabase) throw new Error('Supabase nao disponivel nesta sessao.');
+  if (!storeId || !deliveryId) throw new Error('Entrega nao encontrada para cancelamento.');
+
+  const cancellationReason = String(reason || '').trim();
+  if (!cancellationReason) throw new Error('Informe o motivo do cancelamento.');
+
+  const cancelledAt = new Date().toISOString();
+  const { data: cancelledDelivery, error } = await supabase
+    .from('deliveries')
+    .update({
+      status: 'cancelled',
+      cancellation_reason: cancellationReason,
+      cancellation_requested_by: 'store',
+      cancellation_requested_at: cancelledAt,
+      cancelled_at: cancelledAt,
+      cancellation_acknowledged_at: null,
+    })
+    .eq('id', deliveryId)
+    .eq('store_id', storeId)
+    .neq('status', 'delivered')
+    .neq('status', 'cancelled')
+    .select('id, city_id, order_code, courier_id')
+    .maybeSingle();
+
+  if (error) throw new Error(`Nao foi possivel cancelar o pedido: ${error.message}`);
+  if (!cancelledDelivery) throw new Error('Pedido ja finalizado, cancelado ou indisponivel para esta loja.');
+
+  await supabase
+    .from('delivery_queue')
+    .update({ status: 'skipped', answered_at: cancelledAt })
+    .eq('delivery_id', deliveryId)
+    .in('status', ['waiting', 'offered']);
+
+  await supabase.from('delivery_events').insert({
+    city_id: cancelledDelivery.city_id || cityId,
+    delivery_id: deliveryId,
+    status: 'cancelled',
+    note: `Pedido cancelado pela loja. Motivo: ${cancellationReason}`,
+  });
+
+  return {
+    deliveryId,
+    orderCode: cancelledDelivery.order_code || deliveryId,
+    courierId: cancelledDelivery.courier_id || '',
+  };
+}
+
+export async function acknowledgeDeliveryCancellation({ supabase, cityId, delivery, courierId, courierName }) {
+  if (!supabase) throw new Error('Supabase nao disponivel nesta sessao.');
+  if (!delivery?.id || !courierId) throw new Error('Cancelamento nao encontrado para confirmar.');
+
+  const acknowledgedAt = new Date().toISOString();
+  const { data: acknowledgedDelivery, error } = await supabase
+    .from('deliveries')
+    .update({
+      cancellation_acknowledged_at: acknowledgedAt,
+      cancellation_acknowledged_by: courierId,
+    })
+    .eq('id', delivery.id)
+    .eq('courier_id', courierId)
+    .eq('status', 'cancelled')
+    .is('cancellation_acknowledged_at', null)
+    .select('id')
+    .maybeSingle();
+
+  if (error) throw new Error(`Nao foi possivel confirmar o cancelamento: ${error.message}`);
+  if (!acknowledgedDelivery) throw new Error('Este cancelamento ja foi confirmado ou nao pertence a voce.');
+
+  await supabase.from('delivery_events').insert({
+    city_id: cityId,
+    delivery_id: delivery.id,
+    status: 'cancelled',
+    note: `${courierName || 'Motoboy'} confirmou o cancelamento do pedido.`,
+  });
+
+  const { count, error: activeError } = await supabase
+    .from('deliveries')
+    .select('id', { count: 'exact', head: true })
+    .eq('city_id', cityId)
+    .eq('courier_id', courierId)
+    .in('status', ['assigned', 'picked_up', 'on_route']);
+
+  if (activeError) throw new Error(`Cancelamento confirmado, mas nao foi possivel atualizar disponibilidade: ${activeError.message}`);
+
+  const hasActiveDeliveries = Number(count || 0) > 0;
+  if (!hasActiveDeliveries) {
+    await supabase.from('couriers').update({ availability_status: 'available', available: true }).eq('id', courierId);
+  }
+
+  return { hasActiveDeliveries };
 }
 
 export async function rejectQueuedDelivery({ supabase, cityId, delivery, courierId, courierName }) {

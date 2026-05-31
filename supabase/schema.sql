@@ -198,6 +198,12 @@ create table if not exists public.deliveries (
   estimated_minutes integer,
   delivery_fee numeric(10,2) not null default 0,
   delivered_at timestamptz,
+  cancellation_reason text,
+  cancellation_requested_by text,
+  cancellation_requested_at timestamptz,
+  cancelled_at timestamptz,
+  cancellation_acknowledged_at timestamptz,
+  cancellation_acknowledged_by uuid references public.couriers(id),
   created_by uuid references auth.users(id),
   updated_by uuid references auth.users(id),
   created_at timestamptz not null default now(),
@@ -312,6 +318,12 @@ alter table public.deliveries add column if not exists delivery_complement text;
 alter table public.deliveries add column if not exists customer_latitude numeric(10,7);
 alter table public.deliveries add column if not exists customer_longitude numeric(10,7);
 alter table public.deliveries add column if not exists delivery_deadline_at timestamptz;
+alter table public.deliveries add column if not exists cancellation_reason text;
+alter table public.deliveries add column if not exists cancellation_requested_by text;
+alter table public.deliveries add column if not exists cancellation_requested_at timestamptz;
+alter table public.deliveries add column if not exists cancelled_at timestamptz;
+alter table public.deliveries add column if not exists cancellation_acknowledged_at timestamptz;
+alter table public.deliveries add column if not exists cancellation_acknowledged_by uuid references public.couriers(id);
 alter table public.delivery_events add column if not exists created_by uuid references auth.users(id);
 alter table public.delivery_rejections add column if not exists created_by uuid references auth.users(id);
 alter table public.delivery_queue add column if not exists created_by uuid references auth.users(id);
@@ -354,6 +366,9 @@ create index if not exists customers_city_id_idx on public.customers(city_id);
 create index if not exists deliveries_city_id_idx on public.deliveries(city_id);
 create index if not exists deliveries_store_id_idx on public.deliveries(store_id);
 create index if not exists deliveries_courier_id_idx on public.deliveries(courier_id);
+create index if not exists deliveries_courier_cancel_ack_idx
+  on public.deliveries(courier_id, status, cancellation_acknowledged_at)
+  where status = 'cancelled';
 create index if not exists delivery_events_city_id_idx on public.delivery_events(city_id);
 create index if not exists delivery_events_delivery_id_idx on public.delivery_events(delivery_id);
 create index if not exists delivery_rejections_city_id_idx on public.delivery_rejections(city_id);

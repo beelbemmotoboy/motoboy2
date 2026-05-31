@@ -565,6 +565,11 @@ button, a {
   text-decoration: none;
 }
 
+.store-delivery-links .danger-link,
+.status-cancel-link {
+  color: #ff5963;
+}
+
 .store-delivery-links a:hover,
 .store-delivery-links button:hover {
   text-decoration: underline;
@@ -614,7 +619,7 @@ button, a {
   top: 86px;
   z-index: 18;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
   margin-top: 0;
   padding: 10px 0;
@@ -657,6 +662,11 @@ button, a {
   box-shadow: inset 0 0 22px rgba(0, 244, 55, 0.1), 0 0 18px rgba(0, 244, 55, 0.16);
 }
 
+.store-status-card.blue {
+  border-color: rgba(0, 174, 255, 0.58);
+  box-shadow: inset 0 0 22px rgba(0, 174, 255, 0.08), 0 0 18px rgba(0, 174, 255, 0.14);
+}
+
 .store-status-card-top {
   display: grid;
   grid-template-columns: 41px 1fr;
@@ -675,6 +685,11 @@ button, a {
 .store-status-card.green .store-status-icon {
   color: #fff;
   background: rgba(0, 201, 47, 0.42);
+}
+
+.store-status-card.blue .store-status-icon {
+  color: #42d7ff;
+  background: rgba(0, 174, 255, 0.24);
 }
 
 .store-status-card.yellow .store-status-icon {
@@ -705,6 +720,7 @@ button, a {
 }
 
 .store-status-card.green strong { color: #13e532; }
+.store-status-card.blue strong { color: #42d7ff; }
 .store-status-card.yellow strong { color: #ffc400; }
 .store-status-card.red strong { color: #ff3039; }
 
@@ -787,6 +803,33 @@ button, a {
   font: inherit;
 }
 
+.status-detail-checks {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.status-detail-checks label {
+  min-height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.status-detail-checks input {
+  width: 16px;
+  height: 16px;
+  accent-color: #00aeff;
+}
+
 .status-detail-table {
   display: grid;
   gap: 8px;
@@ -796,7 +839,7 @@ button, a {
 .status-detail-head,
 .status-detail-row {
   display: grid;
-  grid-template-columns: minmax(130px, 1.25fr) minmax(112px, 0.8fr) minmax(78px, 0.55fr) minmax(130px, 1.15fr) minmax(110px, 0.9fr);
+  grid-template-columns: minmax(104px, 0.9fr) minmax(126px, 1.15fr) minmax(104px, 0.78fr) minmax(82px, 0.55fr) minmax(126px, 1.1fr) minmax(104px, 0.8fr) minmax(78px, auto);
   gap: 10px;
   align-items: center;
 }
@@ -822,6 +865,112 @@ button, a {
 
 .status-detail-row strong {
   color: #fff;
+}
+
+.status-cancel-link {
+  width: fit-content;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: 850;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.store-cancel-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 86;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.76);
+  backdrop-filter: blur(10px);
+}
+
+.store-cancel-modal form {
+  width: min(560px, 100%);
+  border: 1px solid rgba(255, 89, 99, 0.54);
+  border-radius: 14px;
+  padding: 20px;
+  color: #fff;
+  background: #0d0b0d;
+  box-shadow: 0 28px 82px rgba(0, 0, 0, 0.72);
+}
+
+.store-cancel-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.store-cancel-heading svg {
+  flex: 0 0 auto;
+  color: #ff5963;
+}
+
+.store-cancel-heading span {
+  color: #ff5963;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.store-cancel-heading h2 {
+  margin: 3px 0 0;
+  font-size: clamp(20px, 4vw, 28px);
+}
+
+.store-cancel-modal p {
+  margin: 14px 0;
+  color: rgba(255, 255, 255, 0.74);
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.store-cancel-modal label {
+  display: grid;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.store-cancel-modal textarea {
+  resize: vertical;
+  min-height: 116px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  padding: 12px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.07);
+  font: inherit;
+}
+
+.store-cancel-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.danger-action {
+  min-height: 44px;
+  border: 0;
+  border-radius: 10px;
+  padding: 0 15px;
+  color: #fff;
+  background: #d91f2c;
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.danger-action:disabled {
+  opacity: 0.68;
+  cursor: not-allowed;
 }
 
 .store-accepted-delivery {
@@ -1839,6 +1988,17 @@ button, a {
 .courier-offer-panel h2 {
   margin: 0 0 14px;
   font-size: clamp(24px, 5vw, 34px);
+}
+
+.courier-cancellation-panel {
+  border-color: rgba(255, 70, 79, 0.86);
+  background: radial-gradient(circle at top, rgba(255, 70, 79, 0.24), rgba(8, 8, 8, 0.98) 58%);
+  box-shadow: 0 0 48px rgba(255, 70, 79, 0.36), 0 30px 100px rgba(0, 0, 0, 0.76);
+}
+
+.courier-cancellation-panel .courier-offer-kicker,
+.courier-cancellation-panel .courier-offer-details svg {
+  color: #ff5963;
 }
 
 .courier-offer-details {
@@ -3390,7 +3550,7 @@ button, a {
 
   .store-status-grid {
     top: 72px;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px;
   }
 
@@ -3439,6 +3599,10 @@ button, a {
     grid-template-columns: 1fr;
   }
 
+  .status-detail-checks {
+    grid-template-columns: 1fr;
+  }
+
   .status-detail-head {
     display: none;
   }
@@ -3449,8 +3613,13 @@ button, a {
   }
 
   .status-detail-row span,
-  .status-detail-row strong {
+  .status-detail-row strong,
+  .status-cancel-link {
     overflow-wrap: anywhere;
+  }
+
+  .store-cancel-actions {
+    grid-template-columns: 1fr;
   }
 
   .store-accepted-delivery {
@@ -4852,8 +5021,23 @@ button, a {
   box-shadow: 0 0 24px rgba(24, 240, 82, 0.26);
 }
 
+.courier-cancel-confirm-button {
+  width: 100%;
+  min-height: 50px;
+  margin-top: 14px;
+  border: 0;
+  border-radius: 12px;
+  color: #fff;
+  background: linear-gradient(135deg, #f03745, #a80f1c);
+  font: inherit;
+  font-weight: 950;
+  cursor: pointer;
+  box-shadow: 0 0 24px rgba(255, 70, 79, 0.28);
+}
+
 .courier-pickup-button:disabled,
-.courier-finish-button:disabled {
+.courier-finish-button:disabled,
+.courier-cancel-confirm-button:disabled {
   opacity: 0.72;
 }
 

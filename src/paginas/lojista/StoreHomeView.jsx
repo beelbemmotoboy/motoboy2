@@ -1,7 +1,7 @@
 import React from 'react';
 import { ArrowLeft, ArrowRight, AlertTriangle, Bike, Camera, Clock3, MapPin, Minus, Navigation, PencilLine, Phone, Plus, Search, Star, Store, UserRound, WalletCards } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
-import { advanceDeliveryOfferQueue, cancelPendingDeliveryOfferSearch, createDeliveryWithQueue, STORE_PENDING_FOLLOWUP_SECONDS } from '../../cadastra_entrega';
+import { advanceDeliveryOfferQueue, cancelStoreDelivery, createDeliveryWithQueue, STORE_PENDING_FOLLOWUP_SECONDS } from '../../cadastra_entrega';
 import { analisarComprovantePedidoComGemini, transformarAnaliseEmPedidoLoja } from '../../analisa_comprovante_pedido';
 import { isValidCep, isValidEmail, isValidPhone, maskCep, maskCnpj, maskPhone, onlyDigits } from '../../utils/validators';
 import { LayoutLojista } from '../../layouts/LayoutLojista';
@@ -10,29 +10,38 @@ import { calcularMinutosAteHorarioPrevistoPedidoLoja, validarHorarioPrevistoPedi
 import { validar_dadoscomprovante_gemini } from '../../valid_dadoscomprovante_gemini';
 
 const STATUS_DETAIL_CONFIG = {
+  'pending-acceptance': {
+    title: 'Pendentes de aceite',
+    openLabel: 'Abrir entregas pendentes de aceite',
+    statuses: ['pending'],
+    pendingOnly: true,
+  },
   'to-store': {
     title: 'A caminho da loja',
     openLabel: 'Abrir entregas a caminho da loja',
     statuses: ['assigned'],
-    dateColumnLabel: 'Conf.',
-    emptyMessage: 'Nenhuma confirmacao encontrada neste periodo.',
   },
   'to-customer': {
     title: 'A caminho do cliente',
     openLabel: 'Abrir entregas a caminho do cliente',
     statuses: ['picked_up', 'on_route'],
-    dateColumnLabel: 'Conf.',
-    emptyMessage: 'Nenhuma entrega a caminho do cliente encontrada neste periodo.',
   },
   late: {
     title: 'Em atraso',
     openLabel: 'Abrir entregas em atraso',
     statuses: ['assigned', 'picked_up', 'on_route'],
-    dateColumnLabel: 'Prazo',
     lateOnly: true,
-    emptyMessage: 'Nenhum pedido em atraso encontrado neste periodo.',
   },
 };
+
+const STATUS_DETAIL_FILTER_KEYS = Object.keys(STATUS_DETAIL_CONFIG);
+
+function createStatusDetailSelection(activeKey = '') {
+  return STATUS_DETAIL_FILTER_KEYS.reduce((selection, key) => ({
+    ...selection,
+    [key]: key === activeKey,
+  }), {});
+}
 
 function formatCurrency(value) {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -147,7 +156,8 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
   const [storeDeliveries, setStoreDeliveries] = React.useState([]);
   const [deliveriesLoading, setDeliveriesLoading] = React.useState(false);
   const [deliveriesMessage, setDeliveriesMessage] = React.useState('');
-  const [statusDetailsType, setStatusDetailsType] = React.useState(null);
+  const [statusDetailsOpen, setStatusDetailsOpen] = React.useState(false);
+  const [statusDetailsSelection, setStatusDetailsSelection] = React.useState(() => createStatusDetailSelection());
   const [statusDetailsRows, setStatusDetailsRows] = React.useState([]);
   const [statusDetailsLoading, setStatusDetailsLoading] = React.useState(false);
   const [statusDetailsMessage, setStatusDetailsMessage] = React.useState('');
@@ -156,9 +166,14 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     endDate: todayIso,
   });
   const [liveDeliveries, setLiveDeliveries] = React.useState([]);
+  const [pendingAcceptanceCount, setPendingAcceptanceCount] = React.useState(0);
   const [liveDeliveriesMessage, setLiveDeliveriesMessage] = React.useState('');
   const [pendingOfferPrompt, setPendingOfferPrompt] = React.useState(null);
   const [dismissedAcceptedDeliveryId, setDismissedAcceptedDeliveryId] = React.useState('');
+  const [cancellationModal, setCancellationModal] = React.useState(null);
+  const [cancellationReason, setCancellationReason] = React.useState('');
+  const [cancellationMessage, setCancellationMessage] = React.useState('');
+  const [cancellationSaving, setCancellationSaving] = React.useState(false);
   const [storeOpen, setStoreOpen] = React.useState(store?.isOpen ?? true);
   const [showOpenPrompt, setShowOpenPrompt] = React.useState(store?.isOpen === false);
   const [statusMessage, setStatusMessage] = React.useState('');
@@ -189,7 +204,9 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
   const [photoAnalysisDebug, setPhotoAnalysisDebug] = React.useState(null);
   const [photoAnalyzing, setPhotoAnalyzing] = React.useState(false);
   const pendingOfferPromptNextAtRef = React.useRef(new Map());
-  const statusDetailsConfig = statusDetailsType ? STATUS_DETAIL_CONFIG[statusDetailsType] : null;
+  const selectedStatusDetailsKey = React.useMemo(() => (
+    STATUS_DETAIL_FILTER_KEYS.filter((key) => statusDetailsSelection[key]).join('|')
+  ), [statusDetailsSelection]);
 
   const liveDeliveryStats = React.useMemo(() => {
     const now = Date.now();
@@ -199,11 +216,12 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
       delivery.deadlineAt && new Date(delivery.deadlineAt).getTime() < now && delivery.status !== 'delivered'
     )).length;
     return [
+      { key: 'pending-acceptance', label: 'Pendentes de aceite', value: String(pendingAcceptanceCount).padStart(2, '0'), tone: 'blue', icon: <Clock3 size={32} /> },
       { key: 'to-store', label: 'A caminho da loja', value: String(toStore).padStart(2, '0'), tone: 'green', icon: <Bike size={32} /> },
       { key: 'to-customer', label: 'A caminho do cliente', value: String(toCustomer).padStart(2, '0'), tone: 'yellow', icon: <Bike size={32} /> },
       { key: 'late', label: 'Em atraso', value: String(late).padStart(2, '0'), tone: 'red', icon: <AlertTriangle size={32} /> },
     ];
-  }, [liveDeliveries]);
+  }, [liveDeliveries, pendingAcceptanceCount]);
 
   const acceptedDelivery = liveDeliveries[0] ?? null;
   const showAcceptedDeliveryPopup = Boolean(acceptedDelivery && acceptedDelivery.id !== dismissedAcceptedDeliveryId);
@@ -359,7 +377,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
   }, [store?.id]);
 
   React.useEffect(() => {
-    if (!statusDetailsConfig) return undefined;
+    if (!statusDetailsOpen) return undefined;
     let mounted = true;
 
     async function loadStatusDetails() {
@@ -374,102 +392,144 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
       const endDate = statusDetailsFilters.endDate || startDate;
       const start = `${startDate}T00:00:00`;
       const end = `${endDate}T23:59:59.999`;
+      const activeFilterKeys = STATUS_DETAIL_FILTER_KEYS.filter((key) => statusDetailsSelection[key]);
 
       setStatusDetailsLoading(true);
-      if (statusDetailsConfig.lateOnly) {
-        const { data: lateDeliveries, error: lateError } = await supabase
-          .from('deliveries')
-          .select('id, order_code, delivery_district, delivery_deadline_at, customers(name), couriers(name)')
-          .eq('store_id', store.id)
-          .in('status', statusDetailsConfig.statuses)
-          .lt('delivery_deadline_at', new Date().toISOString())
-          .gte('delivery_deadline_at', start)
-          .lte('delivery_deadline_at', end)
-          .order('delivery_deadline_at', { ascending: true });
-
-        if (!mounted) return;
+      if (!activeFilterKeys.length) {
+        setStatusDetailsRows([]);
+        setStatusDetailsMessage('Selecione pelo menos um filtro para pesquisar.');
         setStatusDetailsLoading(false);
+        return;
+      }
 
-        if (lateError) {
-          setStatusDetailsRows([]);
-          setStatusDetailsMessage(`Nao foi possivel carregar a tabela: ${lateError.message}`);
-          return;
+      try {
+        const allRows = [];
+
+        for (const filterKey of activeFilterKeys) {
+          const filterConfig = STATUS_DETAIL_CONFIG[filterKey];
+
+          if (filterConfig.pendingOnly) {
+            const { data: pendingDeliveries, error: pendingError } = await supabase
+              .from('deliveries')
+              .select('id, order_code, delivery_district, created_at, customers(name), couriers(name)')
+              .eq('store_id', store.id)
+              .eq('status', 'pending')
+              .is('courier_id', null)
+              .gte('created_at', start)
+              .lte('created_at', end)
+              .order('created_at', { ascending: true });
+
+            if (pendingError) throw new Error(`Pendentes de aceite: ${pendingError.message}`);
+
+            allRows.push(...(pendingDeliveries ?? []).map((delivery) => ({
+              id: `${filterKey}-${delivery.id}`,
+              deliveryId: delivery.id,
+              statusLabel: filterConfig.title,
+              courierName: delivery.couriers?.name || 'Aguardando aceite',
+              orderCode: delivery.order_code || delivery.id,
+              confirmedAt: delivery.created_at,
+              customerName: delivery.customers?.name || 'Cliente nao informado',
+              district: delivery.delivery_district || 'Bairro nao informado',
+            })));
+            continue;
+          }
+
+          if (filterConfig.lateOnly) {
+            const { data: lateDeliveries, error: lateError } = await supabase
+              .from('deliveries')
+              .select('id, order_code, delivery_district, delivery_deadline_at, customers(name), couriers(name)')
+              .eq('store_id', store.id)
+              .in('status', filterConfig.statuses)
+              .lt('delivery_deadline_at', new Date().toISOString())
+              .gte('delivery_deadline_at', start)
+              .lte('delivery_deadline_at', end)
+              .order('delivery_deadline_at', { ascending: true });
+
+            if (lateError) throw new Error(`Em atraso: ${lateError.message}`);
+
+            allRows.push(...(lateDeliveries ?? []).map((delivery) => ({
+              id: `${filterKey}-${delivery.id}`,
+              deliveryId: delivery.id,
+              statusLabel: filterConfig.title,
+              courierName: delivery.couriers?.name || 'Motoboy',
+              orderCode: delivery.order_code || delivery.id,
+              confirmedAt: delivery.delivery_deadline_at,
+              customerName: delivery.customers?.name || 'Cliente nao informado',
+              district: delivery.delivery_district || 'Bairro nao informado',
+            })));
+            continue;
+          }
+
+          const { data, error } = await supabase
+            .from('delivery_events')
+            .select('id, created_at, deliveries!inner(id, order_code, delivery_district, store_id, customers(name), couriers(name))')
+            .in('status', filterConfig.statuses)
+            .eq('deliveries.store_id', store.id)
+            .gte('created_at', start)
+            .lte('created_at', end)
+            .order('created_at', { ascending: false });
+
+          if (!error) {
+            allRows.push(...(data ?? []).map((event) => ({
+              id: `${filterKey}-${event.deliveries?.id || event.id}`,
+              deliveryId: event.deliveries?.id || '',
+              statusLabel: filterConfig.title,
+              courierName: event.deliveries?.couriers?.name || 'Motoboy',
+              orderCode: event.deliveries?.order_code || event.deliveries?.id || '',
+              confirmedAt: event.created_at,
+              customerName: event.deliveries?.customers?.name || 'Cliente nao informado',
+              district: event.deliveries?.delivery_district || 'Bairro nao informado',
+            })));
+            continue;
+          }
+
+          const fallback = await supabase
+            .from('deliveries')
+            .select('id, order_code, delivery_district, updated_at, customers(name), couriers(name)')
+            .eq('store_id', store.id)
+            .in('status', filterConfig.statuses)
+            .gte('updated_at', start)
+            .lte('updated_at', end)
+            .order('updated_at', { ascending: false });
+
+          if (fallback.error) throw new Error(`${filterConfig.title}: ${fallback.error.message}`);
+
+          allRows.push(...(fallback.data ?? []).map((delivery) => ({
+            id: `${filterKey}-${delivery.id}`,
+            deliveryId: delivery.id,
+            statusLabel: filterConfig.title,
+            courierName: delivery.couriers?.name || 'Motoboy',
+            orderCode: delivery.order_code || delivery.id,
+            confirmedAt: delivery.updated_at,
+            customerName: delivery.customers?.name || 'Cliente nao informado',
+            district: delivery.delivery_district || 'Bairro nao informado',
+          })));
         }
 
-        setStatusDetailsRows(uniqueStatusDetailRows((lateDeliveries ?? []).map((delivery) => ({
-          id: delivery.id,
-          deliveryId: delivery.id,
-          courierName: delivery.couriers?.name || 'Motoboy',
-          orderCode: delivery.order_code || delivery.id,
-          confirmedAt: delivery.delivery_deadline_at,
-          customerName: delivery.customers?.name || 'Cliente nao informado',
-          district: delivery.delivery_district || 'Bairro nao informado',
-        }))));
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('delivery_events')
-        .select('id, created_at, deliveries!inner(id, order_code, delivery_district, store_id, customers(name), couriers(name))')
-        .in('status', statusDetailsConfig.statuses)
-        .eq('deliveries.store_id', store.id)
-        .gte('created_at', start)
-        .lte('created_at', end)
-        .order('created_at', { ascending: false });
-
-      if (!mounted) return;
-
-      if (!error) {
-        setStatusDetailsRows(uniqueStatusDetailRows((data ?? []).map((event) => ({
-          id: event.deliveries?.id || event.id,
-          deliveryId: event.deliveries?.id || '',
-          courierName: event.deliveries?.couriers?.name || 'Motoboy',
-          orderCode: event.deliveries?.order_code || event.deliveries?.id || '',
-          confirmedAt: event.created_at,
-          customerName: event.deliveries?.customers?.name || 'Cliente nao informado',
-          district: event.deliveries?.delivery_district || 'Bairro nao informado',
-        }))));
+        if (!mounted) return;
+        const sortedRows = uniqueStatusDetailRows(allRows)
+          .sort((rowA, rowB) => new Date(rowB.confirmedAt || 0).getTime() - new Date(rowA.confirmedAt || 0).getTime());
+        setStatusDetailsRows(sortedRows);
         setStatusDetailsLoading(false);
-        return;
-      }
-
-      const fallback = await supabase
-        .from('deliveries')
-        .select('id, order_code, delivery_district, updated_at, customers(name), couriers(name)')
-        .eq('store_id', store.id)
-        .in('status', statusDetailsConfig.statuses)
-        .gte('updated_at', start)
-        .lte('updated_at', end)
-        .order('updated_at', { ascending: false });
-
-      if (!mounted) return;
-      setStatusDetailsLoading(false);
-
-      if (fallback.error) {
+      } catch (error) {
+        if (!mounted) return;
         setStatusDetailsRows([]);
-        setStatusDetailsMessage(`Nao foi possivel carregar a tabela: ${fallback.error.message}`);
-        return;
+        setStatusDetailsMessage(`Nao foi possivel carregar a tabela: ${error.message}`);
+        setStatusDetailsLoading(false);
       }
-
-      setStatusDetailsRows(uniqueStatusDetailRows((fallback.data ?? []).map((delivery) => ({
-        id: delivery.id,
-        deliveryId: delivery.id,
-        courierName: delivery.couriers?.name || 'Motoboy',
-        orderCode: delivery.order_code || delivery.id,
-        confirmedAt: delivery.updated_at,
-        customerName: delivery.customers?.name || 'Cliente nao informado',
-        district: delivery.delivery_district || 'Bairro nao informado',
-      }))));
     }
 
     loadStatusDetails();
     return () => {
       mounted = false;
     };
-  }, [statusDetailsConfig, statusDetailsFilters.endDate, statusDetailsFilters.startDate, store?.id, todayIso]);
+  }, [selectedStatusDetailsKey, statusDetailsFilters.endDate, statusDetailsFilters.startDate, statusDetailsOpen, statusDetailsSelection, store?.id, todayIso]);
 
   React.useEffect(() => {
-    if (!supabase || !store?.id) return undefined;
+    if (!supabase || !store?.id) {
+      setPendingAcceptanceCount(0);
+      return undefined;
+    }
 
     let stopped = false;
     let running = false;
@@ -478,19 +538,21 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
       if (stopped || running) return;
       running = true;
       try {
-        const { data, error } = await supabase
+        const { data, error, count } = await supabase
           .from('deliveries')
-          .select('id, order_code, created_at')
+          .select('id, order_code, created_at', { count: 'exact' })
           .eq('store_id', store.id)
           .eq('status', 'pending')
           .is('courier_id', null)
           .order('created_at', { ascending: true })
-          .limit(10);
+          .limit(50);
 
         if (error) {
           if (!stopped) setLiveDeliveriesMessage(`Nao foi possivel monitorar solicitacoes pendentes: ${error.message}`);
           return;
         }
+
+        if (!stopped) setPendingAcceptanceCount(Number(count ?? data?.length ?? 0));
 
         for (const delivery of data ?? []) {
           await advanceDeliveryOfferQueue({ supabase, deliveryId: delivery.id });
@@ -535,6 +597,22 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     const matchesFilter = deliveryFilter === 'all' || delivery.status === deliveryFilter;
     return matchesSearch && matchesFilter;
   });
+
+  function openStatusDetails(filterKey) {
+    setStatusDetailsSelection(createStatusDetailSelection(filterKey));
+    setStatusDetailsOpen(true);
+  }
+
+  function closeStatusDetails() {
+    setStatusDetailsOpen(false);
+  }
+
+  function toggleStatusDetailsFilter(filterKey) {
+    setStatusDetailsSelection((current) => ({
+      ...current,
+      [filterKey]: !current[filterKey],
+    }));
+  }
 
   async function toggleStoreStatus() {
     const nextStatus = !storeOpen;
@@ -865,6 +943,106 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     }
   }
 
+  function openCancellationModal(delivery) {
+    setCancellationModal({
+      deliveryId: delivery.deliveryId || delivery.id,
+      orderCode: delivery.orderCode || delivery.order || delivery.id,
+      courierName: delivery.courierName || delivery.courier || 'Motoboy',
+      customerName: delivery.customerName || delivery.customer || '',
+      pending: Boolean(delivery.pending),
+    });
+    setCancellationReason('');
+    setCancellationMessage('');
+  }
+
+  function closeCancellationModal() {
+    if (cancellationSaving) return;
+    setCancellationModal(null);
+    setCancellationReason('');
+    setCancellationMessage('');
+  }
+
+  async function submitDeliveryCancellation(event) {
+    event.preventDefault();
+    if (!cancellationModal?.deliveryId) return;
+
+    const reason = cancellationReason.trim();
+    if (!reason) {
+      setCancellationMessage('Informe o motivo do cancelamento.');
+      return;
+    }
+
+    setCancellationSaving(true);
+    setCancellationMessage('');
+    try {
+      const result = await cancelStoreDelivery({
+        supabase,
+        cityId: city?.id,
+        storeId: store?.id,
+        deliveryId: cancellationModal.deliveryId,
+        reason,
+      });
+      setStatusDetailsRows((current) => current.filter((row) => row.deliveryId !== cancellationModal.deliveryId));
+      setLiveDeliveries((current) => current.filter((delivery) => delivery.id !== cancellationModal.deliveryId));
+      setStoreDeliveries((current) => current.map((delivery) => (
+        delivery.id === cancellationModal.deliveryId ? { ...delivery, status: 'Ocorrencia' } : delivery
+      )));
+      if (cancellationModal.pending) setPendingOfferPrompt(null);
+      setStatusMessage(
+        result.courierId
+          ? `Pedido ${result.orderCode} cancelado. O motoboy foi alertado.`
+          : `Pedido ${result.orderCode} cancelado.`
+      );
+      closeCancellationModal();
+    } catch (error) {
+      setCancellationMessage(error.message);
+    } finally {
+      setCancellationSaving(false);
+    }
+  }
+
+  function renderCancellationModal() {
+    if (!cancellationModal) return null;
+
+    return (
+      <div className="store-cancel-modal" role="dialog" aria-modal="true" aria-labelledby="store-cancel-title">
+        <form onSubmit={submitDeliveryCancellation}>
+          <div className="store-cancel-heading">
+            <AlertTriangle size={28} />
+            <div>
+              <span>Cancelamento obrigatorio</span>
+              <h2 id="store-cancel-title">Cancelar pedido {cancellationModal.orderCode}</h2>
+            </div>
+          </div>
+          <p>
+            {cancellationModal.pending
+              ? 'Informe o motivo para cancelar a solicitacao.'
+              : `Informe o motivo para cancelar e alertar ${cancellationModal.courierName}.`}
+          </p>
+          <label>
+            Motivo do cancelamento
+            <textarea
+              value={cancellationReason}
+              onChange={(event) => setCancellationReason(event.target.value)}
+              rows={4}
+              placeholder="Ex.: cliente desistiu, pedido duplicado, produto indisponivel..."
+              required
+            />
+          </label>
+          {cancellationMessage && <p className="field-error">{cancellationMessage}</p>}
+          <div className="store-cancel-actions">
+            <button className="danger-action" type="submit" disabled={cancellationSaving}>
+              {cancellationSaving ? 'Cancelando...' : 'Confirmar cancelamento'}
+            </button>
+            <button className="secondary-action" type="button" onClick={closeCancellationModal} disabled={cancellationSaving}>
+              Voltar
+            </button>
+          </div>
+        </form>
+      </div>
+    );
+  }
+
   async function continuePendingOfferSearch() {
     if (!pendingOfferPrompt?.id) return;
     pendingOfferPromptNextAtRef.current.set(
@@ -884,12 +1062,12 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
     if (!pendingOfferPrompt?.id) return;
     const deliveryToCancel = pendingOfferPrompt;
     setPendingOfferPrompt(null);
-    try {
-      await cancelPendingDeliveryOfferSearch({ supabase, deliveryId: deliveryToCancel.id });
-      setStatusMessage(`Solicitacao ${deliveryToCancel.orderCode} cancelada.`);
-    } catch (error) {
-      setStatusMessage(`Nao foi possivel cancelar a solicitacao: ${error.message}`);
-    }
+    openCancellationModal({
+      id: deliveryToCancel.id,
+      orderCode: deliveryToCancel.orderCode,
+      courierName: '',
+      pending: true,
+    });
   }
 
   function renderDeliveryRequestForm({ page = false } = {}) {
@@ -1105,12 +1283,16 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
                 <span className="store-delivery-links">
                   <a href={delivery.courierPhone ? `https://wa.me/55${onlyDigits(delivery.courierPhone)}` : '#'} target="_blank" rel="noreferrer">Mensagem</a>
                   <button type="button" onClick={() => setDeliveriesMessage('Detalhes da entrega serao exibidos aqui na area do lojista.')}>Detalhes</button>
+                  {delivery.status === 'A caminho' && (
+                    <button type="button" className="danger-link" onClick={() => openCancellationModal(delivery)}>Cancelar</button>
+                  )}
                 </span>
               </article>
             ))}
             {visibleStoreDeliveries.length === 0 && <p className="empty-state">Nenhuma entrega encontrada.</p>}
           </div>
         </section>
+        {renderCancellationModal()}
       </LayoutLojista>
     );
   }
@@ -1322,6 +1504,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
           </section>
         </div>
       )}
+      {renderCancellationModal()}
       {statusMessage && <p className={`store-status-message ${statusMessage.startsWith('Nao') ? 'error' : 'success'}`}>{statusMessage}</p>}
       {closedAnimation && <div className="store-closed-animation">Fechado</div>}
 
@@ -1333,7 +1516,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
               className={`store-status-card ${item.tone}${detailConfig ? ' clickable' : ''}`}
               type="button"
               key={item.label}
-              onClick={detailConfig ? () => setStatusDetailsType(item.key) : undefined}
+              onClick={detailConfig ? () => openStatusDetails(item.key) : undefined}
               disabled={!detailConfig}
               aria-label={detailConfig ? detailConfig.openLabel : item.label}
             >
@@ -1347,15 +1530,15 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
         })}
       </section>
 
-      {statusDetailsConfig && (
+      {statusDetailsOpen && (
         <div className="status-detail-modal" role="dialog" aria-modal="true" aria-labelledby="status-detail-title">
           <section>
             <header>
               <div>
                 <span>Entregas</span>
-                <h2 id="status-detail-title">{statusDetailsConfig.title}</h2>
+                <h2 id="status-detail-title">Pesquisar entregas</h2>
               </div>
-              <button type="button" aria-label="Fechar" onClick={() => setStatusDetailsType(null)}>Fechar</button>
+              <button type="button" aria-label="Fechar" onClick={closeStatusDetails}>Fechar</button>
             </header>
 
             <div className="status-detail-filters" aria-label="Filtros por periodo">
@@ -1388,27 +1571,47 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
               </label>
             </div>
 
-            <div className="status-detail-table" role="table" aria-label={`Tabela de entregas ${statusDetailsConfig.title.toLowerCase()}`}>
+            <div className="status-detail-checks" aria-label="Filtros por status">
+              {STATUS_DETAIL_FILTER_KEYS.map((filterKey) => {
+                const filterConfig = STATUS_DETAIL_CONFIG[filterKey];
+                return (
+                  <label key={filterKey}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(statusDetailsSelection[filterKey])}
+                      onChange={() => toggleStatusDetailsFilter(filterKey)}
+                    />
+                    <span>{filterConfig.title}</span>
+                  </label>
+                );
+              })}
+            </div>
+
+            <div className="status-detail-table" role="table" aria-label="Tabela de pesquisa de entregas">
               <div className="status-detail-head" role="row">
+                <span>Status</span>
                 <span>Nome Motoboy</span>
                 <span>Numero pedido</span>
-                <span>{statusDetailsConfig.dateColumnLabel}</span>
+                <span>Data</span>
                 <span>Nome cliente</span>
                 <span>Bairro</span>
+                <span>Acoes</span>
               </div>
               {statusDetailsLoading && <p className="form-note">Carregando entregas...</p>}
               {statusDetailsMessage && <p className="field-error">{statusDetailsMessage}</p>}
               {!statusDetailsLoading && !statusDetailsMessage && statusDetailsRows.map((row) => (
                 <article className="status-detail-row" role="row" key={`${row.id}-${row.confirmedAt}`}>
+                  <span>{row.statusLabel}</span>
                   <strong>{row.courierName}</strong>
                   <span>{row.orderCode}</span>
                   <span>{formatShortDateTime(row.confirmedAt)}</span>
                   <span>{row.customerName}</span>
                   <span>{row.district}</span>
+                  <button type="button" className="status-cancel-link" onClick={() => openCancellationModal(row)}>Cancelar</button>
                 </article>
               ))}
               {!statusDetailsLoading && !statusDetailsMessage && statusDetailsRows.length === 0 && (
-                <p className="empty-state">{statusDetailsConfig.emptyMessage}</p>
+                <p className="empty-state">Nenhuma entrega encontrada para os filtros selecionados.</p>
               )}
             </div>
           </section>
