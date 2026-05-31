@@ -4,7 +4,7 @@ import { supabase } from '../../supabaseClient';
 import { formatCurrency, formatNumber } from './overview/overviewFormatters';
 
 const REVENUE_DELIVERY_SELECT = 'id, city_id, store_id, status, delivery_fee, created_at, delivered_at, updated_at, stores(id, name, fantasy_name)';
-const STORE_DELIVERY_DETAIL_SELECT = 'id, order_code, courier_id, status, delivery_fee, created_at, delivered_at, updated_at, couriers(id, name)';
+const STORE_DELIVERY_DETAIL_SELECT = 'id, order_code, courier_id, status, delivery_fee, created_at, delivered_at, updated_at, couriers!deliveries_courier_id_fkey(id, name)';
 const CANCELLED_STATUSES = new Set(['cancelled', 'canceled', 'cancelada', 'cancelado']);
 const COMPLETED_STATUSES = new Set(['delivered', 'entregue', 'completed', 'concluida', 'concluido']);
 

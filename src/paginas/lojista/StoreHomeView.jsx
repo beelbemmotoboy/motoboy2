@@ -269,7 +269,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
       setDeliveriesLoading(true);
       const { data, error } = await supabase
         .from('deliveries')
-        .select('id, order_code, delivery_fee, status, created_at, customers(name), couriers(name, phone)')
+        .select('id, order_code, delivery_fee, status, created_at, customers(name), couriers!deliveries_courier_id_fkey(name, phone)')
         .eq('store_id', store.id)
         .gte('created_at', start)
         .lte('created_at', end)
@@ -320,7 +320,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
       setLiveDeliveriesMessage('');
       const { data, error } = await supabase
         .from('deliveries')
-        .select('id, order_code, delivery_fee, status, delivery_deadline_at, updated_at, customers(name), couriers(id, name, phone, face_photo_path, rating)')
+        .select('id, order_code, delivery_fee, status, delivery_deadline_at, updated_at, customers(name), couriers!deliveries_courier_id_fkey(id, name, phone, face_photo_path, rating)')
         .eq('store_id', store.id)
         .in('status', ['assigned', 'picked_up', 'on_route'])
         .order('updated_at', { ascending: false })
@@ -411,7 +411,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
           if (filterConfig.pendingOnly) {
             const { data: pendingDeliveries, error: pendingError } = await supabase
               .from('deliveries')
-              .select('id, order_code, delivery_district, created_at, customers(name), couriers(name)')
+              .select('id, order_code, delivery_district, created_at, customers(name)')
               .eq('store_id', store.id)
               .eq('status', 'pending')
               .is('courier_id', null)
@@ -437,7 +437,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
           if (filterConfig.lateOnly) {
             const { data: lateDeliveries, error: lateError } = await supabase
               .from('deliveries')
-              .select('id, order_code, delivery_district, delivery_deadline_at, customers(name), couriers(name)')
+              .select('id, order_code, delivery_district, delivery_deadline_at, customers(name), couriers!deliveries_courier_id_fkey(name)')
               .eq('store_id', store.id)
               .in('status', filterConfig.statuses)
               .lt('delivery_deadline_at', new Date().toISOString())
@@ -462,7 +462,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
 
           const { data, error } = await supabase
             .from('delivery_events')
-            .select('id, created_at, deliveries!inner(id, order_code, delivery_district, store_id, customers(name), couriers(name))')
+            .select('id, created_at, deliveries!inner(id, order_code, delivery_district, store_id, customers(name), couriers!deliveries_courier_id_fkey(name))')
             .in('status', filterConfig.statuses)
             .eq('deliveries.store_id', store.id)
             .gte('created_at', start)
@@ -485,7 +485,7 @@ export function StoreHomeView({ city, store, profile, onLogout }) {
 
           const fallback = await supabase
             .from('deliveries')
-            .select('id, order_code, delivery_district, updated_at, customers(name), couriers(name)')
+            .select('id, order_code, delivery_district, updated_at, customers(name), couriers!deliveries_courier_id_fkey(name)')
             .eq('store_id', store.id)
             .in('status', filterConfig.statuses)
             .gte('updated_at', start)

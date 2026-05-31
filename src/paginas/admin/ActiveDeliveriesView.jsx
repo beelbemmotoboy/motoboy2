@@ -4,7 +4,7 @@ import { supabase } from '../../supabaseClient';
 import { formatNumber } from './overview/overviewFormatters';
 
 const ACTIVE_DELIVERY_STATUSES = ['pending', 'assigned', 'picked_up', 'on_route'];
-const ACTIVE_DELIVERY_SELECT = 'id, order_code, courier_id, status, delivery_district, delivery_deadline_at, estimated_minutes, created_at, updated_at, customers(name), stores(name, fantasy_name), couriers(id, name, rating)';
+const ACTIVE_DELIVERY_SELECT = 'id, order_code, courier_id, status, delivery_district, delivery_deadline_at, estimated_minutes, created_at, updated_at, customers(name), stores(name, fantasy_name), couriers!deliveries_courier_id_fkey(id, name, rating)';
 
 function formatDateInputValue(date = new Date()) {
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';

@@ -39,8 +39,8 @@ const metricIcons = {
 };
 
 const ACTIVE_DELIVERY_STATUSES = ['pending', 'assigned', 'picked_up', 'on_route'];
-const ACTIVE_DELIVERY_SELECT = 'id, order_code, courier_id, delivery_district, delivery_deadline_at, estimated_minutes, status, created_at, updated_at, customers(name), stores(name, fantasy_name), couriers(id, name, rating)';
-const TODAY_DELIVERY_SELECT = 'id, order_code, courier_id, status, delivery_district, delivery_deadline_at, estimated_minutes, delivery_fee, delivered_at, created_at, updated_at, customers(name), stores(name, fantasy_name), couriers(id, name, rating)';
+const ACTIVE_DELIVERY_SELECT = 'id, order_code, courier_id, delivery_district, delivery_deadline_at, estimated_minutes, status, created_at, updated_at, customers(name), stores(name, fantasy_name), couriers!deliveries_courier_id_fkey(id, name, rating)';
+const TODAY_DELIVERY_SELECT = 'id, order_code, courier_id, status, delivery_district, delivery_deadline_at, estimated_minutes, delivery_fee, delivered_at, created_at, updated_at, customers(name), stores(name, fantasy_name), couriers!deliveries_courier_id_fkey(id, name, rating)';
 const STORE_SELECT = 'id, city_id, name, fantasy_name, active, is_open, logo_url, district';
 const COURIER_SELECT = 'id, city_id, name, face_photo_path, availability_status, rating, active';
 const EMPTY_HOURLY_DELIVERIES = Array.from({ length: 24 }, () => 0);
