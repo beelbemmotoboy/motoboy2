@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -14,6 +14,7 @@ const onlineObrasDist = join(mainDist, 'obras');
 function runVite(args, cwd) {
   const result = spawnSync(process.execPath, [viteBin, ...args], {
     cwd,
+    env: { ...process.env, ...readLocalEnv() },
     stdio: 'inherit',
     shell: false,
   });
@@ -21,6 +22,22 @@ function runVite(args, cwd) {
   if (result.status !== 0) {
     process.exit(result.status ?? 1);
   }
+}
+
+function readLocalEnv() {
+  const envPath = join(projectRoot, '.env.local');
+  if (!existsSync(envPath)) return {};
+
+  return Object.fromEntries(
+    readFileSync(envPath, 'utf8')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#') && line.includes('='))
+      .map((line) => {
+        const index = line.indexOf('=');
+        return [line.slice(0, index), line.slice(index + 1)];
+      }),
+  );
 }
 
 runVite(['build'], projectRoot);

@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   ClipboardCheck,
   Clock3,
+  Database,
   Eye,
   FileCheck2,
   FileText,
@@ -41,6 +42,19 @@ import {
   X,
   XCircle,
 } from 'lucide-react';
+import {
+  fetchProjectChildren,
+  fetchProjects,
+  getSession,
+  insertChild,
+  insertProject,
+  onAuthStateChange,
+  seedProjectChildren,
+  signIn,
+  supabaseConfigured,
+  updateChild,
+  updateProject,
+} from './db.js';
 import './styles.css';
 
 const STORAGE_KEY = 'beelbem-obras-local-v1';
@@ -453,7 +467,7 @@ function Shell({ screen, setScreen, children, activeWork }) {
   );
 }
 
-function LoginScreen({ onLogin }) {
+function LoginScreen({ onLogin, authError, authLoading, dbAvailable }) {
   return (
     <main className="login-page">
       <section className="login-visual" aria-label="Beelbem Obras">
@@ -475,13 +489,16 @@ function LoginScreen({ onLogin }) {
         <form onSubmit={onLogin}>
           <label>
             <span>E-mail</span>
-            <input type="email" placeholder="engenheiro@beelbem.com.br" autoComplete="email" />
+            <input type="email" name="email" placeholder="engenheiro@beelbem.com.br" autoComplete="email" required={dbAvailable} />
           </label>
           <label>
             <span>Senha</span>
-            <input type="password" placeholder="Sua senha" autoComplete="current-password" />
+            <input type="password" name="password" placeholder="Sua senha" autoComplete="current-password" required={dbAvailable} />
           </label>
-          <ActionButton Icon={LogIn} type="submit">Entrar</ActionButton>
+          <ActionButton Icon={LogIn} type="submit">{authLoading ? 'Entrando...' : dbAvailable ? 'Entrar online' : 'Entrar local'}</ActionButton>
+          <p className={authError ? 'auth-message error' : 'auth-message'}>
+            {authError || (dbAvailable ? 'Banco Supabase conectado.' : 'Banco nao configurado. Usando dados locais.')}
+          </p>
           <button className="link-button" type="button">
             <KeyRound size={18} aria-hidden="true" />
             <span>Esqueci minha senha</span>
@@ -1150,6 +1167,11 @@ function resolveLocation(values) {
 function App() {
   const [screen, setScreen] = useState('login');
   const [data, setData] = useState(loadData);
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [dataLoading, setDataLoading] = useState(false);
+  const [dataError, setDataError] = useState('');
   const [selectedCity, setSelectedCity] = useState(cityCatalog[0]);
   const [selectedNeighborhood, setSelectedNeighborhood] = useState(null);
   const [selectedWorkId, setSelectedWorkId] = useState(initialData.works[0].id);
@@ -1159,12 +1181,104 @@ function App() {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }, [data]);
 
+  useEffect(() => {
+    if (!supabaseConfigured) return undefined;
+    let mounted = true;
+
+    getSession().then((currentSession) => {
+      if (!mounted) return;
+      setSession(currentSession);
+      if (currentSession) setScreen('dashboard');
+    });
+
+    const unsubscribe = onAuthStateChange((nextSession) => {
+      if (!mounted) return;
+      setSession(nextSession);
+      if (nextSession) setScreen('dashboard');
+      else setScreen('login');
+    });
+
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!supabaseConfigured || !session) return;
+    void loadRemoteData();
+  }, [session?.user?.id]);
+
   const activeWork = useMemo(() => data.works.find((work) => work.id === selectedWorkId) || data.works[0], [data.works, selectedWorkId]);
   const activeStage = data.stages.find((stage) => stage.id === selectedStageId) || data.stages[0];
 
-  function createWork(values) {
+  async function loadRemoteData(preferredProjectId) {
+    setDataLoading(true);
+    setDataError('');
+    try {
+      let works = await fetchProjects();
+
+      if (!works.length) {
+        const created = await insertProject(initialData.works[0]);
+        await seedProjectChildren(created.id, initialData);
+        works = [created];
+      }
+
+      const projectId = preferredProjectId && works.some((work) => work.id === preferredProjectId)
+        ? preferredProjectId
+        : works[0].id;
+      const children = await fetchProjectChildren(projectId);
+      setData({ ...initialData, ...children, works });
+      setSelectedWorkId(projectId);
+      setDataLoading(false);
+    } catch (error) {
+      setDataError(error.message || 'Nao foi possivel carregar o banco de dados.');
+      setDataLoading(false);
+    }
+  }
+
+  async function loadProject(projectId) {
+    if (!supabaseConfigured || !session) return;
+    setDataLoading(true);
+    setDataError('');
+    try {
+      const children = await fetchProjectChildren(projectId);
+      setData((current) => ({ ...current, ...children }));
+      setDataLoading(false);
+    } catch (error) {
+      setDataError(error.message || 'Nao foi possivel carregar a obra.');
+      setDataLoading(false);
+    }
+  }
+
+  async function handleLogin(event) {
+    event.preventDefault();
+    setAuthError('');
+
+    if (!supabaseConfigured) {
+      setScreen('dashboard');
+      return;
+    }
+
+    const form = new FormData(event.currentTarget);
+    const email = String(form.get('email') || '').trim();
+    const password = String(form.get('password') || '');
+
+    setAuthLoading(true);
+    try {
+      const nextSession = await signIn(email, password);
+      setSession(nextSession);
+      setScreen('dashboard');
+    } catch (error) {
+      setAuthError(error.message || 'Nao foi possivel entrar.');
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function createWork(values) {
     const { city, neighborhood } = resolveLocation(values);
-    const nextWork = {
+    let nextWork = {
       id: makeId('obra'),
       nome: values.nome || 'Nova obra',
       cliente: values.cliente || 'Cliente sem nome',
@@ -1185,24 +1299,54 @@ function App() {
       responsavel: values.responsavel || '',
       observacoes: values.observacoes || '',
     };
-    setData((current) => ({ ...current, works: [nextWork, ...current.works] }));
+
+    if (supabaseConfigured && session) {
+      try {
+        nextWork = await insertProject(nextWork);
+        await seedProjectChildren(nextWork.id, {
+          ...initialData,
+          photos: [],
+          plsItems: [],
+          issues: [],
+        });
+        const children = await fetchProjectChildren(nextWork.id);
+        setData((current) => ({ ...current, ...children, works: [nextWork, ...current.works] }));
+      } catch (error) {
+        setDataError(error.message || 'Nao foi possivel salvar a obra no banco.');
+        return;
+      }
+    } else {
+      setData((current) => ({ ...current, works: [nextWork, ...current.works] }));
+    }
+
     setSelectedWorkId(nextWork.id);
     setSelectedCity(city);
     setSelectedNeighborhood(neighborhood);
     setScreen('workPanel');
   }
 
-  function updateStage(id, patch) {
+  async function updateStage(id, patch) {
     if (!id) return;
     setData((current) => ({
       ...current,
       stages: current.stages.map((stage) => (stage.id === id ? { ...stage, ...patch } : stage)),
       works: current.works.map((work) => (work.id === activeWork.id ? { ...work, percentual: Math.max(work.percentual, patch.percentual || 0) } : work)),
     }));
+
+    if (supabaseConfigured && session) {
+      try {
+        await updateChild('stages', id, patch);
+        if (patch.percentual !== undefined) {
+          await updateProject(activeWork.id, { percentual: Math.max(activeWork.percentual, patch.percentual) });
+        }
+      } catch (error) {
+        setDataError(error.message || 'Nao foi possivel atualizar a etapa.');
+      }
+    }
   }
 
-  function addPhoto(etapa) {
-    const next = {
+  async function addPhoto(etapa) {
+    let next = {
       id: makeId('foto'),
       etapa,
       tipo: etapa === 'PLS Caixa' ? 'PLS Caixa' : 'Durante',
@@ -1211,12 +1355,22 @@ function App() {
       observacao: `Registro incluido em ${etapa}`,
       cor: etapa === 'PLS Caixa' ? 'purple' : 'blue',
     };
+
+    if (supabaseConfigured && session) {
+      try {
+        next = await insertChild('photos', activeWork.id, next);
+      } catch (error) {
+        setDataError(error.message || 'Nao foi possivel salvar a foto.');
+        return;
+      }
+    }
+
     setData((current) => ({ ...current, photos: [next, ...current.photos] }));
     setScreen('photos');
   }
 
-  function addIssue(etapa) {
-    const next = {
+  async function addIssue(etapa) {
+    let next = {
       id: makeId('pend'),
       descricao: `Pendencia registrada em ${etapa}`,
       etapa,
@@ -1225,6 +1379,17 @@ function App() {
       status: 'Aberta',
       norma: 'Checklist interno',
     };
+
+    if (supabaseConfigured && session) {
+      try {
+        next = await insertChild('issues', activeWork.id, next);
+        await updateProject(activeWork.id, { pendencias: activeWork.pendencias + 1 });
+      } catch (error) {
+        setDataError(error.message || 'Nao foi possivel salvar a pendencia.');
+        return;
+      }
+    }
+
     setData((current) => ({
       ...current,
       issues: [next, ...current.issues],
@@ -1233,33 +1398,85 @@ function App() {
     setScreen('issues');
   }
 
-  function resolveIssue() {
+  async function resolveIssue() {
+    const targetIssue = data.issues[0];
+    if (!targetIssue) return;
+
     setData((current) => ({
       ...current,
       issues: current.issues.map((issue, index) => (index === 0 ? { ...issue, status: 'Resolvida' } : issue)),
       works: current.works.map((work) => (work.id === activeWork.id ? { ...work, pendencias: Math.max(0, work.pendencias - 1) } : work)),
     }));
+
+    if (supabaseConfigured && session) {
+      try {
+        await updateChild('issues', targetIssue.id, { status: 'Resolvida' });
+        await updateProject(activeWork.id, { pendencias: Math.max(0, activeWork.pendencias - 1) });
+      } catch (error) {
+        setDataError(error.message || 'Nao foi possivel resolver a pendencia.');
+      }
+    }
   }
 
-  function updatePls(status) {
+  async function updatePls(status) {
+    const targetPls = data.plsItems[0];
+    if (!targetPls) return;
+
     setData((current) => ({
       ...current,
       plsItems: current.plsItems.map((item, index) => (index === 0 ? { ...item, status } : item)),
       works: current.works.map((work) => (work.id === activeWork.id ? { ...work, pls: status } : work)),
     }));
+
+    if (supabaseConfigured && session) {
+      try {
+        await updateChild('plsItems', targetPls.id, { status });
+        await updateProject(activeWork.id, { pls: status });
+      } catch (error) {
+        setDataError(error.message || 'Nao foi possivel atualizar a PLS.');
+      }
+    }
   }
 
-  function updateFirst(collection, updater) {
+  async function updateFirst(collection, updater) {
+    const target = data[collection]?.[0];
+    if (!target) return;
+    const next = updater(target);
+
     setData((current) => ({
       ...current,
-      [collection]: current[collection].map((item, index) => (index === 0 ? updater(item) : item)),
+      [collection]: current[collection].map((item, index) => (index === 0 ? next : item)),
     }));
+
+    if (supabaseConfigured && session) {
+      try {
+        await updateChild(collection, target.id, next);
+      } catch (error) {
+        setDataError(error.message || 'Nao foi possivel atualizar o registro.');
+      }
+    }
   }
 
   function renderScreen() {
+    if (screen !== 'login' && dataLoading) {
+      return <EmptyNotice Icon={Database} title="Carregando banco de dados" text="Sincronizando obras, etapas e pendencias." />;
+    }
+
+    if (screen !== 'login' && dataError) {
+      return (
+        <>
+          <section className="warning-strip">
+            <AlertTriangle size={22} aria-hidden="true" />
+            <span>{dataError}</span>
+          </section>
+          <Dashboard data={data} setScreen={setScreen} />
+        </>
+      );
+    }
+
     switch (screen) {
       case 'login':
-        return <LoginScreen onLogin={(event) => { event.preventDefault(); setScreen('dashboard'); }} />;
+        return <LoginScreen onLogin={handleLogin} authError={authError} authLoading={authLoading} dbAvailable={supabaseConfigured} />;
       case 'dashboard':
         return <Dashboard data={data} setScreen={setScreen} />;
       case 'cities':
@@ -1267,7 +1484,7 @@ function App() {
       case 'neighborhoods':
         return <Neighborhoods works={data.works} selectedCity={selectedCity} openNeighborhood={(bairro) => { setSelectedNeighborhood(bairro); setScreen('works'); }} setScreen={setScreen} />;
       case 'works':
-        return <Works selectedCity={selectedCity} selectedNeighborhood={selectedNeighborhood} works={data.works} openWork={(work) => { setSelectedWorkId(work.id); setScreen('workPanel'); }} setScreen={setScreen} />;
+        return <Works selectedCity={selectedCity} selectedNeighborhood={selectedNeighborhood} works={data.works} openWork={(work) => { setSelectedWorkId(work.id); void loadProject(work.id); setScreen('workPanel'); }} setScreen={setScreen} />;
       case 'newWork':
         return <NewWork createWork={createWork} setScreen={setScreen} />;
       case 'extractedData':

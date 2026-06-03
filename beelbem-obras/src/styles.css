@@ -144,6 +144,17 @@ button {
   gap: 16px;
 }
 
+.auth-message {
+  margin: -4px 0 0;
+  color: #4b5563;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.auth-message.error {
+  color: #b91c1c;
+}
+
 .login-panel label,
 .field {
   display: grid;
