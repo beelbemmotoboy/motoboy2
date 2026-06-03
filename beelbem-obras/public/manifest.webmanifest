@@ -1,0 +1,21 @@
+{
+  "name": "Beelbem Obras",
+  "short_name": "Obras",
+  "description": "Sistema Beelbem Obras para gestao visual de obras residenciais, PLS, etapas e pendencias.",
+  "start_url": "/obras/",
+  "scope": "/obras/",
+  "display": "standalone",
+  "background_color": "#f7f8fb",
+  "theme_color": "#1d4ed8",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/obras/beelbem-obras.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "productivity", "utilities"],
+  "lang": "pt-BR"
+}

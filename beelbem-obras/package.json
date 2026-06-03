@@ -1,24 +1,18 @@
 {
-  "name": "beelbem-motoboy",
+  "name": "beelbem-obras",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "node scripts/build-site.mjs",
+    "build": "vite build --base=/obras/",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.89.0",
     "@vitejs/plugin-react": "^5.1.1",
     "lucide-react": "^0.562.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
-    "typescript": "^5.9.3",
-    "vite": "^7.2.7",
-    "zxcvbn": "^4.4.2"
-  },
-  "devDependencies": {
-    "supabase": "^2.98.1"
+    "vite": "^7.2.7"
   }
 }

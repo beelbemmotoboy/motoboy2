@@ -4,6 +4,14 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/obras",
+      "destination": "/obras/index.html"
+    },
+    {
+      "source": "/obras/(.*)",
+      "destination": "/obras/index.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
