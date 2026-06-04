@@ -441,8 +441,9 @@ main {
 
 .metric-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, 164px);
   gap: 14px;
+  align-items: start;
 }
 
 .metric-grid.compact {
@@ -450,13 +451,16 @@ main {
 }
 
 .metric-card {
-  min-height: 132px;
+  position: relative;
+  width: 164px;
+  height: 164px;
+  min-height: 0;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   display: grid;
-  align-content: start;
+  align-content: end;
   gap: 8px;
-  padding: 16px;
+  padding: 18px;
   background: #fff;
 }
 
@@ -465,32 +469,15 @@ main {
 }
 
 .metric-card strong {
-  margin-top: 10px;
-  font-size: 34px;
+  margin-top: 0;
+  font-size: 42px;
   line-height: 1;
 }
 
 .metric-card span {
   color: #4b5563;
-  font-weight: 800;
-}
-
-.metric-card-square {
-  position: relative;
-  width: 164px;
-  height: 164px;
-  min-height: 0;
-  align-content: end;
-  padding: 18px;
-}
-
-.metric-card-square strong {
-  margin-top: 0;
-  font-size: 42px;
-}
-
-.metric-card-square span {
   font-size: 18px;
+  font-weight: 800;
 }
 
 .metric-action-icon {
@@ -507,8 +494,16 @@ main {
   background: #eff6ff;
 }
 
-.metric-action-icon:hover,
-.metric-action-icon:focus-visible {
+.metric-action-icon svg {
+  color: currentColor;
+}
+
+.metric-action-icon-static {
+  cursor: default;
+}
+
+button.metric-action-icon:hover,
+button.metric-action-icon:focus-visible {
   color: #fff;
   background: #2563eb;
 }
@@ -1186,12 +1181,15 @@ main {
     display: grid;
   }
 
-  .metric-grid,
   .quick-grid,
   .item-grid,
   .module-grid,
   .standards-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .metric-grid {
+    grid-template-columns: repeat(auto-fill, 164px);
   }
 }
 
@@ -1244,7 +1242,6 @@ main {
     flex: 1 1 220px;
   }
 
-  .metric-grid,
   .quick-grid,
   .item-grid,
   .module-grid,
@@ -1252,16 +1249,16 @@ main {
   .profile-grid,
   .standards-grid,
   .form-grid,
-    .photo-grid,
-    .photo-upload-layout,
-    .work-hero,
-    .ai-panel,
-    .upload-grid {
+  .photo-grid,
+  .photo-upload-layout,
+  .work-hero,
+  .ai-panel,
+  .upload-grid {
     grid-template-columns: 1fr;
   }
 
-  .metric-card {
-    min-height: 112px;
+  .metric-grid {
+    grid-template-columns: repeat(auto-fill, 164px);
   }
 
   .photo-card,

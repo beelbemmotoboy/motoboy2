@@ -316,15 +316,17 @@ function IconButton({ label, Icon, onClick }) {
   );
 }
 
-function MetricCard({ label, value, Icon, tone = 'neutral', variant = '', onIconClick, iconLabel }) {
+function MetricCard({ label, value, Icon, tone = 'neutral', onIconClick, iconLabel }) {
   return (
-    <article className={`metric-card tone-${tone}${variant ? ` metric-card-${variant}` : ''}`}>
+    <article className={`metric-card tone-${tone}`}>
       {onIconClick ? (
         <button className="metric-action-icon" type="button" aria-label={iconLabel || label} title={iconLabel || label} onClick={onIconClick}>
           <Icon size={22} aria-hidden="true" />
         </button>
       ) : (
-        <Icon size={30} aria-hidden="true" />
+        <span className="metric-action-icon metric-action-icon-static">
+          <Icon size={22} aria-hidden="true" />
+        </span>
       )}
       <strong>{value}</strong>
       <span>{label}</span>
@@ -521,15 +523,15 @@ function Dashboard({ data, setScreen }) {
   const bairroCount = new Set(data.works.map((work) => `${work.cidadeId}:${work.bairroId}`)).size;
   const openIssues = data.issues.filter((issue) => issue.status !== 'Resolvida').length;
   const metrics = [
-    { label: 'Cidades', value: cityCount, Icon: MapPinned, tone: 'info', variant: 'square', onIconClick: () => setScreen('cities'), iconLabel: 'Abrir cadastro e visualizacao de cidades' },
-    { label: 'Total de bairros', value: bairroCount, Icon: Landmark, tone: 'neutral' },
-    { label: 'Total de obras', value: data.works.length, Icon: Building2, tone: 'neutral' },
-    { label: 'Obras em andamento', value: data.works.filter((work) => work.status === 'Em andamento').length, Icon: Clock3, tone: 'warning' },
-    { label: 'Obras atrasadas', value: data.works.filter((work) => work.status === 'Atrasada').length, Icon: AlertTriangle, tone: 'danger' },
-    { label: 'PLS pendentes', value: data.plsItems.filter((item) => !['Aprovado', 'Enviado'].includes(item.status)).length, Icon: FileCheck2, tone: 'danger' },
-    { label: 'Pendencias abertas', value: openIssues, Icon: ClipboardCheck, tone: 'danger' },
-    { label: 'Fotos registradas', value: data.photos.length, Icon: Camera, tone: 'success' },
-    { label: 'Etapas em conferencia', value: data.checklist.filter((item) => item.status !== 'Conferido').length, Icon: ShieldCheck, tone: 'ai' },
+    { label: 'Cidades', value: cityCount, Icon: MapPinned, tone: 'info', onIconClick: () => setScreen('cities'), iconLabel: 'Abrir cadastro e visualizacao de cidades' },
+    { label: 'Bairros', value: bairroCount, Icon: Landmark, tone: 'neutral', onIconClick: () => setScreen('neighborhoods'), iconLabel: 'Abrir visualizacao de bairros' },
+    { label: 'Obras', value: data.works.length, Icon: Building2, tone: 'neutral', onIconClick: () => setScreen('works'), iconLabel: 'Abrir obras' },
+    { label: 'Andamento', value: data.works.filter((work) => work.status === 'Em andamento').length, Icon: Clock3, tone: 'warning', onIconClick: () => setScreen('works'), iconLabel: 'Abrir obras em andamento' },
+    { label: 'Atrasadas', value: data.works.filter((work) => work.status === 'Atrasada').length, Icon: AlertTriangle, tone: 'danger', onIconClick: () => setScreen('works'), iconLabel: 'Abrir obras atrasadas' },
+    { label: 'PLS', value: data.plsItems.filter((item) => !['Aprovado', 'Enviado'].includes(item.status)).length, Icon: FileCheck2, tone: 'danger', onIconClick: () => setScreen('pls'), iconLabel: 'Abrir PLS Caixa' },
+    { label: 'Pendencias', value: openIssues, Icon: ClipboardCheck, tone: 'danger', onIconClick: () => setScreen('issues'), iconLabel: 'Abrir pendencias' },
+    { label: 'Fotos', value: data.photos.length, Icon: Camera, tone: 'success', onIconClick: () => setScreen('photos'), iconLabel: 'Abrir fotos' },
+    { label: 'Checklist', value: data.checklist.filter((item) => item.status !== 'Conferido').length, Icon: ShieldCheck, tone: 'ai', onIconClick: () => setScreen('checklist'), iconLabel: 'Abrir checklist tecnico' },
   ];
 
   return (
@@ -779,12 +781,12 @@ function WorkPanel({ obra, data, setScreen }) {
     ['Dados da obra', FileText, 'profile'],
   ];
   const summary = [
-    ['Etapas concluidas', data.stages.filter((stage) => stage.status === 'Concluida').length, CheckCircle2, 'success'],
-    ['Etapas em andamento', data.stages.filter((stage) => ['Em andamento', 'Atencao'].includes(stage.status)).length, Clock3, 'warning'],
-    ['Pendencias abertas', data.issues.filter((issue) => issue.status !== 'Resolvida').length, AlertTriangle, 'danger'],
-    ['Fotos enviadas', data.photos.length, Camera, 'info'],
-    ['PLS pendentes', data.plsItems.filter((item) => !['Aprovado', 'Enviado'].includes(item.status)).length, FileCheck2, 'danger'],
-    ['Dias de atraso', obra.atraso, CalendarDays, obra.atraso ? 'danger' : 'success'],
+    ['Concluidas', data.stages.filter((stage) => stage.status === 'Concluida').length, CheckCircle2, 'success'],
+    ['Andamento', data.stages.filter((stage) => ['Em andamento', 'Atencao'].includes(stage.status)).length, Clock3, 'warning'],
+    ['Pendencias', data.issues.filter((issue) => issue.status !== 'Resolvida').length, AlertTriangle, 'danger'],
+    ['Fotos', data.photos.length, Camera, 'info'],
+    ['PLS', data.plsItems.filter((item) => !['Aprovado', 'Enviado'].includes(item.status)).length, FileCheck2, 'danger'],
+    ['Atraso', obra.atraso, CalendarDays, obra.atraso ? 'danger' : 'success'],
   ];
 
   return (
