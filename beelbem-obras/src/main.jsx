@@ -316,10 +316,16 @@ function IconButton({ label, Icon, onClick }) {
   );
 }
 
-function MetricCard({ label, value, Icon, tone = 'neutral' }) {
+function MetricCard({ label, value, Icon, tone = 'neutral', variant = '', onIconClick, iconLabel }) {
   return (
-    <article className={`metric-card tone-${tone}`}>
-      <Icon size={30} aria-hidden="true" />
+    <article className={`metric-card tone-${tone}${variant ? ` metric-card-${variant}` : ''}`}>
+      {onIconClick ? (
+        <button className="metric-action-icon" type="button" aria-label={iconLabel || label} title={iconLabel || label} onClick={onIconClick}>
+          <Icon size={22} aria-hidden="true" />
+        </button>
+      ) : (
+        <Icon size={30} aria-hidden="true" />
+      )}
       <strong>{value}</strong>
       <span>{label}</span>
     </article>
@@ -515,15 +521,15 @@ function Dashboard({ data, setScreen }) {
   const bairroCount = new Set(data.works.map((work) => `${work.cidadeId}:${work.bairroId}`)).size;
   const openIssues = data.issues.filter((issue) => issue.status !== 'Resolvida').length;
   const metrics = [
-    ['Total de cidades', cityCount, MapPinned, 'info'],
-    ['Total de bairros', bairroCount, Landmark, 'neutral'],
-    ['Total de obras', data.works.length, Building2, 'neutral'],
-    ['Obras em andamento', data.works.filter((work) => work.status === 'Em andamento').length, Clock3, 'warning'],
-    ['Obras atrasadas', data.works.filter((work) => work.status === 'Atrasada').length, AlertTriangle, 'danger'],
-    ['PLS pendentes', data.plsItems.filter((item) => !['Aprovado', 'Enviado'].includes(item.status)).length, FileCheck2, 'danger'],
-    ['Pendencias abertas', openIssues, ClipboardCheck, 'danger'],
-    ['Fotos registradas', data.photos.length, Camera, 'success'],
-    ['Etapas em conferencia', data.checklist.filter((item) => item.status !== 'Conferido').length, ShieldCheck, 'ai'],
+    { label: 'Cidades', value: cityCount, Icon: MapPinned, tone: 'info', variant: 'square', onIconClick: () => setScreen('cities'), iconLabel: 'Abrir cadastro e visualizacao de cidades' },
+    { label: 'Total de bairros', value: bairroCount, Icon: Landmark, tone: 'neutral' },
+    { label: 'Total de obras', value: data.works.length, Icon: Building2, tone: 'neutral' },
+    { label: 'Obras em andamento', value: data.works.filter((work) => work.status === 'Em andamento').length, Icon: Clock3, tone: 'warning' },
+    { label: 'Obras atrasadas', value: data.works.filter((work) => work.status === 'Atrasada').length, Icon: AlertTriangle, tone: 'danger' },
+    { label: 'PLS pendentes', value: data.plsItems.filter((item) => !['Aprovado', 'Enviado'].includes(item.status)).length, Icon: FileCheck2, tone: 'danger' },
+    { label: 'Pendencias abertas', value: openIssues, Icon: ClipboardCheck, tone: 'danger' },
+    { label: 'Fotos registradas', value: data.photos.length, Icon: Camera, tone: 'success' },
+    { label: 'Etapas em conferencia', value: data.checklist.filter((item) => item.status !== 'Conferido').length, Icon: ShieldCheck, tone: 'ai' },
   ];
 
   return (
@@ -532,8 +538,8 @@ function Dashboard({ data, setScreen }) {
         <ActionButton Icon={Plus} onClick={() => setScreen('newWork')}>Nova obra</ActionButton>
       </PageTitle>
       <section className="metric-grid">
-        {metrics.map(([label, value, Icon, tone]) => (
-          <MetricCard key={label} label={label} value={value} Icon={Icon} tone={tone} />
+        {metrics.map((metric) => (
+          <MetricCard key={metric.label} {...metric} />
         ))}
       </section>
       <section className="quick-grid">

@@ -475,6 +475,44 @@ main {
   font-weight: 800;
 }
 
+.metric-card-square {
+  position: relative;
+  width: 164px;
+  height: 164px;
+  min-height: 0;
+  align-content: end;
+  padding: 18px;
+}
+
+.metric-card-square strong {
+  margin-top: 0;
+  font-size: 42px;
+}
+
+.metric-card-square span {
+  font-size: 18px;
+}
+
+.metric-action-icon {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 42px;
+  height: 42px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: #1d4ed8;
+  background: #eff6ff;
+}
+
+.metric-action-icon:hover,
+.metric-action-icon:focus-visible {
+  color: #fff;
+  background: #2563eb;
+}
+
 .tone-success { border-left: 5px solid #16a34a; }
 .tone-warning { border-left: 5px solid #f59e0b; }
 .tone-danger { border-left: 5px solid #dc2626; }
