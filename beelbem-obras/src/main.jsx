@@ -527,7 +527,6 @@ function Dashboard({ data, setScreen }) {
     { label: 'Atrasadas', value: data.works.filter((work) => work.status === 'Atrasada').length, Icon: AlertTriangle, tone: 'danger', onIconClick: () => setScreen('works'), iconLabel: 'Abrir obras atrasadas' },
     { label: 'PLS', value: data.plsItems.filter((item) => !['Aprovado', 'Enviado'].includes(item.status)).length, Icon: FileCheck2, tone: 'danger', onIconClick: () => setScreen('pls'), iconLabel: 'Abrir PLS Caixa' },
     { label: 'Pendencias', value: openIssues, Icon: ClipboardCheck, tone: 'danger', onIconClick: () => setScreen('issues'), iconLabel: 'Abrir pendencias' },
-    { label: 'Checklist', value: data.checklist.filter((item) => item.status !== 'Conferido').length, Icon: ShieldCheck, tone: 'ai', onIconClick: () => setScreen('checklist'), iconLabel: 'Abrir checklist tecnico' },
   ];
 
   return (
