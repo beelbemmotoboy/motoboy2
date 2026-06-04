@@ -959,6 +959,11 @@ main {
   align-items: start;
 }
 
+.photo-upload-side {
+  display: grid;
+  gap: 10px;
+}
+
 .photo-picker {
   position: relative;
   min-height: 240px;
@@ -974,11 +979,28 @@ main {
   font-weight: 900;
 }
 
-.photo-picker img {
+.photo-picker > img {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+  object-fit: cover;
+}
+
+.selected-photo-preview {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px;
+  padding: 3px;
+}
+
+.selected-photo-preview img {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border-radius: 6px;
   object-fit: cover;
 }
 
@@ -988,12 +1010,49 @@ main {
   z-index: 1;
 }
 
-.photo-picker img + span {
+.photo-picker > img + span,
+.selected-photo-preview + span {
   align-self: end;
   width: 100%;
   padding: 12px;
   color: #fff;
   background: rgba(15, 23, 42, 0.72);
+}
+
+.selected-file-list {
+  max-height: 150px;
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  list-style: none;
+}
+
+.selected-file-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.selected-file-list span {
+  min-width: 0;
+  overflow: hidden;
+  color: #111827;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selected-file-list small {
+  flex: 0 0 auto;
+  color: #6b7280;
+  font-weight: 900;
 }
 
 .photo-picker input {

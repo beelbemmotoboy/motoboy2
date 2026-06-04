@@ -939,31 +939,31 @@ function Photos({ photos, addPhoto, setScreen }) {
   );
 }
 
-function PhotoUploadModal({ etapa, stages, saving, onClose, onSave }) {
-  const [file, setFile] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState('');
+function PhotoUploadModal({ etapa, stages, saving, error, onClose, onSave }) {
+  const [files, setFiles] = useState([]);
+  const [previewUrls, setPreviewUrls] = useState([]);
 
   useEffect(() => {
-    if (!file) {
-      setPreviewUrl('');
+    if (!files.length) {
+      setPreviewUrls([]);
       return undefined;
     }
 
-    const nextUrl = URL.createObjectURL(file);
-    setPreviewUrl(nextUrl);
-    return () => URL.revokeObjectURL(nextUrl);
-  }, [file]);
+    const nextUrls = files.map((item) => URL.createObjectURL(item));
+    setPreviewUrls(nextUrls);
+    return () => nextUrls.forEach((url) => URL.revokeObjectURL(url));
+  }, [files]);
 
   function submit(event) {
     event.preventDefault();
     const form = event.currentTarget;
-    const selectedFile = form.elements.photoFile.files?.[0];
-    if (!selectedFile) return;
+    const selectedFiles = Array.from(form.elements.photoFile.files || []);
+    if (!selectedFiles.length) return;
     onSave({
       etapa: form.elements.etapa.value,
       tipo: form.elements.tipo.value,
       observacao: form.elements.observacao.value,
-      file: selectedFile,
+      files: selectedFiles,
     });
   }
 
@@ -978,17 +978,38 @@ function PhotoUploadModal({ etapa, stages, saving, onClose, onSave }) {
           <IconButton label="Fechar" Icon={X} onClick={onClose} />
         </div>
         <div className="photo-upload-layout">
-          <label className="photo-picker">
-            {previewUrl ? <img src={previewUrl} alt="" /> : <Camera size={40} aria-hidden="true" />}
-            <span>{file?.name || 'Selecionar imagem'}</span>
-            <input
-              type="file"
-              name="photoFile"
-              accept="image/*"
-              required
-              onChange={(event) => setFile(event.target.files?.[0] || null)}
-            />
-          </label>
+          <div className="photo-upload-side">
+            <label className="photo-picker">
+              {previewUrls.length ? (
+                <div className="selected-photo-preview" aria-hidden="true">
+                  {previewUrls.slice(0, 4).map((url) => (
+                    <img src={url} alt="" key={url} />
+                  ))}
+                </div>
+              ) : (
+                <Camera size={40} aria-hidden="true" />
+              )}
+              <span>{files.length ? `${files.length} imagem${files.length > 1 ? 's' : ''} selecionada${files.length > 1 ? 's' : ''}` : 'Selecionar imagens'}</span>
+              <input
+                type="file"
+                name="photoFile"
+                accept="image/*"
+                multiple
+                required
+                onChange={(event) => setFiles(Array.from(event.target.files || []))}
+              />
+            </label>
+            {files.length ? (
+              <ul className="selected-file-list">
+                {files.map((item) => (
+                  <li key={`${item.name}-${item.size}`}>
+                    <span>{item.name}</span>
+                    <small>{Math.max(1, Math.round(item.size / 1024))} KB</small>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
           <div className="form-grid modal-fields">
             <label className="field">
               <span>Etapa</span>
@@ -1012,8 +1033,9 @@ function PhotoUploadModal({ etapa, stages, saving, onClose, onSave }) {
             </label>
           </div>
         </div>
+        {error ? <p className="auth-message error">{error}</p> : null}
         <div className="form-actions">
-          <ActionButton Icon={Upload} type="submit" disabled={saving}>{saving ? 'Enviando...' : 'Salvar foto'}</ActionButton>
+          <ActionButton Icon={Upload} type="submit" disabled={saving}>{saving ? 'Enviando...' : files.length > 1 ? `Salvar ${files.length} fotos` : 'Salvar foto'}</ActionButton>
           <ActionButton Icon={XCircle} variant="ghost" onClick={onClose} disabled={saving}>Cancelar</ActionButton>
         </div>
       </form>
@@ -1258,6 +1280,7 @@ function App() {
   const [dataError, setDataError] = useState('');
   const [photoDraftStage, setPhotoDraftStage] = useState(null);
   const [photoSaving, setPhotoSaving] = useState(false);
+  const [photoError, setPhotoError] = useState('');
   const [selectedCity, setSelectedCity] = useState(cityCatalog[0]);
   const [selectedNeighborhood, setSelectedNeighborhood] = useState(null);
   const [selectedWorkId, setSelectedWorkId] = useState(initialData.works[0].id);
@@ -1432,12 +1455,15 @@ function App() {
   }
 
   function addPhoto(etapa) {
+    setPhotoError('');
     setPhotoDraftStage(etapa || activeStage?.nome || 'Fundacao');
   }
 
-  async function savePhoto({ etapa, tipo, observacao, file }) {
-    let next = {
-      id: makeId('foto'),
+  async function savePhoto({ etapa, tipo, observacao, files }) {
+    const selectedFiles = files || [];
+    if (!selectedFiles.length) return;
+
+    const basePhoto = {
       etapa,
       tipo,
       data: today(),
@@ -1446,41 +1472,57 @@ function App() {
       cor: tipo === 'PLS Caixa' ? 'purple' : tipo === 'Problema' ? 'red' : 'blue',
     };
     const targetStage = data.stages.find((stage) => stage.nome === etapa);
-    const nextMissingPhotos = targetStage ? Math.max(0, targetStage.fotosFaltando - 1) : null;
+    let nextMissingPhotos = null;
+    let nextPhotos = [];
 
     setPhotoSaving(true);
-    setDataError('');
+    setPhotoError('');
 
     if (supabaseConfigured && session) {
       try {
-        const upload = await uploadPhotoFile({
-          userId: session.user.id,
-          projectId: activeWork.id,
-          file,
-        });
-        next = { ...next, ...upload };
-        next = await insertChild('photos', activeWork.id, next);
+        const uploadResults = await Promise.allSettled(selectedFiles.map(async (file) => {
+          const upload = await uploadPhotoFile({
+            userId: session.user.id,
+            projectId: activeWork.id,
+            file,
+          });
+          return insertChild('photos', activeWork.id, { ...basePhoto, ...upload });
+        }));
+        nextPhotos = uploadResults
+          .filter((result) => result.status === 'fulfilled')
+          .map((result) => result.value);
+        if (!nextPhotos.length) {
+          const failed = uploadResults.find((result) => result.status === 'rejected');
+          throw failed?.reason || new Error('Nenhuma foto foi enviada.');
+        }
+        nextMissingPhotos = targetStage ? Math.max(0, targetStage.fotosFaltando - nextPhotos.length) : null;
         if (targetStage && nextMissingPhotos !== null) {
           await updateChild('stages', targetStage.id, { fotosFaltando: nextMissingPhotos });
         }
+        const failedCount = uploadResults.length - nextPhotos.length;
+        if (failedCount) {
+          setPhotoError(`${failedCount} foto${failedCount > 1 ? 's' : ''} nao foi${failedCount > 1 ? 'ram' : ''} enviada${failedCount > 1 ? 's' : ''}.`);
+        }
       } catch (error) {
-        setDataError(error.message || 'Nao foi possivel enviar a foto.');
+        setPhotoError(error.message || 'Nao foi possivel enviar as fotos.');
         setPhotoSaving(false);
         return;
       }
-    } else if (file) {
-      next = {
-        ...next,
+    } else {
+      nextPhotos = selectedFiles.map((file) => ({
+        id: makeId('foto'),
+        ...basePhoto,
         fileName: file.name,
         mimeType: file.type || 'image/jpeg',
         fileSize: file.size || 0,
         photoUrl: URL.createObjectURL(file),
-      };
+      }));
+      nextMissingPhotos = targetStage ? Math.max(0, targetStage.fotosFaltando - nextPhotos.length) : null;
     }
 
     setData((current) => ({
       ...current,
-      photos: [next, ...current.photos],
+      photos: [...nextPhotos, ...current.photos],
       stages: current.stages.map((stage) => (
         stage.nome === etapa && nextMissingPhotos !== null
           ? { ...stage, fotosFaltando: nextMissingPhotos }
@@ -1653,8 +1695,12 @@ function App() {
           etapa={photoDraftStage}
           stages={data.stages}
           saving={photoSaving}
+          error={photoError}
           onClose={() => {
-            if (!photoSaving) setPhotoDraftStage(null);
+            if (!photoSaving) {
+              setPhotoDraftStage(null);
+              setPhotoError('');
+            }
           }}
           onSave={savePhoto}
         />
