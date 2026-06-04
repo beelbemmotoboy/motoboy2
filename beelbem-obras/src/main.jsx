@@ -376,6 +376,12 @@ function normalizeSearch(value) {
     .trim();
 }
 
+function formatIssuePrazo(value) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return value || '';
+  return `${match[3]}/${match[2]}`;
+}
+
 function Field({ label, name, value, type = 'text', wide = false, required = false }) {
   return (
     <label className={wide ? 'field wide' : 'field'}>
@@ -1178,6 +1184,76 @@ function Issues({ issues, addIssue, resolveIssue, setScreen }) {
   );
 }
 
+function IssueModal({ etapa, stages, activeWork, saving, error, onClose, onSave }) {
+  const stageOptions = [...new Set(['Geral', ...(stages || []).map((stage) => stage.nome).filter(Boolean)])];
+
+  function submit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    onSave({
+      descricao: form.elements.descricao.value.trim(),
+      etapa: form.elements.etapa.value,
+      responsavel: form.elements.responsavel.value.trim(),
+      prazo: form.elements.prazo.value,
+      norma: form.elements.norma.value.trim(),
+      status: form.elements.status.value,
+    });
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <form className="photo-modal issue-modal" onSubmit={submit}>
+        <div className="modal-head">
+          <div>
+            <span>Pendencia</span>
+            <h2>Cadastrar pendencia</h2>
+          </div>
+          <IconButton label="Fechar" Icon={X} onClick={onClose} />
+        </div>
+        <div className="form-grid modal-fields">
+          <label className="field wide">
+            <span>Descricao</span>
+            <textarea name="descricao" rows={4} required />
+          </label>
+          <label className="field">
+            <span>Etapa</span>
+            <select name="etapa" defaultValue={etapa || 'Geral'}>
+              {stageOptions.map((item) => (
+                <option value={item} key={item}>{item}</option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>Responsavel</span>
+            <input name="responsavel" defaultValue={activeWork?.responsavel || ''} required />
+          </label>
+          <label className="field">
+            <span>Prazo</span>
+            <input name="prazo" type="date" required />
+          </label>
+          <label className="field">
+            <span>Norma</span>
+            <input name="norma" defaultValue="Checklist interno" />
+          </label>
+          <label className="field">
+            <span>Status</span>
+            <select name="status" defaultValue="Aberta">
+              {['Aberta', 'Em andamento', 'Resolvida'].map((item) => (
+                <option value={item} key={item}>{item}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {error ? <p className="auth-message error">{error}</p> : null}
+        <div className="form-actions">
+          <ActionButton Icon={Save} type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Salvar pendencia'}</ActionButton>
+          <ActionButton Icon={XCircle} variant="ghost" onClick={onClose} disabled={saving}>Cancelar</ActionButton>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function TableList({ title, eyebrow, subtitle, items, onPrimary, setScreen, primaryLabel = 'Atualizar', PrimaryIcon = Pencil }) {
   return (
     <>
@@ -1325,6 +1401,9 @@ function App() {
   const [photoDraftStage, setPhotoDraftStage] = useState(null);
   const [photoSaving, setPhotoSaving] = useState(false);
   const [photoError, setPhotoError] = useState('');
+  const [issueDraftStage, setIssueDraftStage] = useState(null);
+  const [issueSaving, setIssueSaving] = useState(false);
+  const [issueError, setIssueError] = useState('');
   const [selectedCity, setSelectedCity] = useState(cityCatalog[0]);
   const [selectedNeighborhood, setSelectedNeighborhood] = useState(null);
   const [selectedWorkId, setSelectedWorkId] = useState(initialData.works[0].id);
@@ -1578,23 +1657,36 @@ function App() {
     setScreen('photos');
   }
 
-  async function addIssue(etapa) {
+  function addIssue(etapa = 'Geral') {
+    setIssueError('');
+    setIssueDraftStage(etapa || 'Geral');
+    setScreen('issues');
+  }
+
+  async function saveIssue(values) {
+    const etapa = values.etapa || issueDraftStage || 'Geral';
     let next = {
       id: makeId('pend'),
-      descricao: `Pendencia registrada em ${etapa}`,
+      descricao: values.descricao || `Pendencia registrada em ${etapa}`,
       etapa,
-      responsavel: activeWork.responsavel || 'Eng. Ana',
-      prazo: '10/06',
-      status: 'Aberta',
-      norma: 'Checklist interno',
+      responsavel: values.responsavel || activeWork.responsavel || 'Eng. Ana',
+      prazo: formatIssuePrazo(values.prazo),
+      status: values.status || 'Aberta',
+      norma: values.norma || 'Checklist interno',
     };
+    const pendenciaDelta = next.status === 'Resolvida' ? 0 : 1;
 
+    setIssueSaving(true);
+    setIssueError('');
     if (supabaseConfigured && session) {
       try {
         next = await insertChild('issues', activeWork.id, next);
-        await updateProject(activeWork.id, { pendencias: activeWork.pendencias + 1 });
+        if (pendenciaDelta) {
+          await updateProject(activeWork.id, { pendencias: activeWork.pendencias + pendenciaDelta });
+        }
       } catch (error) {
-        setDataError(error.message || 'Nao foi possivel salvar a pendencia.');
+        setIssueError(error.message || 'Nao foi possivel salvar a pendencia.');
+        setIssueSaving(false);
         return;
       }
     }
@@ -1602,14 +1694,17 @@ function App() {
     setData((current) => ({
       ...current,
       issues: [next, ...current.issues],
-      works: current.works.map((work) => (work.id === activeWork.id ? { ...work, pendencias: work.pendencias + 1 } : work)),
+      works: current.works.map((work) => (work.id === activeWork.id ? { ...work, pendencias: work.pendencias + pendenciaDelta } : work)),
     }));
+    setIssueSaving(false);
+    setIssueDraftStage(null);
     setScreen('issues');
   }
 
   async function resolveIssue() {
     const targetIssue = data.issues[0];
     if (!targetIssue) return;
+    if (targetIssue.status === 'Resolvida') return;
 
     setData((current) => ({
       ...current,
@@ -1747,6 +1842,22 @@ function App() {
             }
           }}
           onSave={savePhoto}
+        />
+      ) : null}
+      {issueDraftStage ? (
+        <IssueModal
+          etapa={issueDraftStage}
+          stages={data.stages}
+          activeWork={activeWork}
+          saving={issueSaving}
+          error={issueError}
+          onClose={() => {
+            if (!issueSaving) {
+              setIssueDraftStage(null);
+              setIssueError('');
+            }
+          }}
+          onSave={saveIssue}
         />
       ) : null}
     </Shell>
