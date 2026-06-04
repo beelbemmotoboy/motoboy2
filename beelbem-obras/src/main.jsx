@@ -368,6 +368,14 @@ function EmptyNotice({ Icon = Sparkles, title, text }) {
   );
 }
 
+function normalizeSearch(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
 function Field({ label, name, value, type = 'text', wide = false, required = false }) {
   return (
     <label className={wide ? 'field wide' : 'field'}>
@@ -581,20 +589,37 @@ function getNeighborhoodSummary(works, city) {
 }
 
 function Cities({ works, openCity }) {
+  const [query, setQuery] = useState('');
+  const normalizedQuery = normalizeSearch(query);
+  const cities = getCitySummary(works);
+  const filteredCities = normalizedQuery
+    ? cities.filter((city) => normalizeSearch(city.nome).includes(normalizedQuery))
+    : cities;
+
   return (
     <>
       <PageTitle eyebrow="Cidades" title="Obras por cidade" subtitle="Mapa operacional por municipio." />
-      <section className="item-grid">
-        {getCitySummary(works).map((city) => (
-          <button className="city-card" type="button" key={city.id} onClick={() => openCity(city)}>
-            <MapPinned size={34} aria-hidden="true" />
-            <strong>{city.nome}</strong>
-            <span>{city.bairros} bairros</span>
-            <span>{city.obras} obras</span>
-            {city.atrasadas ? <StatusPill status="Atrasada" /> : <StatusPill status="Conferido" />}
-          </button>
-        ))}
-      </section>
+      <div className="toolbar">
+        <label className="search-control">
+          <Search size={18} aria-hidden="true" />
+          <input value={query} placeholder="Buscar cidade" aria-label="Buscar cidade" onChange={(event) => setQuery(event.target.value)} />
+        </label>
+      </div>
+      {filteredCities.length ? (
+        <section className="item-grid">
+          {filteredCities.map((city) => (
+            <button className="city-card" type="button" key={city.id} onClick={() => openCity(city)}>
+              <MapPinned size={34} aria-hidden="true" />
+              <strong>{city.nome}</strong>
+              <span>{city.bairros} bairros</span>
+              <span>{city.obras} obras</span>
+              {city.atrasadas ? <StatusPill status="Atrasada" /> : <StatusPill status="Conferido" />}
+            </button>
+          ))}
+        </section>
+      ) : (
+        <EmptyNotice Icon={MapPinned} title="Nenhuma cidade encontrada" text="Ajuste a busca pelo nome da cidade." />
+      )}
     </>
   );
 }
