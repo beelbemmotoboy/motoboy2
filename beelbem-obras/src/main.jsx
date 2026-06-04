@@ -625,20 +625,37 @@ function Cities({ works, openCity }) {
 }
 
 function Neighborhoods({ works, selectedCity, openNeighborhood, setScreen }) {
+  const [query, setQuery] = useState('');
+  const normalizedQuery = normalizeSearch(query);
+  const neighborhoods = getNeighborhoodSummary(works, selectedCity);
+  const filteredNeighborhoods = normalizedQuery
+    ? neighborhoods.filter((bairro) => normalizeSearch(bairro.nome).includes(normalizedQuery))
+    : neighborhoods;
+
   return (
     <>
       <PageTitle eyebrow="Bairros" title={selectedCity?.nome || 'Rio Verde'} subtitle="Obras agrupadas por bairro." onBack={() => setScreen('cities')} />
-      <section className="item-grid">
-        {getNeighborhoodSummary(works, selectedCity).map((bairro) => (
-          <button className="item-card as-button" type="button" key={bairro.id} onClick={() => openNeighborhood(bairro)}>
-            <Landmark size={32} aria-hidden="true" />
-            <strong>{bairro.nome}</strong>
-            <span>{bairro.obras} obras</span>
-            <span>{bairro.andamento} em andamento</span>
-            {bairro.atrasadas ? <StatusPill status="Atrasada" /> : <StatusPill status="Conferido" />}
-          </button>
-        ))}
-      </section>
+      <div className="toolbar">
+        <label className="search-control">
+          <Search size={18} aria-hidden="true" />
+          <input value={query} placeholder="Buscar bairro" aria-label="Buscar bairro" onChange={(event) => setQuery(event.target.value)} />
+        </label>
+      </div>
+      {filteredNeighborhoods.length ? (
+        <section className="item-grid">
+          {filteredNeighborhoods.map((bairro) => (
+            <button className="item-card as-button" type="button" key={bairro.id} onClick={() => openNeighborhood(bairro)}>
+              <Landmark size={32} aria-hidden="true" />
+              <strong>{bairro.nome}</strong>
+              <span>{bairro.obras} obras</span>
+              <span>{bairro.andamento} em andamento</span>
+              {bairro.atrasadas ? <StatusPill status="Atrasada" /> : <StatusPill status="Conferido" />}
+            </button>
+          ))}
+        </section>
+      ) : (
+        <EmptyNotice Icon={Landmark} title="Nenhum bairro encontrado" text="Ajuste a busca pelo nome do bairro." />
+      )}
     </>
   );
 }
