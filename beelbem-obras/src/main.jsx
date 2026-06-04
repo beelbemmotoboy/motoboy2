@@ -542,7 +542,6 @@ function Dashboard({ data, setScreen }) {
       <section className="quick-grid">
         {[
           ['Nova obra', Plus, 'newWork'],
-          ['Ver cidades', MapPinned, 'cities'],
           ['Ver pendencias', AlertTriangle, 'issues'],
           ['Ver PLS Caixa', FileCheck2, 'pls'],
           ['Relatorios', BarChart3, 'reports'],
