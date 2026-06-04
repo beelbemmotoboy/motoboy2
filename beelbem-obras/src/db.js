@@ -5,6 +5,7 @@ const fallbackSupabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOi
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || fallbackSupabaseUrl;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || fallbackSupabaseAnonKey;
+const photoBucket = 'obras-photos';
 
 export const supabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
@@ -113,6 +114,10 @@ export const rowMappers = {
       usuario: row.usuario || '',
       observacao: row.observacao || '',
       cor: row.cor || 'blue',
+      storagePath: row.storage_path || '',
+      fileName: row.file_name || '',
+      mimeType: row.mime_type || '',
+      fileSize: Number(row.file_size || 0),
     }),
     toDb: (item) => ({
       etapa: item.etapa,
@@ -121,6 +126,10 @@ export const rowMappers = {
       usuario: item.usuario || null,
       observacao: item.observacao || null,
       cor: item.cor || 'blue',
+      storage_path: item.storagePath || null,
+      file_name: item.fileName || null,
+      mime_type: item.mimeType || null,
+      file_size: item.fileSize || null,
     }),
   },
   plsItems: {
@@ -283,7 +292,9 @@ export async function fetchProjectChildren(projectId) {
         : query.order('created_at', { ascending: false });
       const { data, error } = await query;
       if (error) throw error;
-      return [key, (data || []).map(rowMappers[key].fromDb)];
+      let rows = (data || []).map(rowMappers[key].fromDb);
+      if (key === 'photos') rows = await withSignedPhotoUrls(rows);
+      return [key, rows];
     }),
   );
 
@@ -339,7 +350,9 @@ export async function insertChild(collection, projectId, item) {
     .single();
 
   if (error) throw error;
-  return mapper.fromDb(data);
+  const row = mapper.fromDb(data);
+  if (collection === 'photos') return withSignedPhotoUrl(row);
+  return row;
 }
 
 export async function updateChild(collection, id, patch) {
@@ -350,4 +363,53 @@ export async function updateChild(collection, id, patch) {
 
   const { error } = await supabase.from(table).update(dbPatch).eq('id', id);
   if (error) throw error;
+}
+
+export async function uploadPhotoFile({ userId, projectId, file }) {
+  const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const fileName = safeFileName(file.name || `${id}.jpg`);
+  const storagePath = `${userId}/${projectId}/${id}-${fileName}`;
+  const { error } = await supabase.storage.from(photoBucket).upload(storagePath, file, {
+    cacheControl: '3600',
+    contentType: file.type || 'image/jpeg',
+    upsert: false,
+  });
+
+  if (error) throw error;
+
+  return {
+    storagePath,
+    fileName,
+    mimeType: file.type || 'image/jpeg',
+    fileSize: file.size || 0,
+    photoUrl: await createSignedPhotoUrl(storagePath),
+  };
+}
+
+async function withSignedPhotoUrls(photos) {
+  return Promise.all(photos.map(withSignedPhotoUrl));
+}
+
+async function withSignedPhotoUrl(photo) {
+  if (!photo.storagePath) return photo;
+  try {
+    return { ...photo, photoUrl: await createSignedPhotoUrl(photo.storagePath) };
+  } catch {
+    return photo;
+  }
+}
+
+async function createSignedPhotoUrl(storagePath) {
+  const { data, error } = await supabase.storage.from(photoBucket).createSignedUrl(storagePath, 60 * 60 * 24);
+  if (error) throw error;
+  return data.signedUrl;
+}
+
+function safeFileName(fileName) {
+  return fileName
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    || 'foto.jpg';
 }

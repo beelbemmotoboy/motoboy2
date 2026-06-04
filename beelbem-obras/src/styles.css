@@ -434,6 +434,11 @@ main {
   gap: 10px;
 }
 
+.action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -872,8 +877,16 @@ main {
   border-radius: 8px;
   display: grid;
   place-items: center;
+  overflow: hidden;
   color: #fff;
   background: #2563eb;
+}
+
+.photo-thumb img {
+  width: 100%;
+  height: 100%;
+  min-height: 112px;
+  object-fit: cover;
 }
 
 .photo-thumb.green { background: #16a34a; }
@@ -896,6 +909,103 @@ main {
 .photo-card p {
   margin: 8px 0;
   color: #374151;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(15, 23, 42, 0.52);
+}
+
+.photo-modal {
+  width: min(920px, 100%);
+  max-height: min(760px, calc(100svh - 36px));
+  overflow: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 18px;
+  background: #fff;
+  box-shadow: 0 26px 70px rgba(15, 23, 42, 0.28);
+}
+
+.modal-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.modal-head span {
+  color: #1d4ed8;
+  font-size: 13px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.modal-head h2 {
+  margin: 6px 0 0;
+  font-size: 26px;
+}
+
+.photo-upload-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.photo-picker {
+  position: relative;
+  min-height: 240px;
+  border: 1px dashed #9ca3af;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  overflow: hidden;
+  color: #1d4ed8;
+  background: #f8fafc;
+  text-align: center;
+  font-weight: 900;
+}
+
+.photo-picker img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.photo-picker span,
+.photo-picker svg {
+  position: relative;
+  z-index: 1;
+}
+
+.photo-picker img + span {
+  align-self: end;
+  width: 100%;
+  padding: 12px;
+  color: #fff;
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.photo-picker input {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.modal-fields {
+  margin: 0;
 }
 
 .schedule-table {
@@ -1045,10 +1155,11 @@ main {
   .profile-grid,
   .standards-grid,
   .form-grid,
-  .photo-grid,
-  .work-hero,
-  .ai-panel,
-  .upload-grid {
+    .photo-grid,
+    .photo-upload-layout,
+    .work-hero,
+    .ai-panel,
+    .upload-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1070,6 +1181,14 @@ main {
 
   .photo-thumb {
     min-height: 92px;
+  }
+
+  .photo-thumb img {
+    min-height: 92px;
+  }
+
+  .photo-modal {
+    padding: 14px;
   }
 
   .bottom-nav {

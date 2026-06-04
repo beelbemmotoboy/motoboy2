@@ -54,6 +54,7 @@ import {
   supabaseConfigured,
   updateChild,
   updateProject,
+  uploadPhotoFile,
 } from './db.js';
 import './styles.css';
 
@@ -298,9 +299,9 @@ function StatusPill({ status }) {
   return <span className={`status ${statusClasses[status] || 'neutral'}`}>{status}</span>;
 }
 
-function ActionButton({ children, Icon, variant = 'primary', onClick, type = 'button' }) {
+function ActionButton({ children, Icon, variant = 'primary', onClick, type = 'button', disabled = false }) {
   return (
-    <button className={`action-button ${variant}`} type={type} onClick={onClick}>
+    <button className={`action-button ${variant}`} type={type} onClick={onClick} disabled={disabled}>
       {Icon ? <Icon size={20} aria-hidden="true" /> : null}
       <span>{children}</span>
     </button>
@@ -918,13 +919,14 @@ function Photos({ photos, addPhoto, setScreen }) {
         {photos.map((photo) => (
           <article className="photo-card" key={photo.id}>
             <div className={`photo-thumb ${photo.cor}`}>
-              <Camera size={34} aria-hidden="true" />
+              {photo.photoUrl ? <img src={photo.photoUrl} alt={`Foto ${photo.etapa}`} /> : <Camera size={34} aria-hidden="true" />}
             </div>
             <div>
               <strong>{photo.etapa}</strong>
               <span>{photo.tipo} - {photo.data}</span>
               <p>{photo.observacao}</p>
               <small>{photo.usuario}</small>
+              {photo.fileName ? <small>{photo.fileName}</small> : null}
             </div>
           </article>
         ))}
@@ -934,6 +936,88 @@ function Photos({ photos, addPhoto, setScreen }) {
         <ActionButton Icon={Upload} variant="secondary" onClick={() => addPhoto('PLS Caixa')}>Enviar da galeria</ActionButton>
       </div>
     </>
+  );
+}
+
+function PhotoUploadModal({ etapa, stages, saving, onClose, onSave }) {
+  const [file, setFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState('');
+
+  useEffect(() => {
+    if (!file) {
+      setPreviewUrl('');
+      return undefined;
+    }
+
+    const nextUrl = URL.createObjectURL(file);
+    setPreviewUrl(nextUrl);
+    return () => URL.revokeObjectURL(nextUrl);
+  }, [file]);
+
+  function submit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const selectedFile = form.elements.photoFile.files?.[0];
+    if (!selectedFile) return;
+    onSave({
+      etapa: form.elements.etapa.value,
+      tipo: form.elements.tipo.value,
+      observacao: form.elements.observacao.value,
+      file: selectedFile,
+    });
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <form className="photo-modal" onSubmit={submit}>
+        <div className="modal-head">
+          <div>
+            <span>Foto da obra</span>
+            <h2>Enviar registro</h2>
+          </div>
+          <IconButton label="Fechar" Icon={X} onClick={onClose} />
+        </div>
+        <div className="photo-upload-layout">
+          <label className="photo-picker">
+            {previewUrl ? <img src={previewUrl} alt="" /> : <Camera size={40} aria-hidden="true" />}
+            <span>{file?.name || 'Selecionar imagem'}</span>
+            <input
+              type="file"
+              name="photoFile"
+              accept="image/*"
+              required
+              onChange={(event) => setFile(event.target.files?.[0] || null)}
+            />
+          </label>
+          <div className="form-grid modal-fields">
+            <label className="field">
+              <span>Etapa</span>
+              <select name="etapa" defaultValue={etapa}>
+                {[...new Set([etapa, ...stages.map((stage) => stage.nome), 'PLS Caixa'].filter(Boolean))].map((item) => (
+                  <option value={item} key={item}>{item}</option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Tipo</span>
+              <select name="tipo" defaultValue={etapa === 'PLS Caixa' ? 'PLS Caixa' : 'Durante'}>
+                {['Durante', 'Antes', 'Depois', 'Problema', 'PLS Caixa'].map((item) => (
+                  <option value={item} key={item}>{item}</option>
+                ))}
+              </select>
+            </label>
+            <label className="field wide">
+              <span>Observacao</span>
+              <textarea name="observacao" rows={3} defaultValue={`Registro incluido em ${etapa}`} />
+            </label>
+          </div>
+        </div>
+        <div className="form-actions">
+          <ActionButton Icon={Upload} type="submit" disabled={saving}>{saving ? 'Enviando...' : 'Salvar foto'}</ActionButton>
+          <ActionButton Icon={XCircle} variant="ghost" onClick={onClose} disabled={saving}>Cancelar</ActionButton>
+        </div>
+      </form>
+    </div>
   );
 }
 
@@ -1172,6 +1256,8 @@ function App() {
   const [authError, setAuthError] = useState('');
   const [dataLoading, setDataLoading] = useState(false);
   const [dataError, setDataError] = useState('');
+  const [photoDraftStage, setPhotoDraftStage] = useState(null);
+  const [photoSaving, setPhotoSaving] = useState(false);
   const [selectedCity, setSelectedCity] = useState(cityCatalog[0]);
   const [selectedNeighborhood, setSelectedNeighborhood] = useState(null);
   const [selectedWorkId, setSelectedWorkId] = useState(initialData.works[0].id);
@@ -1345,27 +1431,64 @@ function App() {
     }
   }
 
-  async function addPhoto(etapa) {
+  function addPhoto(etapa) {
+    setPhotoDraftStage(etapa || activeStage?.nome || 'Fundacao');
+  }
+
+  async function savePhoto({ etapa, tipo, observacao, file }) {
     let next = {
       id: makeId('foto'),
       etapa,
-      tipo: etapa === 'PLS Caixa' ? 'PLS Caixa' : 'Durante',
+      tipo,
       data: today(),
       usuario: activeWork.responsavel || 'Eng. Ana Prado',
-      observacao: `Registro incluido em ${etapa}`,
-      cor: etapa === 'PLS Caixa' ? 'purple' : 'blue',
+      observacao: observacao || `Registro incluido em ${etapa}`,
+      cor: tipo === 'PLS Caixa' ? 'purple' : tipo === 'Problema' ? 'red' : 'blue',
     };
+    const targetStage = data.stages.find((stage) => stage.nome === etapa);
+    const nextMissingPhotos = targetStage ? Math.max(0, targetStage.fotosFaltando - 1) : null;
+
+    setPhotoSaving(true);
+    setDataError('');
 
     if (supabaseConfigured && session) {
       try {
+        const upload = await uploadPhotoFile({
+          userId: session.user.id,
+          projectId: activeWork.id,
+          file,
+        });
+        next = { ...next, ...upload };
         next = await insertChild('photos', activeWork.id, next);
+        if (targetStage && nextMissingPhotos !== null) {
+          await updateChild('stages', targetStage.id, { fotosFaltando: nextMissingPhotos });
+        }
       } catch (error) {
-        setDataError(error.message || 'Nao foi possivel salvar a foto.');
+        setDataError(error.message || 'Nao foi possivel enviar a foto.');
+        setPhotoSaving(false);
         return;
       }
+    } else if (file) {
+      next = {
+        ...next,
+        fileName: file.name,
+        mimeType: file.type || 'image/jpeg',
+        fileSize: file.size || 0,
+        photoUrl: URL.createObjectURL(file),
+      };
     }
 
-    setData((current) => ({ ...current, photos: [next, ...current.photos] }));
+    setData((current) => ({
+      ...current,
+      photos: [next, ...current.photos],
+      stages: current.stages.map((stage) => (
+        stage.nome === etapa && nextMissingPhotos !== null
+          ? { ...stage, fotosFaltando: nextMissingPhotos }
+          : stage
+      )),
+    }));
+    setPhotoSaving(false);
+    setPhotoDraftStage(null);
     setScreen('photos');
   }
 
@@ -1525,6 +1648,17 @@ function App() {
   return (
     <Shell screen={screen} setScreen={setScreen} activeWork={activeWork}>
       {renderScreen()}
+      {photoDraftStage ? (
+        <PhotoUploadModal
+          etapa={photoDraftStage}
+          stages={data.stages}
+          saving={photoSaving}
+          onClose={() => {
+            if (!photoSaving) setPhotoDraftStage(null);
+          }}
+          onSave={savePhoto}
+        />
+      ) : null}
     </Shell>
   );
 }
