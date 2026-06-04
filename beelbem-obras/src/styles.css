@@ -690,6 +690,10 @@ button.metric-action-icon:focus-visible {
   gap: 12px;
 }
 
+.work-list {
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+}
+
 .work-card,
 .stage-card,
 .issue-card,
@@ -699,6 +703,101 @@ button.metric-action-icon:focus-visible {
   border-radius: 8px;
   padding: 16px;
   background: #fff;
+}
+
+.work-card {
+  width: 100%;
+  min-height: 136px;
+  display: grid;
+  align-content: space-between;
+  gap: 8px;
+  color: #111827;
+  text-align: left;
+}
+
+.work-card:hover,
+.work-card:focus-visible {
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
+  transform: translateY(-1px);
+}
+
+.work-card strong,
+.work-card b,
+.work-card > span {
+  min-width: 0;
+  display: block;
+}
+
+.work-card strong {
+  overflow: hidden;
+  font-size: 24px;
+  font-weight: 950;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-card > span {
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 850;
+  line-height: 1.2;
+  opacity: 0.86;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-card b {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.work-card .progress {
+  height: 6px;
+  margin-top: 0;
+  background: rgba(17, 24, 39, 0.16);
+}
+
+.work-card .progress span {
+  background: currentColor;
+}
+
+.work-card-green {
+  border-color: #86efac;
+  color: #14532d;
+  background: #dcfce7;
+}
+
+.work-card-yellow {
+  border-color: #fbbf24;
+  color: #713f12;
+  background: #fef3c7;
+}
+
+.work-card-red {
+  border-color: #f87171;
+  color: #7f1d1d;
+  background: #fee2e2;
+}
+
+.work-card-black {
+  border-color: #111827;
+  color: #f9fafb;
+  background: #111827;
+}
+
+.work-card-black .progress {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.work-card-white {
+  border-color: #e5e7eb;
+  color: #111827;
+  background: #fff;
+}
+
+.work-list .empty-notice {
+  grid-column: 1 / -1;
 }
 
 .work-head,
@@ -742,7 +841,6 @@ button.metric-action-icon:focus-visible {
   background: linear-gradient(90deg, #2563eb, #16a34a);
 }
 
-.work-card .progress,
 .stage-card .progress {
   margin-top: 14px;
 }

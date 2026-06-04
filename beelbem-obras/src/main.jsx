@@ -382,6 +382,24 @@ function formatIssuePrazo(value) {
   return `${match[3]}/${match[2]}`;
 }
 
+function getFirstName(value) {
+  return String(value || '').trim().split(/\s+/)[0] || 'Cliente';
+}
+
+function getWorkCardTone(work) {
+  const status = normalizeSearch(work.status);
+  const pls = normalizeSearch(work.pls);
+  const percentual = Number(work.percentual) || 0;
+  const pendencias = Number(work.pendencias) || 0;
+  const atraso = Number(work.atraso) || 0;
+
+  if (status.includes('paralisad')) return 'black';
+  if (status.includes('nao iniciad') || percentual <= 0) return 'white';
+  if (status.includes('atrasad') || atraso > 0) return 'red';
+  if (pendencias > 0 || pls.includes('atras') || pls.includes('vencid') || pls.includes('reprovad')) return 'yellow';
+  return 'green';
+}
+
 function Field({ label, name, value, type = 'text', wide = false, required = false }) {
   return (
     <label className={wide ? 'field wide' : 'field'}>
@@ -699,23 +717,12 @@ function Works({ selectedCity, selectedNeighborhood, works, openWork, setScreen 
       </div>
       <section className="work-list">
         {filtered.map((obra) => (
-          <article className="work-card" key={obra.id}>
-            <div className="work-head">
-              <div>
-                <h2>{obra.nome}</h2>
-                <p>{obra.cliente} - {obra.endereco}</p>
-              </div>
-              <StatusPill status={obra.status} />
-            </div>
+          <button className={`work-card work-card-${getWorkCardTone(obra)}`} type="button" key={obra.id} onClick={() => openWork(obra)} aria-label={`Abrir painel de ${obra.nome}`}>
+            <strong>{getFirstName(obra.cliente)}</strong>
+            <span>{obra.endereco}</span>
+            <b>{obra.percentual}%</b>
             <ProgressBar value={obra.percentual} />
-            <div className="work-meta">
-              <span>{obra.percentual}% executado</span>
-              <span>Proxima: {obra.proximaEtapa}</span>
-              <span>PLS: {obra.pls}</span>
-              <span>{obra.pendencias} pendencias</span>
-            </div>
-            <ActionButton Icon={Eye} onClick={() => openWork(obra)}>Abrir painel</ActionButton>
-          </article>
+          </button>
         ))}
         {!filtered.length ? <EmptyNotice title="Nenhuma obra encontrada" text="Ajuste a busca ou os filtros." /> : null}
       </section>
