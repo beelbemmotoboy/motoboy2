@@ -523,7 +523,6 @@ function Dashboard({ data, setScreen }) {
   const openIssues = data.issues.filter((issue) => issue.status !== 'Resolvida').length;
   const metrics = [
     { label: 'Cidades', value: cityCount, Icon: MapPinned, tone: 'info', onIconClick: () => setScreen('cities'), iconLabel: 'Abrir cadastro e visualizacao de cidades' },
-    { label: 'Obras', value: data.works.length, Icon: Building2, tone: 'neutral', onIconClick: () => setScreen('works'), iconLabel: 'Abrir obras' },
     { label: 'Andamento', value: data.works.filter((work) => work.status === 'Em andamento').length, Icon: Clock3, tone: 'warning', onIconClick: () => setScreen('works'), iconLabel: 'Abrir obras em andamento' },
     { label: 'Atrasadas', value: data.works.filter((work) => work.status === 'Atrasada').length, Icon: AlertTriangle, tone: 'danger', onIconClick: () => setScreen('works'), iconLabel: 'Abrir obras atrasadas' },
     { label: 'PLS', value: data.plsItems.filter((item) => !['Aprovado', 'Enviado'].includes(item.status)).length, Icon: FileCheck2, tone: 'danger', onIconClick: () => setScreen('pls'), iconLabel: 'Abrir PLS Caixa' },
