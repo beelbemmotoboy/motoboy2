@@ -351,19 +351,27 @@ function IconButton({ label, Icon, onClick }) {
 }
 
 function MetricCard({ label, value, Icon, tone = 'neutral', onIconClick, iconLabel }) {
-  return (
-    <article className={`metric-card tone-${tone}`}>
-      {onIconClick ? (
-        <button className="metric-action-icon" type="button" aria-label={iconLabel || label} title={iconLabel || label} onClick={onIconClick}>
-          <Icon size={22} aria-hidden="true" />
-        </button>
-      ) : (
-        <span className="metric-action-icon metric-action-icon-static">
-          <Icon size={22} aria-hidden="true" />
-        </span>
-      )}
+  const content = (
+    <>
+      <span className="metric-action-icon" aria-hidden="true">
+        <Icon size={22} aria-hidden="true" />
+      </span>
       <strong>{value}</strong>
       <span>{label}</span>
+    </>
+  );
+
+  if (onIconClick) {
+    return (
+      <button className={`metric-card metric-card-clickable tone-${tone}`} type="button" aria-label={iconLabel || label} title={iconLabel || label} onClick={onIconClick}>
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <article className={`metric-card tone-${tone}`}>
+      {content}
     </article>
   );
 }

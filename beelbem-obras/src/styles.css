@@ -462,10 +462,22 @@ main {
   gap: 8px;
   padding: 18px;
   background: #fff;
+  color: inherit;
+  font: inherit;
+  text-align: left;
 }
 
-.metric-card svg {
-  color: #4b5563;
+button.metric-card {
+  appearance: none;
+  cursor: pointer;
+}
+
+.metric-card-clickable:hover,
+.metric-card-clickable:focus-visible {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16);
+  background: #f8fbff;
 }
 
 .metric-card strong {
@@ -483,7 +495,7 @@ main {
 .metric-action-icon {
   position: absolute;
   top: 12px;
-  right: 12px;
+  left: 50%;
   width: 42px;
   height: 42px;
   border: 1px solid #bfdbfe;
@@ -492,18 +504,15 @@ main {
   place-items: center;
   color: #1d4ed8;
   background: #eff6ff;
+  transform: translateX(-50%);
 }
 
 .metric-action-icon svg {
   color: currentColor;
 }
 
-.metric-action-icon-static {
-  cursor: default;
-}
-
-button.metric-action-icon:hover,
-button.metric-action-icon:focus-visible {
+.metric-card-clickable:hover .metric-action-icon,
+.metric-card-clickable:focus-visible .metric-action-icon {
   color: #fff;
   background: #2563eb;
 }
