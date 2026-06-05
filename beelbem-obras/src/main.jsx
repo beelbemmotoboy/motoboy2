@@ -37,22 +37,28 @@ import {
   ShieldCheck,
   Sparkles,
   Upload,
+  UserPlus,
   UserRound,
+  UsersRound,
   Wrench,
   X,
   XCircle,
 } from 'lucide-react';
 import {
+  claimObrasUser,
   fetchProjectChildren,
   fetchProjects,
+  fetchObrasUsers,
   getSession,
   insertChild,
+  insertObrasUser,
   insertProject,
   onAuthStateChange,
   seedProjectChildren,
   signIn,
   supabaseConfigured,
   updateChild,
+  updateObrasUser,
   updateProject,
   uploadPhotoFile,
 } from './db.js';
@@ -68,6 +74,7 @@ const statusClasses = {
   Comprado: 'success',
   Disponivel: 'success',
   Resolvida: 'success',
+  Ativo: 'success',
   'Em andamento': 'warning',
   Atencao: 'warning',
   Pendente: 'danger',
@@ -78,6 +85,7 @@ const statusClasses = {
   'Nao iniciada': 'neutral',
   'Nao iniciado': 'neutral',
   Necessario: 'neutral',
+  Inativo: 'neutral',
   'Pronto para enviar': 'info',
   Enviado: 'info',
   IA: 'ai',
@@ -265,9 +273,34 @@ const quickRoutes = [
 
 const sidebarRoutes = [
   ...quickRoutes,
+  { id: 'users', label: 'Usuarios', Icon: UsersRound },
   { id: 'pls', label: 'PLS Caixa', Icon: FileCheck2 },
   { id: 'reports', label: 'Relatorios', Icon: BarChart3 },
   { id: 'stageLibrary', label: 'Biblioteca', Icon: Library },
+];
+
+const obrasRoles = [
+  { value: 'owner', label: 'Proprietario' },
+  { value: 'admin', label: 'Administrador' },
+  { value: 'engenheiro', label: 'Engenheiro' },
+  { value: 'operador', label: 'Operador' },
+  { value: 'viewer', label: 'Visualizador' },
+];
+
+const localObrasUsers = [
+  {
+    id: 'local-owner',
+    authUserId: '',
+    accountId: 'local-account',
+    nome: 'Eng. Ana Prado',
+    email: 'engenharia@beelbem.com.br',
+    telefone: '',
+    cidadeId: 'rio-verde',
+    cidade: 'Rio Verde',
+    role: 'owner',
+    active: true,
+    createdAt: '',
+  },
 ];
 
 const workPanelRoutes = [
@@ -398,6 +431,10 @@ function getWorkCardTone(work) {
   if (status.includes('atrasad') || atraso > 0) return 'red';
   if (pendencias > 0 || pls.includes('atras') || pls.includes('vencid') || pls.includes('reprovad')) return 'yellow';
   return 'green';
+}
+
+function roleLabel(role) {
+  return obrasRoles.find((item) => item.value === role)?.label || 'Operador';
 }
 
 function Field({ label, name, value, type = 'text', wide = false, required = false }) {
@@ -575,6 +612,7 @@ function Dashboard({ data, setScreen }) {
         {[
           ['Nova obra', Plus, 'newWork'],
           ['Ver pendencias', AlertTriangle, 'issues'],
+          ['Usuarios', UsersRound, 'users'],
           ['Ver PLS Caixa', FileCheck2, 'pls'],
           ['Relatorios', BarChart3, 'reports'],
         ].map(([label, Icon, route]) => (
@@ -1261,6 +1299,190 @@ function IssueModal({ etapa, stages, activeWork, saving, error, onClose, onSave 
   );
 }
 
+function Users({ users, currentUser, loading, error, message, saving, canManage, onRefresh, onSave, onToggle, setScreen }) {
+  const [query, setQuery] = useState('');
+  const [editingUser, setEditingUser] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const normalizedQuery = normalizeSearch(query);
+  const filteredUsers = normalizedQuery
+    ? users.filter((user) => normalizeSearch(`${user.nome} ${user.email} ${user.telefone} ${user.cidade} ${roleLabel(user.role)}`).includes(normalizedQuery))
+    : users;
+
+  function openNewUser() {
+    setEditingUser(null);
+    setModalOpen(true);
+  }
+
+  function openEditUser(user) {
+    setEditingUser(user);
+    setModalOpen(true);
+  }
+
+  async function saveUser(values) {
+    const saved = await onSave(values);
+    if (saved) {
+      setModalOpen(false);
+      setEditingUser(null);
+    }
+  }
+
+  return (
+    <>
+      <PageTitle eyebrow="Usuarios" title="Acessos do Obras" subtitle="Equipe vinculada a conta comercial." onBack={() => setScreen('dashboard')}>
+        <ActionButton Icon={UserPlus} onClick={openNewUser} disabled={!canManage || saving}>Novo usuario</ActionButton>
+      </PageTitle>
+      {!canManage ? (
+        <section className="warning-strip">
+          <ShieldCheck size={22} aria-hidden="true" />
+          <span>Seu perfil atual permite visualizar usuarios, mas nao gerenciar acessos.</span>
+        </section>
+      ) : null}
+      {error ? (
+        <section className="warning-strip">
+          <AlertTriangle size={22} aria-hidden="true" />
+          <span>{error}</span>
+        </section>
+      ) : null}
+      {message ? (
+        <section className="success-strip">
+          <CheckCircle2 size={22} aria-hidden="true" />
+          <span>{message}</span>
+        </section>
+      ) : null}
+      <div className="toolbar">
+        <label className="search-control">
+          <Search size={18} aria-hidden="true" />
+          <input value={query} placeholder="Buscar usuario" aria-label="Buscar usuario" onChange={(event) => setQuery(event.target.value)} />
+        </label>
+        <button type="button" onClick={onRefresh} disabled={loading}>
+          <Database size={18} aria-hidden="true" /> {loading ? 'Atualizando...' : 'Atualizar'}
+        </button>
+      </div>
+      {filteredUsers.length ? (
+        <section className="user-grid">
+          {filteredUsers.map((user) => {
+            const isCurrent = currentUser?.id === user.id || Boolean(user.authUserId && currentUser?.authUserId === user.authUserId);
+            return (
+              <article className="user-card" key={user.id}>
+                <div className="user-card-head">
+                  <div className="user-avatar">
+                    <UserRound size={24} aria-hidden="true" />
+                  </div>
+                  <StatusPill status={user.active ? 'Ativo' : 'Inativo'} />
+                </div>
+                <strong>{user.nome}</strong>
+                <span>{user.email}</span>
+                <span>{user.telefone || 'Sem telefone'}</span>
+                <div className="user-meta">
+                  <small>{roleLabel(user.role)}</small>
+                  <small>{user.cidade}</small>
+                  <small>{user.authUserId ? 'Login vinculado' : 'Aguardando login'}</small>
+                </div>
+                <div className="button-row">
+                  <button type="button" onClick={() => openEditUser(user)} disabled={!canManage || saving}>
+                    <Pencil size={18} aria-hidden="true" /> Editar
+                  </button>
+                  <button type="button" onClick={() => onToggle(user)} disabled={!canManage || saving || isCurrent}>
+                    {user.active ? <XCircle size={18} aria-hidden="true" /> : <CheckCircle2 size={18} aria-hidden="true" />}
+                    {user.active ? 'Desativar' : 'Ativar'}
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </section>
+      ) : (
+        <EmptyNotice Icon={UsersRound} title="Nenhum usuario encontrado" text="Ajuste a busca ou cadastre um novo acesso do Obras." />
+      )}
+      {modalOpen ? (
+        <UserModal
+          user={editingUser}
+          currentUser={currentUser}
+          saving={saving}
+          onClose={() => {
+            if (!saving) {
+              setModalOpen(false);
+              setEditingUser(null);
+            }
+          }}
+          onSave={saveUser}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function UserModal({ user, currentUser, saving, onClose, onSave }) {
+  const defaultCityId = user?.cidadeId || currentUser?.cidadeId || cityCatalog[0].id;
+
+  function submit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const selectedCity = cityCatalog.find((city) => city.id === form.elements.cidadeId.value) || cityCatalog[0];
+    onSave({
+      id: user?.id,
+      authUserId: user?.authUserId || '',
+      accountId: user?.accountId || currentUser?.accountId || '',
+      nome: form.elements.nome.value.trim(),
+      email: form.elements.email.value.trim(),
+      telefone: form.elements.telefone.value.trim(),
+      cidadeId: selectedCity.id,
+      cidade: selectedCity.nome,
+      role: form.elements.role.value,
+      active: form.elements.active.checked,
+      createdAt: user?.createdAt || '',
+    });
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <form className="photo-modal user-modal" onSubmit={submit}>
+        <div className="modal-head">
+          <div>
+            <span>Usuario do Obras</span>
+            <h2>{user ? 'Editar acesso' : 'Cadastrar acesso'}</h2>
+          </div>
+          <IconButton label="Fechar" Icon={X} onClick={onClose} />
+        </div>
+        <div className="form-grid modal-fields">
+          <Field label="Nome" name="nome" value={user?.nome || ''} required />
+          <Field label="E-mail" name="email" value={user?.email || ''} type="email" required />
+          <Field label="Telefone" name="telefone" value={user?.telefone || ''} />
+          <label className="field">
+            <span>Cidade</span>
+            <select name="cidadeId" defaultValue={defaultCityId}>
+              {cityCatalog.map((city) => (
+                <option value={city.id} key={city.id}>{city.nome}</option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>Perfil</span>
+            <select name="role" defaultValue={user?.role || 'operador'}>
+              {obrasRoles.map((role) => (
+                <option value={role.value} key={role.value}>{role.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="field check-field">
+            <span>Status</span>
+            <input type="checkbox" name="active" defaultChecked={user?.active !== false} />
+            <small>Usuario ativo</small>
+          </label>
+        </div>
+        <section className="detail-note user-note">
+          <strong>Login</strong>
+          <p>O acesso fica separado do Motoboy. Quando a pessoa entrar com este e-mail no Obras, o cadastro sera vinculado automaticamente.</p>
+        </section>
+        <div className="form-actions">
+          <ActionButton Icon={Save} type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Salvar usuario'}</ActionButton>
+          <ActionButton Icon={XCircle} variant="ghost" onClick={onClose} disabled={saving}>Cancelar</ActionButton>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function TableList({ title, eyebrow, subtitle, items, onPrimary, setScreen, primaryLabel = 'Atualizar', PrimaryIcon = Pencil }) {
   return (
     <>
@@ -1411,6 +1633,12 @@ function App() {
   const [issueDraftStage, setIssueDraftStage] = useState(null);
   const [issueSaving, setIssueSaving] = useState(false);
   const [issueError, setIssueError] = useState('');
+  const [obrasUsers, setObrasUsers] = useState(localObrasUsers);
+  const [currentObrasUser, setCurrentObrasUser] = useState(localObrasUsers[0]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [usersSaving, setUsersSaving] = useState(false);
+  const [usersError, setUsersError] = useState('');
+  const [usersMessage, setUsersMessage] = useState('');
   const [selectedCity, setSelectedCity] = useState(cityCatalog[0]);
   const [selectedNeighborhood, setSelectedNeighborhood] = useState(null);
   const [selectedWorkId, setSelectedWorkId] = useState(initialData.works[0].id);
@@ -1445,11 +1673,38 @@ function App() {
 
   useEffect(() => {
     if (!supabaseConfigured || !session) return;
-    void loadRemoteData();
+    void hydrateRemoteSession();
   }, [session?.user?.id]);
 
   const activeWork = useMemo(() => data.works.find((work) => work.id === selectedWorkId) || data.works[0], [data.works, selectedWorkId]);
   const activeStage = data.stages.find((stage) => stage.id === selectedStageId) || data.stages[0];
+  const canManageObrasUsers = !supabaseConfigured || ['owner', 'admin'].includes(currentObrasUser?.role);
+
+  async function hydrateRemoteSession() {
+    await loadRemoteUsers();
+    await loadRemoteData();
+  }
+
+  async function loadRemoteUsers() {
+    if (!supabaseConfigured || !session) {
+      setObrasUsers(localObrasUsers);
+      setCurrentObrasUser(localObrasUsers[0]);
+      return;
+    }
+
+    setUsersLoading(true);
+    setUsersError('');
+    try {
+      const currentUser = await claimObrasUser();
+      const users = await fetchObrasUsers();
+      setCurrentObrasUser(currentUser || users.find((item) => item.authUserId === session.user.id) || null);
+      setObrasUsers(users);
+    } catch (error) {
+      setUsersError(error.message || 'Nao foi possivel carregar usuarios do Obras.');
+    } finally {
+      setUsersLoading(false);
+    }
+  }
 
   async function loadRemoteData(preferredProjectId) {
     setDataLoading(true);
@@ -1749,6 +2004,65 @@ function App() {
     }
   }
 
+  async function saveObrasUser(values) {
+    setUsersError('');
+    setUsersMessage('');
+
+    if (!values.nome) {
+      setUsersError('Informe o nome do usuario.');
+      return false;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) {
+      setUsersError('Informe um e-mail valido.');
+      return false;
+    }
+    if (currentObrasUser?.id === values.id && !['owner', 'admin'].includes(values.role)) {
+      setUsersError('Voce nao pode remover seu proprio perfil de administrador.');
+      return false;
+    }
+
+    setUsersSaving(true);
+    try {
+      let savedUser;
+      if (supabaseConfigured && session) {
+        const accountId = values.accountId || currentObrasUser?.accountId;
+        if (!accountId) throw new Error('Sua conta Obras ainda nao foi vinculada.');
+        savedUser = values.id
+          ? await updateObrasUser(values.id, values)
+          : await insertObrasUser(accountId, values);
+      } else {
+        savedUser = {
+          ...values,
+          id: values.id || makeId('usuario'),
+          accountId: values.accountId || 'local-account',
+          active: values.active !== false,
+        };
+      }
+
+      setObrasUsers((current) => (
+        values.id
+          ? current.map((user) => (user.id === savedUser.id ? savedUser : user))
+          : [savedUser, ...current]
+      ));
+      if (currentObrasUser?.id === savedUser.id) setCurrentObrasUser(savedUser);
+      setUsersMessage(values.id ? 'Usuario atualizado.' : 'Usuario cadastrado no Obras.');
+      setUsersSaving(false);
+      return true;
+    } catch (error) {
+      setUsersError(error.message || 'Nao foi possivel salvar o usuario.');
+      setUsersSaving(false);
+      return false;
+    }
+  }
+
+  async function toggleObrasUser(user) {
+    if (currentObrasUser?.id === user.id || (user.authUserId && user.authUserId === session?.user?.id)) {
+      setUsersError('Voce nao pode desativar seu proprio acesso.');
+      return;
+    }
+    await saveObrasUser({ ...user, active: !user.active });
+  }
+
   async function updateFirst(collection, updater) {
     const target = data[collection]?.[0];
     if (!target) return;
@@ -1814,6 +2128,22 @@ function App() {
         return <Schedule stages={data.stages} updateStage={updateStage} setScreen={setScreen} />;
       case 'issues':
         return <Issues issues={data.issues} addIssue={addIssue} resolveIssue={resolveIssue} setScreen={setScreen} />;
+      case 'users':
+        return (
+          <Users
+            users={obrasUsers}
+            currentUser={currentObrasUser}
+            loading={usersLoading}
+            error={usersError}
+            message={usersMessage}
+            saving={usersSaving}
+            canManage={canManageObrasUsers}
+            onRefresh={loadRemoteUsers}
+            onSave={saveObrasUser}
+            onToggle={toggleObrasUser}
+            setScreen={setScreen}
+          />
+        );
       case 'supplies':
         return <TableList eyebrow="Insumos" title="Materiais por etapa" subtitle="Previsto, usado, status e observacoes." items={data.supplies} setScreen={setScreen} onPrimary={() => updateFirst('supplies', (item) => ({ ...item, usada: item.usada + 1, status: 'Comprado' }))} primaryLabel="Atualizar insumo" PrimaryIcon={PackageCheck} />;
       case 'tools':

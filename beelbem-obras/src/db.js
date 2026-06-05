@@ -76,6 +76,35 @@ export function projectToDb(work) {
   };
 }
 
+export function obrasUserFromDb(row) {
+  return {
+    id: row.id,
+    authUserId: row.auth_user_id || '',
+    accountId: row.account_id || '',
+    nome: row.nome || '',
+    email: row.email || '',
+    telefone: row.telefone || '',
+    cidadeId: row.cidade_id || '',
+    cidade: row.cidade || '',
+    role: row.role || 'operador',
+    active: row.active !== false,
+    createdAt: row.created_at || '',
+  };
+}
+
+export function obrasUserToDb(user, accountId) {
+  return {
+    ...(accountId ? { account_id: accountId } : {}),
+    nome: user.nome,
+    email: String(user.email || '').trim().toLowerCase(),
+    telefone: user.telefone || null,
+    cidade_id: user.cidadeId,
+    cidade: user.cidade,
+    role: user.role || 'operador',
+    active: user.active !== false,
+  };
+}
+
 export const rowMappers = {
   stages: {
     fromDb: (row) => ({
@@ -271,6 +300,57 @@ export function onAuthStateChange(callback) {
   if (!supabase) return () => {};
   const { data } = supabase.auth.onAuthStateChange((_event, session) => callback(session));
   return () => data.subscription.unsubscribe();
+}
+
+export async function claimObrasUser() {
+  const { data, error } = await supabase.rpc('obras_claim_user');
+  if (error) throw error;
+  return data ? obrasUserFromDb(data) : null;
+}
+
+export async function fetchCurrentObrasUser(authUserId) {
+  const { data, error } = await supabase
+    .from('obras_users')
+    .select('*')
+    .eq('auth_user_id', authUserId)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? obrasUserFromDb(data) : null;
+}
+
+export async function fetchObrasUsers() {
+  const { data, error } = await supabase
+    .from('obras_users')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return (data || []).map(obrasUserFromDb);
+}
+
+export async function insertObrasUser(accountId, user) {
+  const { data, error } = await supabase
+    .from('obras_users')
+    .insert(obrasUserToDb(user, accountId))
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return obrasUserFromDb(data);
+}
+
+export async function updateObrasUser(userId, patch) {
+  const { data, error } = await supabase
+    .from('obras_users')
+    .update(obrasUserToDb(patch))
+    .eq('id', userId)
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return obrasUserFromDb(data);
 }
 
 export async function fetchProjects() {
