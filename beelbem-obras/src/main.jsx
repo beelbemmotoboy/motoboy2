@@ -49,13 +49,13 @@ import {
   fetchProjectChildren,
   fetchProjects,
   fetchObrasUsers,
-  getSession,
   insertChild,
   insertObrasUser,
   insertProject,
   onAuthStateChange,
   seedProjectChildren,
   signIn,
+  signOut,
   supabaseConfigured,
   updateChild,
   updateObrasUser,
@@ -1652,17 +1652,18 @@ function App() {
     if (!supabaseConfigured) return undefined;
     let mounted = true;
 
-    getSession().then((currentSession) => {
+    const unsubscribe = onAuthStateChange((nextSession, event) => {
       if (!mounted) return;
-      setSession(currentSession);
-      if (currentSession) setScreen('dashboard');
-    });
-
-    const unsubscribe = onAuthStateChange((nextSession) => {
-      if (!mounted) return;
-      setSession(nextSession);
-      if (nextSession) setScreen('dashboard');
-      else setScreen('login');
+      if (event === 'SIGNED_OUT') {
+        setSession(null);
+        setCurrentObrasUser(null);
+        setObrasUsers([]);
+        setScreen('login');
+        return;
+      }
+      if (event === 'TOKEN_REFRESHED') {
+        setSession(nextSession);
+      }
     });
 
     return () => {
@@ -1761,6 +1762,16 @@ function App() {
     setAuthLoading(true);
     try {
       const nextSession = await signIn(email, password);
+      const obrasUser = await claimObrasUser();
+      if (!obrasUser) {
+        await signOut();
+        setSession(null);
+        setCurrentObrasUser(null);
+        setObrasUsers([]);
+        setAuthError('Este e-mail nao esta cadastrado no sistema Obras.');
+        return;
+      }
+      setCurrentObrasUser(obrasUser);
       setSession(nextSession);
       setScreen('dashboard');
     } catch (error) {
