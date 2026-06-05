@@ -299,6 +299,7 @@ const localObrasUsers = [
     cidade: 'Rio Verde',
     role: 'owner',
     active: true,
+    loginEnabled: true,
     createdAt: '',
   },
 ];
@@ -1377,6 +1378,7 @@ function Users({ users, currentUser, loading, error, message, saving, canManage,
                   <small>{roleLabel(user.role)}</small>
                   <small>{user.cidade}</small>
                   <small>{user.authUserId ? 'Login vinculado' : 'Aguardando login'}</small>
+                  <small>{user.loginEnabled ? 'Acesso Obras' : 'Sem login Obras'}</small>
                 </div>
                 <div className="button-row">
                   <button type="button" onClick={() => openEditUser(user)} disabled={!canManage || saving}>
@@ -1430,6 +1432,7 @@ function UserModal({ user, currentUser, saving, onClose, onSave }) {
       cidade: selectedCity.nome,
       role: form.elements.role.value,
       active: form.elements.active.checked,
+      loginEnabled: form.elements.loginEnabled.checked,
       createdAt: user?.createdAt || '',
     });
   }
@@ -1468,6 +1471,11 @@ function UserModal({ user, currentUser, saving, onClose, onSave }) {
             <span>Status</span>
             <input type="checkbox" name="active" defaultChecked={user?.active !== false} />
             <small>Usuario ativo</small>
+          </label>
+          <label className="field check-field">
+            <span>Acesso</span>
+            <input type="checkbox" name="loginEnabled" defaultChecked={user?.loginEnabled !== false} />
+            <small>Permitir login no Obras</small>
           </label>
         </div>
         <section className="detail-note user-note">

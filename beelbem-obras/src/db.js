@@ -89,6 +89,7 @@ export function obrasUserFromDb(row) {
     cidade: row.cidade || '',
     role: row.role || 'operador',
     active: row.active !== false,
+    loginEnabled: row.login_enabled !== false,
     createdAt: row.created_at || '',
   };
 }
@@ -103,6 +104,7 @@ export function obrasUserToDb(user, accountId) {
     cidade: user.cidade,
     role: user.role || 'operador',
     active: user.active !== false,
+    login_enabled: user.loginEnabled !== false,
   };
 }
 
