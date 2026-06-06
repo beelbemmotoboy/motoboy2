@@ -776,10 +776,6 @@ button.metric-card {
   background: rgba(17, 24, 39, 0.16);
 }
 
-.work-card .progress span {
-  background: currentColor;
-}
-
 .work-card-green {
   border-color: #86efac;
   color: #14532d;
