@@ -537,6 +537,8 @@ button.metric-card {
 
 .quick-grid {
   margin-top: 22px;
+  grid-template-columns: repeat(auto-fill, 164px);
+  align-items: start;
 }
 
 .quick-card,
@@ -562,6 +564,13 @@ button.metric-card {
 .city-card.as-button,
 .item-card.as-button {
   min-height: 142px;
+}
+
+.quick-card {
+  width: 164px;
+  height: 164px;
+  min-height: 0;
+  align-content: space-between;
 }
 
 .quick-card:hover,
@@ -1391,7 +1400,6 @@ button.metric-card {
     display: grid;
   }
 
-  .quick-grid,
   .item-grid,
   .module-grid,
   .standards-grid {
@@ -1452,7 +1460,6 @@ button.metric-card {
     flex: 1 1 220px;
   }
 
-  .quick-grid,
   .item-grid,
   .module-grid,
   .report-grid,
