@@ -324,11 +324,32 @@ button {
   font-size: 16px;
 }
 
-.topbar span {
+.topbar-city {
+  width: fit-content;
+  max-width: 100%;
   margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
   color: #6b7280;
+}
+
+.topbar-city select {
+  min-width: 0;
+  max-width: 190px;
+  border: 0;
+  padding: 0 20px 0 0;
+  color: inherit;
+  background-color: transparent;
+  font: inherit;
   font-size: 12px;
   font-weight: 800;
+  cursor: pointer;
+}
+
+.topbar-city select:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
 }
 
 .menu-button,

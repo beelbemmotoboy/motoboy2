@@ -121,6 +121,8 @@ const neighborhoodCatalog = {
   ],
 };
 
+const projectCollections = ['stages', 'photos', 'plsItems', 'issues', 'supplies', 'tools', 'checklist'];
+
 const initialData = {
   works: [
     {
@@ -482,7 +484,7 @@ function TextAreaField({ label, name, value }) {
   );
 }
 
-function Shell({ screen, setScreen, children, activeWork }) {
+function Shell({ screen, setScreen, children, activeWork, selectedCity, cities, onCityChange }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   if (screen === 'login') return children;
 
@@ -513,7 +515,14 @@ function Shell({ screen, setScreen, children, activeWork }) {
           </button>
           <div>
             <strong>{activeWork?.nome || 'Painel de obras'}</strong>
-            <span>{activeWork ? `${activeWork.bairro}, ${activeWork.cidade}` : 'Dados locais'}</span>
+            <label className="topbar-city">
+              <MapPinned size={15} aria-hidden="true" />
+              <select value={selectedCity?.id || ''} aria-label="Selecionar cidade" onChange={(event) => onCityChange(event.target.value)}>
+                {cities.map((city) => (
+                  <option value={city.id} key={city.id}>{city.nome}</option>
+                ))}
+              </select>
+            </label>
           </div>
           <button className="topbar-ai" type="button" onClick={() => setScreen('newWork')}>
             <Bot size={19} aria-hidden="true" />
@@ -603,12 +612,13 @@ function LoginScreen({ onLogin, authError, authLoading, dbAvailable }) {
 
 function Dashboard({ data, setScreen }) {
   const cityCount = new Set(data.works.map((work) => work.cidadeId)).size;
-  const openIssues = data.issues.filter((issue) => issue.status !== 'Resolvida').length;
+  const openIssues = data.works.reduce((total, work) => total + (Number(work.pendencias) || 0), 0);
+  const pendingPls = data.works.filter((work) => !['aprovado', 'enviado'].includes(normalizeSearch(work.pls))).length;
   const metrics = [
     { label: 'Cidades', value: cityCount, Icon: MapPinned, tone: 'info', onIconClick: () => setScreen('cities'), iconLabel: 'Abrir cadastro e visualizacao de cidades' },
     { label: 'Andamento', value: data.works.filter((work) => work.status === 'Em andamento').length, Icon: Clock3, tone: 'warning', onIconClick: () => setScreen('works'), iconLabel: 'Abrir obras em andamento' },
     { label: 'Atrasadas', value: data.works.filter((work) => work.status === 'Atrasada').length, Icon: AlertTriangle, tone: 'danger', onIconClick: () => setScreen('works'), iconLabel: 'Abrir obras atrasadas' },
-    { label: 'PLS', value: data.plsItems.filter((item) => !['Aprovado', 'Enviado'].includes(item.status)).length, Icon: FileCheck2, tone: 'danger', onIconClick: () => setScreen('pls'), iconLabel: 'Abrir PLS Caixa' },
+    { label: 'PLS', value: pendingPls, Icon: FileCheck2, tone: 'danger', onIconClick: () => setScreen('pls'), iconLabel: 'Abrir PLS Caixa' },
     { label: 'Pendencias', value: openIssues, Icon: ClipboardCheck, tone: 'danger', onIconClick: () => setScreen('issues'), iconLabel: 'Abrir pendencias' },
   ];
 
@@ -782,7 +792,10 @@ function Works({ selectedCity, selectedNeighborhood, works, openWork, setScreen 
   );
 }
 
-function NewWork({ createWork, setScreen }) {
+function NewWork({ createWork, setScreen, selectedCity }) {
+  const [cityId, setCityId] = useState(selectedCity?.id || cityCatalog[0].id);
+  const neighborhoods = neighborhoodCatalog[cityId] || [];
+
   function submit(event) {
     event.preventDefault();
     createWork(Object.fromEntries(new FormData(event.currentTarget).entries()));
@@ -807,8 +820,22 @@ function NewWork({ createWork, setScreen }) {
       <section className="form-grid">
         <Field label="Nome da obra" name="nome" value="Casa Joao Silva" required />
         <Field label="Cliente" name="cliente" value="Joao Silva" required />
-        <SelectField label="Cidade" name="cidadeId" value="rio-verde" options={cityCatalog.map((city) => ({ value: city.id, label: city.nome }))} />
-        <SelectField label="Bairro" name="bairroId" value="centro" options={Object.values(neighborhoodCatalog).flat().map((bairro) => ({ value: bairro.id, label: bairro.nome }))} />
+        <label className="field">
+          <span>Cidade</span>
+          <select name="cidadeId" value={cityId} onChange={(event) => setCityId(event.target.value)}>
+            {cityCatalog.map((city) => (
+              <option value={city.id} key={city.id}>{city.nome}</option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Bairro</span>
+          <select name="bairroId" key={cityId} defaultValue={neighborhoods[0]?.id || ''}>
+            {neighborhoods.map((bairro) => (
+              <option value={bairro.id} key={bairro.id}>{bairro.nome}</option>
+            ))}
+          </select>
+        </label>
         <Field label="Endereco" name="endereco" value="Rua 12, Qd. 8, Lt. 4" wide required />
         <Field label="Quadra" name="quadra" value="8" />
         <Field label="Lote" name="lote" value="4" />
@@ -827,13 +854,15 @@ function NewWork({ createWork, setScreen }) {
   );
 }
 
-function ExtractedData({ createWork, setScreen }) {
+function ExtractedData({ createWork, setScreen, selectedCity }) {
+  const city = selectedCity || cityCatalog[0];
+  const neighborhood = (neighborhoodCatalog[city.id] || [])[0];
   const extracted = {
     nome: 'Casa Joao Silva',
     cliente: 'Joao Silva',
     endereco: 'Rua 12, Qd. 8, Lt. 4',
-    cidadeId: 'rio-verde',
-    bairroId: 'centro',
+    cidadeId: city.id,
+    bairroId: neighborhood?.id || '',
     areaConstruida: '148 m2',
     areaTerreno: '300 m2',
     pavimentos: '1',
@@ -1808,7 +1837,19 @@ function App() {
     void hydrateRemoteSession();
   }, [session?.user?.id]);
 
-  const activeWork = useMemo(() => data.works.find((work) => work.id === selectedWorkId) || data.works[0], [data.works, selectedWorkId]);
+  const cityWorks = useMemo(
+    () => data.works.filter((work) => work.cidadeId === selectedCity.id),
+    [data.works, selectedCity.id],
+  );
+  const activeWork = useMemo(
+    () => cityWorks.find((work) => work.id === selectedWorkId) || cityWorks[0] || null,
+    [cityWorks, selectedWorkId],
+  );
+  const cityData = useMemo(() => ({ ...data, works: cityWorks }), [data, cityWorks]);
+  const cityUsers = useMemo(
+    () => obrasUsers.filter((user) => !user.cidadeId || user.cidadeId === selectedCity.id),
+    [obrasUsers, selectedCity.id],
+  );
   const activeStage = data.stages.find((stage) => stage.id === selectedStageId) || data.stages[0];
   const canManageObrasUsers = !supabaseConfigured || ['owner', 'admin'].includes(currentObrasUser?.role);
 
@@ -1850,11 +1891,16 @@ function App() {
         works = [created];
       }
 
+      const cityProject = works.find((work) => work.cidadeId === selectedCity.id);
       const projectId = preferredProjectId && works.some((work) => work.id === preferredProjectId)
         ? preferredProjectId
-        : works[0].id;
+        : cityProject?.id || works[0].id;
+      const project = works.find((work) => work.id === projectId);
+      const projectCity = cityCatalog.find((city) => city.id === project?.cidadeId);
       const children = await fetchProjectChildren(projectId);
       setData({ ...initialData, ...children, works });
+      if (projectCity) setSelectedCity(projectCity);
+      setSelectedNeighborhood(null);
       setSelectedWorkId(projectId);
       setDataLoading(false);
     } catch (error) {
@@ -1875,6 +1921,31 @@ function App() {
       setDataError(error.message || 'Nao foi possivel carregar a obra.');
       setDataLoading(false);
     }
+  }
+
+  async function handleCityChange(cityId, destination = 'dashboard') {
+    const nextCity = cityCatalog.find((city) => city.id === cityId);
+    if (!nextCity) return;
+
+    const changedCity = nextCity.id !== selectedCity.id;
+    if (changedCity) setSelectedCity(nextCity);
+    setSelectedNeighborhood(null);
+
+    if (changedCity) {
+      const nextWork = data.works.find((work) => work.cidadeId === nextCity.id);
+      if (nextWork) {
+        setSelectedWorkId(nextWork.id);
+        if (supabaseConfigured && session) await loadProject(nextWork.id);
+      } else {
+        setSelectedWorkId('');
+        setData((current) => ({
+          ...current,
+          ...Object.fromEntries(projectCollections.map((collection) => [collection, []])),
+        }));
+      }
+    }
+
+    setScreen(destination);
   }
 
   async function handleLogin(event) {
@@ -2236,7 +2307,20 @@ function App() {
             <AlertTriangle size={22} aria-hidden="true" />
             <span>{dataError}</span>
           </section>
-          <Dashboard data={data} setScreen={setScreen} />
+          <Dashboard data={cityData} setScreen={setScreen} />
+        </>
+      );
+    }
+
+    const projectScreens = ['workPanel', 'stages', 'stageDetail', 'photos', 'pls', 'schedule', 'issues', 'supplies', 'tools', 'checklist', 'standards', 'profile'];
+    if (!activeWork && projectScreens.includes(screen)) {
+      return (
+        <>
+          <PageTitle eyebrow={selectedCity.nome} title="Nenhuma obra cadastrada" subtitle="Cadastre uma obra para acessar os modulos desta cidade." />
+          <EmptyNotice Icon={Building2} title="Cidade sem obras" text="Os dados de outra cidade nao serao exibidos neste contexto." />
+          <div className="form-actions">
+            <ActionButton Icon={Plus} onClick={() => setScreen('newWork')}>Nova obra</ActionButton>
+          </div>
         </>
       );
     }
@@ -2245,19 +2329,19 @@ function App() {
       case 'login':
         return <LoginScreen onLogin={handleLogin} authError={authError} authLoading={authLoading} dbAvailable={supabaseConfigured} />;
       case 'dashboard':
-        return <Dashboard data={data} setScreen={setScreen} />;
+        return <Dashboard data={cityData} setScreen={setScreen} />;
       case 'cities':
-        return <Cities works={data.works} openCity={(city) => { setSelectedCity(city); setSelectedNeighborhood(null); setScreen('neighborhoods'); }} />;
+        return <Cities works={data.works} openCity={(city) => void handleCityChange(city.id, 'neighborhoods')} />;
       case 'neighborhoods':
-        return <Neighborhoods works={data.works} selectedCity={selectedCity} openNeighborhood={(bairro) => { setSelectedNeighborhood(bairro); setScreen('works'); }} setScreen={setScreen} />;
+        return <Neighborhoods works={cityWorks} selectedCity={selectedCity} openNeighborhood={(bairro) => { setSelectedNeighborhood(bairro); setScreen('works'); }} setScreen={setScreen} />;
       case 'works':
-        return <Works selectedCity={selectedCity} selectedNeighborhood={selectedNeighborhood} works={data.works} openWork={(work) => { setSelectedWorkId(work.id); void loadProject(work.id); setScreen('workPanel'); }} setScreen={setScreen} />;
+        return <Works selectedCity={selectedCity} selectedNeighborhood={selectedNeighborhood} works={cityWorks} openWork={(work) => { setSelectedWorkId(work.id); void loadProject(work.id); setScreen('workPanel'); }} setScreen={setScreen} />;
       case 'newWork':
-        return <NewWork createWork={createWork} setScreen={setScreen} />;
+        return <NewWork createWork={createWork} setScreen={setScreen} selectedCity={selectedCity} />;
       case 'extractedData':
-        return <ExtractedData createWork={createWork} setScreen={setScreen} />;
+        return <ExtractedData createWork={createWork} setScreen={setScreen} selectedCity={selectedCity} />;
       case 'workPanel':
-        return <WorkPanel obra={activeWork} data={data} setScreen={setScreen} />;
+        return <WorkPanel obra={activeWork} data={cityData} setScreen={setScreen} />;
       case 'stages':
         return <Stages stages={data.stages} openStage={(stage) => { setSelectedStageId(stage.id); setScreen('stageDetail'); }} addPhoto={addPhoto} setScreen={setScreen} />;
       case 'stageDetail':
@@ -2273,7 +2357,7 @@ function App() {
       case 'users':
         return (
           <Users
-            users={obrasUsers}
+            users={cityUsers}
             currentUser={currentObrasUser}
             loading={usersLoading}
             error={usersError}
@@ -2295,7 +2379,7 @@ function App() {
       case 'standards':
         return <Standards setScreen={setScreen} />;
       case 'reports':
-        return <Reports data={data} setScreen={setScreen} />;
+        return <Reports data={cityData} setScreen={setScreen} />;
       case 'stageLibrary':
         return <StageLibrary stages={data.stages} setScreen={setScreen} />;
       case 'profile':
@@ -2307,7 +2391,14 @@ function App() {
 
   return (
     <NavigationContext.Provider value={navigation}>
-      <Shell screen={screen} setScreen={setScreen} activeWork={activeWork}>
+      <Shell
+        screen={screen}
+        setScreen={setScreen}
+        activeWork={activeWork}
+        selectedCity={selectedCity}
+        cities={cityCatalog}
+        onCityChange={(cityId) => void handleCityChange(cityId)}
+      >
         {renderScreen()}
         {photoDraftStage ? (
           <PhotoUploadModal
