@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   AlertTriangle,
@@ -384,12 +384,17 @@ function ProgressBar({ value }) {
   );
 }
 
+const NavigationContext = createContext(null);
+
 function PageTitle({ eyebrow, title, subtitle, children, onBack }) {
+  const navigation = useContext(NavigationContext);
+  const backAction = onBack || (navigation?.canGoBack ? navigation.goBack : null);
+
   return (
     <header className="page-title">
       <div>
         <div className="title-row">
-          {onBack ? <IconButton label="Voltar" Icon={ChevronLeft} onClick={onBack} /> : null}
+          {backAction ? <IconButton label="Voltar" Icon={ChevronLeft} onClick={backAction} /> : null}
           <span>{eyebrow}</span>
         </div>
         <h1>{title}</h1>
@@ -1685,6 +1690,11 @@ function App() {
     setScreenState(previousScreen);
   }, []);
 
+  const navigation = useMemo(() => ({
+    canGoBack: screenHistoryRef.current.length > 0,
+    goBack,
+  }), [goBack, screen]);
+
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }, [data]);
@@ -2296,40 +2306,42 @@ function App() {
   }
 
   return (
-    <Shell screen={screen} setScreen={setScreen} activeWork={activeWork}>
-      {renderScreen()}
-      {photoDraftStage ? (
-        <PhotoUploadModal
-          etapa={photoDraftStage}
-          stages={data.stages}
-          saving={photoSaving}
-          error={photoError}
-          onClose={() => {
-            if (!photoSaving) {
-              setPhotoDraftStage(null);
-              setPhotoError('');
-            }
-          }}
-          onSave={savePhoto}
-        />
-      ) : null}
-      {issueDraftStage ? (
-        <IssueModal
-          etapa={issueDraftStage}
-          stages={data.stages}
-          activeWork={activeWork}
-          saving={issueSaving}
-          error={issueError}
-          onClose={() => {
-            if (!issueSaving) {
-              setIssueDraftStage(null);
-              setIssueError('');
-            }
-          }}
-          onSave={saveIssue}
-        />
-      ) : null}
-    </Shell>
+    <NavigationContext.Provider value={navigation}>
+      <Shell screen={screen} setScreen={setScreen} activeWork={activeWork}>
+        {renderScreen()}
+        {photoDraftStage ? (
+          <PhotoUploadModal
+            etapa={photoDraftStage}
+            stages={data.stages}
+            saving={photoSaving}
+            error={photoError}
+            onClose={() => {
+              if (!photoSaving) {
+                setPhotoDraftStage(null);
+                setPhotoError('');
+              }
+            }}
+            onSave={savePhoto}
+          />
+        ) : null}
+        {issueDraftStage ? (
+          <IssueModal
+            etapa={issueDraftStage}
+            stages={data.stages}
+            activeWork={activeWork}
+            saving={issueSaving}
+            error={issueError}
+            onClose={() => {
+              if (!issueSaving) {
+                setIssueDraftStage(null);
+                setIssueError('');
+              }
+            }}
+            onSave={saveIssue}
+          />
+        ) : null}
+      </Shell>
+    </NavigationContext.Provider>
   );
 }
 
