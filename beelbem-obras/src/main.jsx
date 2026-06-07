@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   AlertTriangle,
@@ -1636,7 +1636,9 @@ function resolveLocation(values) {
 }
 
 function App() {
-  const [screen, setScreen] = useState('login');
+  const [screen, setScreenState] = useState('login');
+  const screenRef = useRef('login');
+  const screenHistoryRef = useRef([]);
   const [data, setData] = useState(loadData);
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(false);
@@ -1660,9 +1662,112 @@ function App() {
   const [selectedWorkId, setSelectedWorkId] = useState(initialData.works[0].id);
   const [selectedStageId, setSelectedStageId] = useState(initialData.stages[0].id);
 
+  const setScreen = useCallback((nextScreen) => {
+    const currentScreen = screenRef.current;
+    if (!nextScreen || nextScreen === currentScreen) return;
+
+    if (nextScreen === 'login' || currentScreen === 'login') {
+      screenHistoryRef.current = [];
+    } else if (screenHistoryRef.current[screenHistoryRef.current.length - 1] === nextScreen) {
+      screenHistoryRef.current.pop();
+    } else {
+      screenHistoryRef.current.push(currentScreen);
+    }
+
+    screenRef.current = nextScreen;
+    setScreenState(nextScreen);
+  }, []);
+
+  const goBack = useCallback(() => {
+    const previousScreen = screenHistoryRef.current.pop();
+    if (!previousScreen) return;
+    screenRef.current = previousScreen;
+    setScreenState(previousScreen);
+  }, []);
+
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   }, [data]);
+
+  useEffect(() => {
+    if (screen === 'login') return undefined;
+
+    let tracking = false;
+    let startX = 0;
+    let startY = 0;
+    let startTime = 0;
+
+    function resetGesture() {
+      tracking = false;
+      startX = 0;
+      startY = 0;
+      startTime = 0;
+    }
+
+    function handleTouchStart(event) {
+      if (event.touches.length !== 1 || !screenHistoryRef.current.length) return;
+
+      const touch = event.touches[0];
+      const target = event.target;
+      const edgeLimit = Math.min(56, window.innerWidth * 0.12);
+      const isInteractive = target instanceof Element
+        && target.closest('input, textarea, select, button, [contenteditable="true"], .modal-backdrop');
+
+      if (touch.clientX > edgeLimit || isInteractive) return;
+
+      tracking = true;
+      startX = touch.clientX;
+      startY = touch.clientY;
+      startTime = Date.now();
+    }
+
+    function handleTouchMove(event) {
+      if (!tracking || event.touches.length !== 1) return;
+
+      const touch = event.touches[0];
+      const deltaX = touch.clientX - startX;
+      const deltaY = touch.clientY - startY;
+
+      if (deltaX < -10 || Math.abs(deltaY) > 90) {
+        resetGesture();
+        return;
+      }
+
+      if (deltaX > 12 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
+        event.preventDefault();
+      }
+    }
+
+    function handleTouchEnd(event) {
+      if (!tracking || event.changedTouches.length !== 1) {
+        resetGesture();
+        return;
+      }
+
+      const touch = event.changedTouches[0];
+      const deltaX = touch.clientX - startX;
+      const deltaY = touch.clientY - startY;
+      const elapsed = Date.now() - startTime;
+      const shouldGoBack = deltaX >= 80
+        && Math.abs(deltaX) > Math.abs(deltaY) * 1.4
+        && elapsed <= 700;
+
+      resetGesture();
+      if (shouldGoBack) goBack();
+    }
+
+    window.addEventListener('touchstart', handleTouchStart, { passive: true });
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    window.addEventListener('touchend', handleTouchEnd, { passive: true });
+    window.addEventListener('touchcancel', resetGesture, { passive: true });
+
+    return () => {
+      window.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
+      window.removeEventListener('touchcancel', resetGesture);
+    };
+  }, [goBack, screen]);
 
   useEffect(() => {
     if (!supabaseConfigured) return undefined;
