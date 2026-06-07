@@ -278,7 +278,7 @@ const sidebarRoutes = [
   { id: 'users', label: 'Usuarios', Icon: UsersRound },
   { id: 'pls', label: 'PLS Caixa', Icon: FileCheck2 },
   { id: 'reports', label: 'Relatorios', Icon: BarChart3 },
-  { id: 'stageLibrary', label: 'Biblioteca', Icon: Library },
+  { id: 'stageLibrary', label: 'Cadastro etapas', Icon: Library },
 ];
 
 const obrasRoles = [
@@ -963,7 +963,9 @@ function WorkPanel({ obra, data, setScreen }) {
 function Stages({ stages, openStage, addPhoto, setScreen }) {
   return (
     <>
-      <PageTitle eyebrow="Etapas da obra" title="Etapas padrao" subtitle="Percentuais, datas e fotos obrigatorias." onBack={() => setScreen('workPanel')} />
+      <PageTitle eyebrow="Etapas da obra" title="Etapas padrao" subtitle="Percentuais, datas e fotos obrigatorias." onBack={() => setScreen('workPanel')}>
+        <ActionButton Icon={Plus} onClick={() => setScreen('stageLibrary')}>Cadastrar etapa</ActionButton>
+      </PageTitle>
       <section className="stage-list">
         {stages.map((stage) => (
           <article className="stage-card" key={stage.id}>
@@ -988,6 +990,7 @@ function Stages({ stages, openStage, addPhoto, setScreen }) {
             </div>
           </article>
         ))}
+        {!stages.length ? <EmptyNotice Icon={Layers3} title="Nenhuma etapa cadastrada" text="Cadastre etapas para liberar fotos, PLS e cronograma." /> : null}
       </section>
     </>
   );
@@ -1079,6 +1082,7 @@ function Photos({ photos, addPhoto, setScreen }) {
 
 function PhotoUploadModal({ etapa, stages, saving, error, onClose, onSave }) {
   const [files, setFiles] = useState([]);
+  const stageOptions = [...new Set([etapa, ...stages.filter((stage) => stage.status !== 'Inativo').map((stage) => stage.nome), 'PLS Caixa'].filter(Boolean))];
   const [previewUrls, setPreviewUrls] = useState([]);
 
   useEffect(() => {
@@ -1152,7 +1156,7 @@ function PhotoUploadModal({ etapa, stages, saving, error, onClose, onSave }) {
             <label className="field">
               <span>Etapa</span>
               <select name="etapa" defaultValue={etapa}>
-                {[...new Set([etapa, ...stages.map((stage) => stage.nome), 'PLS Caixa'].filter(Boolean))].map((item) => (
+                {stageOptions.map((item) => (
                   <option value={item} key={item}>{item}</option>
                 ))}
               </select>
@@ -1606,36 +1610,137 @@ function Reports({ data, setScreen }) {
   );
 }
 
-function StageLibrary({ stages, setScreen }) {
+const stageStatusOptions = ['Nao iniciado', 'Em andamento', 'Atencao', 'Concluida', 'Inativo'];
+
+function StageLibrary({ stages, saving, error, setScreen, onSave, onDuplicate, onDeactivate }) {
+  const [editingStage, setEditingStage] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
+
+  function openNewStage() {
+    setEditingStage(null);
+    setModalOpen(true);
+  }
+
+  function openEditStage(stage) {
+    setEditingStage(stage);
+    setModalOpen(true);
+  }
+
+  async function saveStage(values) {
+    const saved = await onSave(values);
+    if (saved) {
+      setModalOpen(false);
+      setEditingStage(null);
+    }
+  }
+
   return (
     <>
-      <PageTitle eyebrow="Biblioteca de etapas" title="Modelos reaproveitaveis" subtitle="Modelos copiados para cada nova obra." onBack={() => setScreen('dashboard')}>
-        <ActionButton Icon={Plus}>Nova etapa modelo</ActionButton>
+      <PageTitle eyebrow="Cadastro de etapas" title="Etapas da obra" subtitle="Cadastre, edite e duplique etapas usadas em fotos, PLS e cronograma." onBack={() => setScreen('dashboard')}>
+        <ActionButton Icon={Plus} onClick={openNewStage} disabled={saving}>Nova etapa</ActionButton>
       </PageTitle>
+      {error ? (
+        <section className="warning-strip">
+          <AlertTriangle size={22} aria-hidden="true" />
+          <span>{error}</span>
+        </section>
+      ) : null}
       <section className="stage-list">
-        {stages.slice(0, 8).map((stage, index) => (
+        {stages.map((stage, index) => (
           <article className="stage-card" key={stage.id}>
             <div className="stage-main">
               <div>
                 <h2>{stage.nome}</h2>
-                <span>{index + 2} servicos - {index + 4} insumos - {index + 1} normas</span>
+                <span>Ordem {index + 1} - {stage.inicio || '-'} ate {stage.fim || '-'}</span>
               </div>
-              <StatusPill status="Conferido" />
+              <StatusPill status={stage.status} />
             </div>
             <div className="stage-meta">
-              <span>{index + 1} ferramentas</span>
-              <span>{index + 2} fotos obrigatorias</span>
-              <span>Checklist tecnico</span>
+              <span>{stage.percentual}% executado</span>
+              <span>{stage.pendencias} pendencias</span>
+              <span>{stage.fotosFaltando} fotos faltando</span>
             </div>
             <div className="button-row">
-              <button type="button"><Pencil size={18} aria-hidden="true" /> Editar modelo</button>
-              <button type="button"><FolderKanban size={18} aria-hidden="true" /> Duplicar modelo</button>
-              <button type="button"><XCircle size={18} aria-hidden="true" /> Desativar modelo</button>
+              <button type="button" onClick={() => openEditStage(stage)} disabled={saving}><Pencil size={18} aria-hidden="true" /> Editar</button>
+              <button type="button" onClick={() => onDuplicate(stage)} disabled={saving}><FolderKanban size={18} aria-hidden="true" /> Duplicar</button>
+              <button type="button" onClick={() => onDeactivate(stage)} disabled={saving || stage.status === 'Inativo'}><XCircle size={18} aria-hidden="true" /> Desativar</button>
             </div>
           </article>
         ))}
+        {!stages.length ? <EmptyNotice Icon={Layers3} title="Nenhuma etapa cadastrada" text="Cadastre a primeira etapa para liberar o uso nos registros de fotos." /> : null}
       </section>
+      {modalOpen ? (
+        <StageModal
+          stage={editingStage}
+          nextOrder={stages.length}
+          saving={saving}
+          onClose={() => {
+            if (!saving) {
+              setModalOpen(false);
+              setEditingStage(null);
+            }
+          }}
+          onSave={saveStage}
+        />
+      ) : null}
     </>
+  );
+}
+
+function StageModal({ stage, nextOrder, saving, onClose, onSave }) {
+  function submit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    onSave({
+      id: stage?.id,
+      nome: form.elements.nome.value.trim(),
+      percentual: Math.min(100, Math.max(0, Number(form.elements.percentual.value) || 0)),
+      status: form.elements.status.value,
+      inicio: form.elements.inicio.value.trim(),
+      fim: form.elements.fim.value.trim(),
+      pendencias: Math.max(0, Number(form.elements.pendencias.value) || 0),
+      fotosFaltando: Math.max(0, Number(form.elements.fotosFaltando.value) || 0),
+      sortOrder: Math.max(0, Number(form.elements.sortOrder.value) || 0),
+    });
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <form className="photo-modal user-modal" onSubmit={submit}>
+        <div className="modal-head">
+          <div>
+            <span>Cadastro de etapas</span>
+            <h2>{stage ? 'Editar etapa' : 'Nova etapa'}</h2>
+          </div>
+          <IconButton label="Fechar" Icon={X} onClick={onClose} />
+        </div>
+        <div className="form-grid modal-fields">
+          <Field label="Nome da etapa" name="nome" value={stage?.nome || ''} required />
+          <Field label="Ordem" name="sortOrder" value={String(stage?.sortOrder ?? nextOrder)} type="number" />
+          <Field label="Inicio previsto" name="inicio" value={stage?.inicio || ''} />
+          <Field label="Fim previsto" name="fim" value={stage?.fim || ''} />
+          <Field label="Percentual" name="percentual" value={String(stage?.percentual ?? 0)} type="number" />
+          <Field label="Pendencias" name="pendencias" value={String(stage?.pendencias ?? 0)} type="number" />
+          <Field label="Fotos faltando" name="fotosFaltando" value={String(stage?.fotosFaltando ?? 0)} type="number" />
+          <label className="field">
+            <span>Status</span>
+            <select name="status" defaultValue={stage?.status || 'Nao iniciado'}>
+              {stageStatusOptions.map((status) => (
+                <option value={status} key={status}>{status}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <section className="detail-note user-note">
+          <strong>Uso da etapa</strong>
+          <p>Etapas ativas aparecem no cadastro de fotos, cronograma, PLS e demais controles da obra selecionada.</p>
+        </section>
+        <div className="form-actions">
+          <ActionButton Icon={Save} type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Salvar etapa'}</ActionButton>
+          <ActionButton Icon={XCircle} variant="ghost" onClick={onClose} disabled={saving}>Cancelar</ActionButton>
+        </div>
+      </form>
+    </div>
   );
 }
 
@@ -1685,6 +1790,8 @@ function App() {
   const [issueDraftStage, setIssueDraftStage] = useState(null);
   const [issueSaving, setIssueSaving] = useState(false);
   const [issueError, setIssueError] = useState('');
+  const [stageSaving, setStageSaving] = useState(false);
+  const [stageError, setStageError] = useState('');
   const [obrasUsers, setObrasUsers] = useState(localObrasUsers);
   const [currentObrasUser, setCurrentObrasUser] = useState(localObrasUsers[0]);
   const [usersLoading, setUsersLoading] = useState(false);
@@ -2052,6 +2159,75 @@ function App() {
     }
   }
 
+  async function saveStage(values) {
+    if (!activeWork?.id) {
+      setStageError('Selecione uma obra antes de cadastrar etapas.');
+      return null;
+    }
+
+    const stageValues = {
+      ...values,
+      nome: values.nome || 'Nova etapa',
+      percentual: Math.min(100, Math.max(0, Number(values.percentual) || 0)),
+      pendencias: Math.max(0, Number(values.pendencias) || 0),
+      fotosFaltando: Math.max(0, Number(values.fotosFaltando) || 0),
+      sortOrder: Math.max(0, Number(values.sortOrder) || 0),
+    };
+
+    setStageSaving(true);
+    setStageError('');
+    try {
+      if (stageValues.id) {
+        let saved = stageValues;
+        if (supabaseConfigured && session) {
+          await updateChild('stages', stageValues.id, stageValues);
+        }
+        setData((current) => ({
+          ...current,
+          stages: current.stages
+            .map((stage) => (stage.id === stageValues.id ? { ...stage, ...stageValues } : stage))
+            .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
+        }));
+        return saved;
+      }
+
+      let saved = {
+        ...stageValues,
+        id: makeId('etapa'),
+      };
+
+      if (supabaseConfigured && session) {
+        saved = await insertChild('stages', activeWork.id, stageValues);
+      }
+
+      setData((current) => ({
+        ...current,
+        stages: [...current.stages, saved].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0)),
+      }));
+      return saved;
+    } catch (error) {
+      setStageError(error.message || 'Nao foi possivel salvar a etapa.');
+      return null;
+    } finally {
+      setStageSaving(false);
+    }
+  }
+
+  async function duplicateStage(stage) {
+    await saveStage({
+      ...stage,
+      id: undefined,
+      nome: `${stage.nome} copia`,
+      sortOrder: data.stages.length,
+      status: 'Nao iniciado',
+      percentual: 0,
+    });
+  }
+
+  async function deactivateStage(stage) {
+    await saveStage({ ...stage, status: 'Inativo' });
+  }
+
   function addPhoto(etapa) {
     setPhotoError('');
     setPhotoDraftStage(etapa || activeStage?.nome || 'Fundacao');
@@ -2312,7 +2488,7 @@ function App() {
       );
     }
 
-    const projectScreens = ['workPanel', 'stages', 'stageDetail', 'photos', 'pls', 'schedule', 'issues', 'supplies', 'tools', 'checklist', 'standards', 'profile'];
+    const projectScreens = ['workPanel', 'stages', 'stageDetail', 'photos', 'pls', 'schedule', 'issues', 'supplies', 'tools', 'checklist', 'standards', 'stageLibrary', 'profile'];
     if (!activeWork && projectScreens.includes(screen)) {
       return (
         <>
@@ -2381,7 +2557,17 @@ function App() {
       case 'reports':
         return <Reports data={cityData} setScreen={setScreen} />;
       case 'stageLibrary':
-        return <StageLibrary stages={data.stages} setScreen={setScreen} />;
+        return (
+          <StageLibrary
+            stages={data.stages}
+            saving={stageSaving}
+            error={stageError}
+            setScreen={setScreen}
+            onSave={saveStage}
+            onDuplicate={duplicateStage}
+            onDeactivate={deactivateStage}
+          />
+        );
       case 'profile':
         return <Profile activeWork={activeWork} />;
       default:

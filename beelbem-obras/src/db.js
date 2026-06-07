@@ -119,6 +119,7 @@ export const rowMappers = {
       fim: row.fim || '',
       pendencias: row.pendencias,
       fotosFaltando: row.fotos_faltando,
+      sortOrder: row.sort_order ?? 0,
     }),
     toDb: (item, index = 0) => ({
       nome: item.nome,
@@ -128,13 +129,17 @@ export const rowMappers = {
       fim: item.fim || null,
       pendencias: item.pendencias ?? 0,
       fotos_faltando: item.fotosFaltando ?? 0,
-      sort_order: index,
+      sort_order: item.sortOrder ?? index,
     }),
     patchToDb: (patch) => ({
+      ...(patch.nome !== undefined ? { nome: patch.nome } : {}),
       ...(patch.percentual !== undefined ? { percentual: patch.percentual } : {}),
       ...(patch.status !== undefined ? { status: patch.status } : {}),
+      ...(patch.inicio !== undefined ? { inicio: patch.inicio || null } : {}),
+      ...(patch.fim !== undefined ? { fim: patch.fim || null } : {}),
       ...(patch.fotosFaltando !== undefined ? { fotos_faltando: patch.fotosFaltando } : {}),
       ...(patch.pendencias !== undefined ? { pendencias: patch.pendencias } : {}),
+      ...(patch.sortOrder !== undefined ? { sort_order: patch.sortOrder } : {}),
     }),
   },
   photos: {
