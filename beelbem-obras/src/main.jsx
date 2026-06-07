@@ -514,7 +514,7 @@ function Shell({ screen, setScreen, children, activeWork, selectedCity, cities, 
             <Menu size={24} aria-hidden="true" />
           </button>
           <div>
-            <strong>{activeWork?.nome || 'Painel de obras'}</strong>
+            <strong>Beelbem Obras</strong>
             <label className="topbar-city">
               <MapPinned size={15} aria-hidden="true" />
               <select value={selectedCity?.id || ''} aria-label="Selecionar cidade" onChange={(event) => onCityChange(event.target.value)}>
