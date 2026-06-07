@@ -390,7 +390,7 @@ const NavigationContext = createContext(null);
 
 function PageTitle({ eyebrow, title, subtitle, children, onBack }) {
   const navigation = useContext(NavigationContext);
-  const backAction = onBack || (navigation?.canGoBack ? navigation.goBack : null);
+  const backAction = navigation?.canGoBack ? navigation.goBack : onBack;
 
   return (
     <header className="page-title">
