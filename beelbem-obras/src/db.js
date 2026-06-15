@@ -51,6 +51,8 @@ export function projectFromDb(row) {
     bairroId: row.bairro_id,
     cidade: row.cidade,
     bairro: row.bairro,
+    quadra: row.quadra || '',
+    lote: row.lote || '',
     percentual: row.percentual,
     status: row.status,
     proximaEtapa: row.proxima_etapa,
@@ -74,6 +76,8 @@ export function projectToDb(work) {
     bairro_id: work.bairroId,
     cidade: work.cidade,
     bairro: work.bairro,
+    quadra: work.quadra || null,
+    lote: work.lote || null,
     percentual: work.percentual ?? 0,
     status: work.status || 'Nao iniciada',
     proxima_etapa: work.proximaEtapa || 'Servicos preliminares',
@@ -533,13 +537,34 @@ export async function insertProject(work) {
 
 export async function updateProject(projectId, patch) {
   const dbPatch = {};
+  if (patch.nome !== undefined) dbPatch.nome = patch.nome;
+  if (patch.cliente !== undefined) dbPatch.cliente = patch.cliente;
+  if (patch.endereco !== undefined) dbPatch.endereco = patch.endereco;
+  if (patch.cidadeId !== undefined) dbPatch.cidade_id = patch.cidadeId;
+  if (patch.bairroId !== undefined) dbPatch.bairro_id = patch.bairroId;
+  if (patch.cidade !== undefined) dbPatch.cidade = patch.cidade;
+  if (patch.bairro !== undefined) dbPatch.bairro = patch.bairro;
+  if (patch.quadra !== undefined) dbPatch.quadra = patch.quadra || null;
+  if (patch.lote !== undefined) dbPatch.lote = patch.lote || null;
   if (patch.percentual !== undefined) dbPatch.percentual = patch.percentual;
   if (patch.status !== undefined) dbPatch.status = patch.status;
+  if (patch.proximaEtapa !== undefined) dbPatch.proxima_etapa = patch.proximaEtapa;
   if (patch.pls !== undefined) dbPatch.pls_status = patch.pls;
   if (patch.pendencias !== undefined) dbPatch.pendencias = patch.pendencias;
+  if (patch.atraso !== undefined) dbPatch.atraso = patch.atraso;
+  if (patch.areaConstruida !== undefined) dbPatch.area_construida = patch.areaConstruida || null;
+  if (patch.areaTerreno !== undefined) dbPatch.area_terreno = patch.areaTerreno || null;
+  if (patch.pavimentos !== undefined) dbPatch.pavimentos = patch.pavimentos || null;
+  if (patch.responsavel !== undefined) dbPatch.responsavel = patch.responsavel || null;
+  if (patch.observacoes !== undefined) dbPatch.observacoes = patch.observacoes || null;
 
   if (!Object.keys(dbPatch).length) return;
   const { error } = await supabase.from('obras_projects').update(dbPatch).eq('id', projectId);
+  if (error) throw error;
+}
+
+export async function deleteProject(projectId) {
+  const { error } = await supabase.from('obras_projects').delete().eq('id', projectId);
   if (error) throw error;
 }
 

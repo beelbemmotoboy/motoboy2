@@ -49,6 +49,7 @@ import {
 import {
   bootstrapObrasOwner,
   claimObrasUser,
+  deleteProject,
   deletePhotoRecord,
   fetchProjectChildren,
   fetchProjects,
@@ -483,20 +484,20 @@ function roleLabel(role) {
   return obrasRoles.find((item) => item.value === role)?.label || 'Operador';
 }
 
-function Field({ label, name, value, type = 'text', wide = false, required = false }) {
+function Field({ label, name, value, type = 'text', wide = false, required = false, disabled = false }) {
   return (
     <label className={wide ? 'field wide' : 'field'}>
       <span>{label}</span>
-      <input type={type} name={name} defaultValue={value || ''} required={required} />
+      <input type={type} name={name} defaultValue={value || ''} required={required} disabled={disabled} />
     </label>
   );
 }
 
-function SelectField({ label, name, value, options }) {
+function SelectField({ label, name, value, options, disabled = false }) {
   return (
     <label className="field">
       <span>{label}</span>
-      <select name={name} defaultValue={value}>
+      <select name={name} defaultValue={value} disabled={disabled}>
         {options.map((option) => (
           <option value={option.value} key={option.value}>{option.label}</option>
         ))}
@@ -505,11 +506,11 @@ function SelectField({ label, name, value, options }) {
   );
 }
 
-function TextAreaField({ label, name, value }) {
+function TextAreaField({ label, name, value, disabled = false }) {
   return (
     <label className="field wide">
       <span>{label}</span>
-      <textarea name={name} defaultValue={value || ''} rows={4} />
+      <textarea name={name} defaultValue={value || ''} rows={4} disabled={disabled} />
     </label>
   );
 }
@@ -2851,26 +2852,115 @@ function StageModal({ stage, nextOrder, saving, onClose, onSave }) {
   );
 }
 
-function Profile({ activeWork }) {
+function Profile({
+  activeWork,
+  currentUser,
+  saving,
+  error,
+  message,
+  canEdit,
+  canDelete,
+  onSave,
+  onDelete,
+}) {
+  const [cityId, setCityId] = useState(activeWork?.cidadeId || cityCatalog[0].id);
+  const neighborhoods = neighborhoodCatalog[cityId] || [];
+  const role = roleLabel(currentUser?.role);
+
+  useEffect(() => {
+    setCityId(activeWork?.cidadeId || cityCatalog[0].id);
+  }, [activeWork?.id, activeWork?.cidadeId]);
+
+  if (!activeWork) {
+    return <EmptyNotice Icon={Building2} title="Nenhuma obra selecionada" text="Selecione uma obra para ver o perfil." />;
+  }
+
+  function submit(event) {
+    event.preventDefault();
+    if (!canEdit || saving) return;
+    onSave(Object.fromEntries(new FormData(event.currentTarget).entries()));
+  }
+
+  function confirmDelete() {
+    if (!canDelete || saving) return;
+    const confirmed = window.confirm(`Excluir a obra "${activeWork.nome}"? Esta acao remove o cadastro e todos os dados vinculados a ela.`);
+    if (confirmed) onDelete();
+  }
+
   return (
-    <>
+    <form onSubmit={submit}>
       <PageTitle eyebrow="Perfil" title="Engenharia de campo" subtitle="Responsavel tecnico e dados da obra." />
-      <section className="profile-grid">
-        <article className="profile-card">
-          <UserRound size={34} aria-hidden="true" />
-          <strong>{activeWork.responsavel || 'Eng. Ana Prado'}</strong>
-          <span>Responsavel tecnica</span>
-          <p>Rio Verde, Jatai, Mineiros e Santa Helena</p>
-        </article>
+      {!canEdit ? (
+        <section className="warning-strip profile-permission-note">
+          <ShieldCheck size={22} aria-hidden="true" />
+          <span>{role} pode visualizar. Somente proprietarios, administradores e engenheiros podem alterar o cadastro.</span>
+        </section>
+      ) : null}
+      {message ? (
+        <section className="success-strip">
+          <CheckCircle2 size={22} aria-hidden="true" />
+          <span>{message}</span>
+        </section>
+      ) : null}
+      {error ? <p className="auth-message error">{error}</p> : null}
+      <section className="profile-summary-grid">
         <article className="profile-card">
           <Building2 size={34} aria-hidden="true" />
           <strong>{activeWork.nome}</strong>
-          <span>{activeWork.status}</span>
+          <span>{getEffectiveWorkStatus(activeWork)}</span>
           <p>{activeWork.percentual}% executado - {activeWork.pendencias} pendencias</p>
-          <p>{activeWork.areaConstruida} - {activeWork.areaTerreno}</p>
+          <p>{activeWork.pls || 'PLS pendente'}</p>
+        </article>
+        <article className="profile-card">
+          <UserRound size={34} aria-hidden="true" />
+          <strong>{activeWork.responsavel || 'Responsavel nao informado'}</strong>
+          <span>Responsavel tecnico</span>
+          <p>{activeWork.bairro}, {activeWork.cidade}</p>
         </article>
       </section>
-    </>
+      <section className="form-grid profile-edit-form">
+        <Field label="Nome da obra" name="nome" value={activeWork.nome} required disabled={!canEdit || saving} />
+        <Field label="Cliente" name="cliente" value={activeWork.cliente} required disabled={!canEdit || saving} />
+        <label className="field">
+          <span>Cidade</span>
+          <select name="cidadeId" value={cityId} onChange={(event) => setCityId(event.target.value)} disabled={!canEdit || saving}>
+            {cityCatalog.map((city) => (
+              <option value={city.id} key={city.id}>{city.nome}</option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Bairro</span>
+          <select name="bairroId" key={cityId} defaultValue={cityId === activeWork.cidadeId ? activeWork.bairroId : neighborhoods[0]?.id || ''} disabled={!canEdit || saving}>
+            {neighborhoods.map((bairro) => (
+              <option value={bairro.id} key={bairro.id}>{bairro.nome}</option>
+            ))}
+          </select>
+        </label>
+        <Field label="Endereco" name="endereco" value={activeWork.endereco} wide required disabled={!canEdit || saving} />
+        <Field label="Quadra" name="quadra" value={activeWork.quadra} disabled={!canEdit || saving} />
+        <Field label="Lote" name="lote" value={activeWork.lote} disabled={!canEdit || saving} />
+        <Field label="Area construida" name="areaConstruida" value={activeWork.areaConstruida} disabled={!canEdit || saving} />
+        <Field label="Area do terreno" name="areaTerreno" value={activeWork.areaTerreno} disabled={!canEdit || saving} />
+        <Field label="Numero de pavimentos" name="pavimentos" value={activeWork.pavimentos} disabled={!canEdit || saving} />
+        <Field label="Responsavel tecnico" name="responsavel" value={activeWork.responsavel} disabled={!canEdit || saving} />
+        <TextAreaField label="Observacoes" name="observacoes" value={activeWork.observacoes} disabled={!canEdit || saving} />
+      </section>
+      <div className="form-actions">
+        <ActionButton Icon={Save} type="submit" disabled={!canEdit || saving}>
+          {saving ? 'Salvando...' : 'Salvar alteracoes'}
+        </ActionButton>
+      </div>
+      <section className="profile-danger-zone">
+        <div>
+          <strong>Excluir obra</strong>
+          <p>Remove esta obra e os dados vinculados. Esta acao e permitida apenas para proprietarios e administradores.</p>
+        </div>
+        <ActionButton Icon={Trash2} variant="danger" onClick={confirmDelete} disabled={!canDelete || saving}>
+          Excluir obra
+        </ActionButton>
+      </section>
+    </form>
   );
 }
 
@@ -2957,6 +3047,9 @@ function App() {
   const [usersSaving, setUsersSaving] = useState(false);
   const [usersError, setUsersError] = useState('');
   const [usersMessage, setUsersMessage] = useState('');
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const [profileMessage, setProfileMessage] = useState('');
   const [aiProjectDraft, setAiProjectDraft] = useState(null);
   const [selectedCity, setSelectedCity] = useState(cityCatalog[0]);
   const [selectedNeighborhood, setSelectedNeighborhood] = useState(null);
@@ -3147,6 +3240,8 @@ function App() {
   );
   const activeStage = data.stages.find((stage) => stage.id === selectedStageId) || data.stages[0];
   const canManageObrasUsers = !supabaseConfigured || ['owner', 'admin'].includes(currentObrasUser?.role);
+  const canEditWorkProfile = !supabaseConfigured || ['owner', 'admin', 'engenheiro'].includes(currentObrasUser?.role);
+  const canDeleteWorkProfile = !supabaseConfigured || ['owner', 'admin'].includes(currentObrasUser?.role);
 
   async function hydrateRemoteSession() {
     try {
@@ -3457,6 +3552,8 @@ function App() {
       atraso: 0,
       areaConstruida: values.areaConstruida || '',
       areaTerreno: values.areaTerreno || '',
+      quadra: values.quadra || '',
+      lote: values.lote || '',
       pavimentos: values.pavimentos || '',
       responsavel: values.responsavel || '',
       observacoes: values.observacoes || '',
@@ -3489,6 +3586,83 @@ function App() {
     setSelectedCity(city);
     setSelectedNeighborhood(neighborhood);
     setScreen('workPanel');
+  }
+
+  async function saveWorkProfile(values) {
+    if (!activeWork || !canEditWorkProfile) return;
+
+    setProfileSaving(true);
+    setProfileError('');
+    setProfileMessage('');
+
+    const { city, neighborhood } = resolveLocation(values);
+    const patch = {
+      nome: values.nome || activeWork.nome,
+      cliente: values.cliente || activeWork.cliente,
+      endereco: values.endereco || activeWork.endereco,
+      cidadeId: city.id,
+      bairroId: neighborhood.id,
+      cidade: city.nome,
+      bairro: neighborhood.nome,
+      quadra: values.quadra || '',
+      lote: values.lote || '',
+      areaConstruida: values.areaConstruida || '',
+      areaTerreno: values.areaTerreno || '',
+      pavimentos: values.pavimentos || '',
+      responsavel: values.responsavel || '',
+      observacoes: values.observacoes || '',
+    };
+
+    try {
+      if (supabaseConfigured && session) {
+        await updateProject(activeWork.id, patch);
+      }
+      setData((current) => ({
+        ...current,
+        works: current.works.map((work) => (
+          work.id === activeWork.id ? { ...work, ...patch } : work
+        )),
+      }));
+      setSelectedCity(city);
+      setSelectedNeighborhood(neighborhood);
+      setProfileMessage('Cadastro da obra atualizado.');
+    } catch (error) {
+      setProfileError(error.message || 'Nao foi possivel atualizar o cadastro da obra.');
+    } finally {
+      setProfileSaving(false);
+    }
+  }
+
+  async function deleteActiveWork() {
+    if (!activeWork || !canDeleteWorkProfile) return;
+
+    setProfileSaving(true);
+    setProfileError('');
+    setProfileMessage('');
+
+    try {
+      if (supabaseConfigured && session) {
+        for (const photo of data.photos) {
+          await deletePhotoRecord(photo);
+        }
+        await deleteProject(activeWork.id);
+        await loadRemoteData();
+      } else {
+        const remainingWorks = data.works.filter((work) => work.id !== activeWork.id);
+        const nextWork = remainingWorks.find((work) => work.cidadeId === selectedCity.id) || remainingWorks[0] || null;
+        setData((current) => ({
+          ...current,
+          works: remainingWorks,
+          ...(!nextWork ? Object.fromEntries(projectCollections.map((collection) => [collection, []])) : {}),
+        }));
+        setSelectedWorkId(nextWork?.id || '');
+      }
+      setScreen('dashboard');
+    } catch (error) {
+      setProfileError(error.message || 'Nao foi possivel excluir a obra.');
+    } finally {
+      setProfileSaving(false);
+    }
   }
 
   async function updateStage(id, patch) {
@@ -4227,7 +4401,19 @@ function App() {
           />
         );
       case 'profile':
-        return <Profile activeWork={activeWork} />;
+        return (
+          <Profile
+            activeWork={activeWork}
+            currentUser={currentObrasUser}
+            saving={profileSaving}
+            error={profileError}
+            message={profileMessage}
+            canEdit={canEditWorkProfile}
+            canDelete={canDeleteWorkProfile}
+            onSave={saveWorkProfile}
+            onDelete={deleteActiveWork}
+          />
+        );
       default:
         return <EmptyNotice title="Tela nao encontrada" text="Volte para o painel geral." />;
     }

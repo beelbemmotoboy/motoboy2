@@ -236,6 +236,11 @@ button {
   border: 1px solid #d1d5db;
 }
 
+.action-button.danger {
+  color: #fff;
+  background: #dc2626;
+}
+
 .link-button {
   color: #1d4ed8;
   background: #eff6ff;
@@ -2722,6 +2727,45 @@ body.gantt-resizing * {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.profile-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.profile-edit-form {
+  margin-top: 0;
+}
+
+.profile-permission-note {
+  margin-bottom: 18px;
+  border-radius: 8px;
+}
+
+.profile-danger-zone {
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 18px;
+  padding: 16px;
+  background: #fff1f2;
+}
+
+.profile-danger-zone strong {
+  color: #7f1d1d;
+  font-size: 18px;
+}
+
+.profile-danger-zone p {
+  margin: 6px 0 0;
+  color: #991b1b;
+  font-weight: 700;
+}
+
 .empty-notice {
   min-height: 240px;
   display: grid;
@@ -2817,6 +2861,7 @@ body.gantt-resizing * {
   .module-grid,
   .report-grid,
   .profile-grid,
+  .profile-summary-grid,
   .standards-grid,
   .form-grid,
   .photo-upload-layout,
@@ -2835,6 +2880,11 @@ body.gantt-resizing * {
   .stage-main,
   .table-card {
     grid-template-columns: 1fr;
+  }
+
+  .profile-danger-zone {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .photo-grid {
