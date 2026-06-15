@@ -56,6 +56,7 @@ import {
   getSession,
   ensureProjectSchedule,
   insertChild,
+  insertPhotoThumbnail,
   insertObrasUser,
   insertProject,
   onAuthStateChange,
@@ -69,6 +70,7 @@ import {
   uploadPhotoFile,
 } from './db.js';
 import { analisarProjetoComGemini, geminiProjectConfig } from './analisa_projeto_gemini.js';
+import { getBestPhotoUrl, preparePhotoUpload } from './photoFunctions.js';
 import { buildLocalScheduleItems, defaultScheduleBlueprint } from './scheduleBlueprint.js';
 import './styles.css';
 
@@ -1349,10 +1351,11 @@ function Photos({
 }
 
 function PhotoCard({ photo, deleting, onDelete }) {
+  const photoUrl = getBestPhotoUrl(photo);
   return (
     <article className="photo-card">
       <div className={`photo-thumb ${photo.cor}`}>
-        {photo.photoUrl ? <img src={photo.photoUrl} alt={`Foto ${photo.etapa}`} /> : <Camera size={34} aria-hidden="true" />}
+        {photoUrl ? <img src={photoUrl} alt={`Foto ${photo.etapa}`} /> : <Camera size={34} aria-hidden="true" />}
       </div>
       <button
         className="photo-delete-button"
@@ -3686,12 +3689,26 @@ function App() {
     if (supabaseConfigured && session) {
       try {
         const uploadResults = await Promise.allSettled(selectedFiles.map(async (file) => {
+          const prepared = await preparePhotoUpload(file);
           const upload = await uploadPhotoFile({
             userId: session.user.id,
             projectId: activeWork.id,
-            file,
+            file: prepared.photoFile,
+            thumbnailFile: prepared.thumbnailFile,
           });
-          return insertChild('photos', activeWork.id, { ...basePhoto, ...upload });
+          const { thumbnail, ...photoUpload } = upload;
+          const savedPhoto = await insertChild('photos', activeWork.id, { ...basePhoto, ...photoUpload });
+          if (!thumbnail) return savedPhoto;
+
+          const savedThumbnail = await insertPhotoThumbnail(activeWork.id, savedPhoto.id, {
+            ...thumbnail,
+            width: prepared.thumbnailWidth,
+            height: prepared.thumbnailHeight,
+          });
+          return {
+            ...savedPhoto,
+            ...savedThumbnail,
+          };
         }));
         nextPhotos = uploadResults
           .filter((result) => result.status === 'fulfilled')
@@ -3714,14 +3731,36 @@ function App() {
         return;
       }
     } else {
-      nextPhotos = selectedFiles.map((file) => ({
-        id: makeId('foto'),
-        ...basePhoto,
-        fileName: file.name,
-        mimeType: file.type || 'image/jpeg',
-        fileSize: file.size || 0,
-        photoUrl: URL.createObjectURL(file),
-      }));
+      try {
+        const uploadResults = await Promise.allSettled(selectedFiles.map(async (file) => {
+          const prepared = await preparePhotoUpload(file);
+          return {
+            id: makeId('foto'),
+            ...basePhoto,
+            fileName: prepared.photoFile.name,
+            mimeType: prepared.photoFile.type || 'image/jpeg',
+            fileSize: prepared.compressedSize,
+            photoUrl: URL.createObjectURL(prepared.photoFile),
+            thumbnailFileName: prepared.thumbnailFile.name,
+            thumbnailMimeType: prepared.thumbnailFile.type || 'image/jpeg',
+            thumbnailFileSize: prepared.thumbnailSize,
+            thumbnailWidth: prepared.thumbnailWidth,
+            thumbnailHeight: prepared.thumbnailHeight,
+            thumbnailUrl: URL.createObjectURL(prepared.thumbnailFile),
+          };
+        }));
+        nextPhotos = uploadResults
+          .filter((result) => result.status === 'fulfilled')
+          .map((result) => result.value);
+        if (!nextPhotos.length) {
+          const failed = uploadResults.find((result) => result.status === 'rejected');
+          throw failed?.reason || new Error('Nenhuma foto foi preparada.');
+        }
+      } catch (error) {
+        setPhotoError(error.message || 'Nao foi possivel reduzir as fotos.');
+        setPhotoSaving(false);
+        return;
+      }
       nextMissingPhotos = targetStage ? Math.max(0, targetStage.fotosFaltando - nextPhotos.length) : null;
     }
 
@@ -3751,6 +3790,7 @@ function App() {
         storageWarning = await deletePhotoRecord(photo);
       } else if (photo.photoUrl?.startsWith('blob:')) {
         URL.revokeObjectURL(photo.photoUrl);
+        if (photo.thumbnailUrl?.startsWith('blob:')) URL.revokeObjectURL(photo.thumbnailUrl);
       }
 
       setData((current) => ({

@@ -8,6 +8,7 @@ const supabaseUrl = obrasSupabaseUrl || legacySupabaseUrl;
 const supabaseAnonKey = obrasSupabaseAnonKey || legacySupabaseAnonKey;
 const userInvitesEnabled = import.meta.env.VITE_OBRAS_USER_INVITES_ENABLED === 'true';
 const photoBucket = 'obras-photos';
+const photoThumbnailTable = 'obras_photo_thumbnails';
 
 export const supabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 export const usingLegacySupabaseConfig = Boolean(
@@ -502,7 +503,7 @@ export async function fetchProjectChildren(projectId) {
       const { data, error } = await query;
       if (error) throw error;
       let rows = (data || []).map(rowMappers[key].fromDb);
-      if (key === 'photos') rows = await withSignedPhotoUrls(rows);
+      if (key === 'photos') rows = await withSignedPhotoUrls(rows, projectId);
       return [key, rows];
     }),
   );
@@ -584,19 +585,74 @@ export async function updateChild(collection, id, patch) {
 }
 
 export async function deletePhotoRecord(photo) {
+  const storagePaths = [];
+  if (photo.storagePath) storagePaths.push(photo.storagePath);
+  if (photo.thumbnailStoragePath) {
+    storagePaths.push(photo.thumbnailStoragePath);
+  } else {
+    const { data: thumbnails, error: thumbnailError } = await supabase
+      .from(photoThumbnailTable)
+      .select('storage_path')
+      .eq('photo_id', photo.id);
+    if (thumbnailError) throw thumbnailError;
+    storagePaths.push(...(thumbnails || []).map((item) => item.storage_path).filter(Boolean));
+  }
+
   const { error } = await supabase.from(childTables.photos).delete().eq('id', photo.id);
   if (error) throw error;
-  if (!photo.storagePath) return '';
+  if (!storagePaths.length) return '';
 
-  const { error: storageError } = await supabase.storage.from(photoBucket).remove([photo.storagePath]);
+  const { error: storageError } = await supabase.storage.from(photoBucket).remove(storagePaths);
   return storageError?.message || '';
 }
 
-export async function uploadPhotoFile({ userId, projectId, file }) {
+export async function uploadPhotoFile({ userId, projectId, file, thumbnailFile }) {
   const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const upload = await uploadPhotoStorageObject({
+    userId,
+    projectId,
+    id,
+    file,
+  });
+
+  if (!thumbnailFile) return upload;
+
+  const thumbnail = await uploadPhotoStorageObject({
+    userId,
+    projectId,
+    id,
+    file: thumbnailFile,
+    folder: 'thumbs',
+  });
+
+  return { ...upload, thumbnail };
+}
+
+export async function insertPhotoThumbnail(projectId, photoId, thumbnail) {
+  const { data, error } = await supabase
+    .from(photoThumbnailTable)
+    .insert({
+      project_id: projectId,
+      photo_id: photoId,
+      storage_path: thumbnail.storagePath,
+      file_name: thumbnail.fileName || null,
+      mime_type: thumbnail.mimeType || 'image/jpeg',
+      file_size: thumbnail.fileSize || null,
+      width: thumbnail.width || null,
+      height: thumbnail.height || null,
+    })
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return withSignedThumbnailUrl(photoThumbnailFromDb(data));
+}
+
+async function uploadPhotoStorageObject({ userId, projectId, id, file, folder = '' }) {
   const fileName = safeFileName(file.name || `${id}.jpg`);
   const storagePath = `${userId}/${projectId}/${id}-${fileName}`;
-  const { error } = await supabase.storage.from(photoBucket).upload(storagePath, file, {
+  const targetPath = folder ? `${userId}/${projectId}/${folder}/${id}-${fileName}` : storagePath;
+  const { error } = await supabase.storage.from(photoBucket).upload(targetPath, file, {
     cacheControl: '3600',
     contentType: file.type || 'image/jpeg',
     upsert: false,
@@ -605,31 +661,80 @@ export async function uploadPhotoFile({ userId, projectId, file }) {
   if (error) throw error;
 
   return {
-    storagePath,
+    storagePath: targetPath,
     fileName,
     mimeType: file.type || 'image/jpeg',
     fileSize: file.size || 0,
-    photoUrl: await createSignedPhotoUrl(storagePath),
+    photoUrl: await createSignedPhotoUrl(targetPath),
   };
 }
 
-async function withSignedPhotoUrls(photos) {
-  return Promise.all(photos.map(withSignedPhotoUrl));
+async function withSignedPhotoUrls(photos, projectId) {
+  const thumbnailsByPhotoId = await fetchPhotoThumbnailsByProject(projectId);
+  return Promise.all(photos.map((photo) => withSignedPhotoUrl({
+    ...photo,
+    ...(thumbnailsByPhotoId.get(photo.id) || {}),
+  })));
 }
 
 async function withSignedPhotoUrl(photo) {
-  if (!photo.storagePath) return photo;
-  try {
-    return { ...photo, photoUrl: await createSignedPhotoUrl(photo.storagePath) };
-  } catch {
-    return photo;
+  const nextPhoto = { ...photo };
+  if (photo.storagePath) {
+    try {
+      nextPhoto.photoUrl = await createSignedPhotoUrl(photo.storagePath);
+    } catch {
+      // Keep the photo visible as metadata if the signed URL fails.
+    }
   }
+  if (photo.thumbnailStoragePath) {
+    try {
+      nextPhoto.thumbnailUrl = await createSignedPhotoUrl(photo.thumbnailStoragePath);
+    } catch {
+      // Fall back to the full image URL.
+    }
+  }
+  return nextPhoto;
+}
+
+async function fetchPhotoThumbnailsByProject(projectId) {
+  const { data, error } = await supabase
+    .from(photoThumbnailTable)
+    .select('*')
+    .eq('project_id', projectId);
+  if (error) throw error;
+
+  return new Map((data || []).map((row) => {
+    const thumbnail = photoThumbnailFromDb(row);
+    return [thumbnail.photoId, thumbnail];
+  }));
+}
+
+async function withSignedThumbnailUrl(thumbnail) {
+  const storagePath = thumbnail.thumbnailStoragePath || thumbnail.storagePath;
+  if (!storagePath) return thumbnail;
+  return {
+    ...thumbnail,
+    thumbnailUrl: await createSignedPhotoUrl(storagePath),
+  };
 }
 
 async function createSignedPhotoUrl(storagePath) {
   const { data, error } = await supabase.storage.from(photoBucket).createSignedUrl(storagePath, 60 * 60 * 24);
   if (error) throw error;
   return data.signedUrl;
+}
+
+function photoThumbnailFromDb(row) {
+  return {
+    thumbnailId: row.id,
+    photoId: row.photo_id,
+    thumbnailStoragePath: row.storage_path || '',
+    thumbnailFileName: row.file_name || '',
+    thumbnailMimeType: row.mime_type || '',
+    thumbnailFileSize: Number(row.file_size || 0),
+    thumbnailWidth: Number(row.width || 0),
+    thumbnailHeight: Number(row.height || 0),
+  };
 }
 
 function safeFileName(fileName) {
