@@ -583,6 +583,15 @@ export async function updateChild(collection, id, patch) {
   if (error) throw error;
 }
 
+export async function deletePhotoRecord(photo) {
+  const { error } = await supabase.from(childTables.photos).delete().eq('id', photo.id);
+  if (error) throw error;
+  if (!photo.storagePath) return '';
+
+  const { error: storageError } = await supabase.storage.from(photoBucket).remove([photo.storagePath]);
+  return storageError?.message || '';
+}
+
 export async function uploadPhotoFile({ userId, projectId, file }) {
   const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const fileName = safeFileName(file.name || `${id}.jpg`);

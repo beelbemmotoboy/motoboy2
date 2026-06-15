@@ -1534,6 +1534,7 @@ button.metric-card {
 }
 
 .photo-card {
+  position: relative;
   min-width: 0;
   overflow: hidden;
   border: 1px solid #e5e7eb;
@@ -1561,6 +1562,31 @@ button.metric-card {
 .photo-thumb.red { background: #dc2626; }
 .photo-thumb.purple { background: #7c3aed; }
 .photo-thumb.blue { background: #2563eb; }
+
+.photo-delete-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 36px;
+  height: 36px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: #b91c1c;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.18);
+}
+
+.photo-delete-button:hover {
+  color: #fff;
+  background: #dc2626;
+}
+
+.photo-delete-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
 
 .modal-backdrop {
   position: fixed;

@@ -12,6 +12,7 @@ import {
   ClipboardCheck,
   Clock3,
   Database,
+  Trash2,
   Eye,
   FileCheck2,
   FileText,
@@ -48,6 +49,7 @@ import {
 import {
   bootstrapObrasOwner,
   claimObrasUser,
+  deletePhotoRecord,
   fetchProjectChildren,
   fetchProjects,
   fetchObrasUsers,
@@ -1265,7 +1267,15 @@ function StageDetail({ stage, updateStage, addPhoto, addIssue, setScreen }) {
   );
 }
 
-function Photos({ photos, scheduleItems, addPhoto, setScreen }) {
+function Photos({
+  photos,
+  scheduleItems,
+  addPhoto,
+  deletePhoto,
+  deletingPhotoId,
+  error,
+  setScreen,
+}) {
   const groups = buildPhotoGroups(photos, scheduleItems);
   const firstSubitem = scheduleItems.find((item) => item.parentId && item.visible !== false);
 
@@ -1274,6 +1284,12 @@ function Photos({ photos, scheduleItems, addPhoto, setScreen }) {
       <PageTitle eyebrow="Fotos da obra" title="Registros por etapa e subitem" subtitle="Somente etapas e subitens que possuem fotos." onBack={() => setScreen('workPanel')}>
         <ActionButton Icon={Camera} onClick={() => addPhoto(firstSubitem?.nome)}>Adicionar foto</ActionButton>
       </PageTitle>
+      {error ? (
+        <section className="warning-strip" role="alert">
+          <AlertTriangle size={22} aria-hidden="true" />
+          <span>{error}</span>
+        </section>
+      ) : null}
       <section className="photo-stage-groups">
         {groups.map((stage) => (
           <details className="photo-stage-group" key={stage.id} open>
@@ -1299,7 +1315,12 @@ function Photos({ photos, scheduleItems, addPhoto, setScreen }) {
                         <h3>{dateGroup.date}</h3>
                         <div className="photo-grid">
                           {dateGroup.photos.map((photo) => (
-                            <PhotoCard photo={photo} key={photo.id} />
+                            <PhotoCard
+                              photo={photo}
+                              deleting={deletingPhotoId === photo.id}
+                              onDelete={() => deletePhoto(photo)}
+                              key={photo.id}
+                            />
                           ))}
                         </div>
                       </section>
@@ -1320,12 +1341,22 @@ function Photos({ photos, scheduleItems, addPhoto, setScreen }) {
   );
 }
 
-function PhotoCard({ photo }) {
+function PhotoCard({ photo, deleting, onDelete }) {
   return (
     <article className="photo-card">
       <div className={`photo-thumb ${photo.cor}`}>
         {photo.photoUrl ? <img src={photo.photoUrl} alt={`Foto ${photo.etapa}`} /> : <Camera size={34} aria-hidden="true" />}
       </div>
+      <button
+        className="photo-delete-button"
+        type="button"
+        aria-label={`Excluir foto de ${photo.etapa}`}
+        title="Excluir foto"
+        disabled={deleting}
+        onClick={onDelete}
+      >
+        <Trash2 size={18} aria-hidden="true" />
+      </button>
     </article>
   );
 }
@@ -2801,6 +2832,7 @@ function App() {
   const [dataError, setDataError] = useState('');
   const [photoDraftStage, setPhotoDraftStage] = useState(null);
   const [photoSaving, setPhotoSaving] = useState(false);
+  const [deletingPhotoId, setDeletingPhotoId] = useState(null);
   const [photoError, setPhotoError] = useState('');
   const [issueDraftStage, setIssueDraftStage] = useState(null);
   const [issueSaving, setIssueSaving] = useState(false);
@@ -3695,6 +3727,34 @@ function App() {
     setScreen('photos');
   }
 
+  async function deletePhoto(photo) {
+    const confirmed = window.confirm('Tem certeza que deseja excluir esta foto? Esta acao nao pode ser desfeita.');
+    if (!confirmed) return;
+
+    setDeletingPhotoId(photo.id);
+    setPhotoError('');
+    try {
+      let storageWarning = '';
+      if (supabaseConfigured && session) {
+        storageWarning = await deletePhotoRecord(photo);
+      } else if (photo.photoUrl?.startsWith('blob:')) {
+        URL.revokeObjectURL(photo.photoUrl);
+      }
+
+      setData((current) => ({
+        ...current,
+        photos: current.photos.filter((item) => item.id !== photo.id),
+      }));
+      if (storageWarning) {
+        setPhotoError('A foto foi excluida, mas o arquivo antigo nao pode ser removido do armazenamento.');
+      }
+    } catch (error) {
+      setPhotoError(error.message || 'Nao foi possivel excluir a foto.');
+    } finally {
+      setDeletingPhotoId(null);
+    }
+  }
+
   function addIssue(etapa = 'Geral') {
     setIssueError('');
     setIssueDraftStage(etapa || 'Geral');
@@ -3921,7 +3981,17 @@ function App() {
       case 'stageDetail':
         return <StageDetail stage={activeStage} updateStage={updateStage} addPhoto={addPhoto} addIssue={addIssue} setScreen={setScreen} />;
       case 'photos':
-        return <Photos photos={data.photos} scheduleItems={data.scheduleItems} addPhoto={addPhoto} setScreen={setScreen} />;
+        return (
+          <Photos
+            photos={data.photos}
+            scheduleItems={data.scheduleItems}
+            addPhoto={addPhoto}
+            deletePhoto={deletePhoto}
+            deletingPhotoId={deletingPhotoId}
+            error={photoError}
+            setScreen={setScreen}
+          />
+        );
       case 'pls':
         return <Pls plsItems={data.plsItems} updatePls={updatePls} addPhoto={addPhoto} setScreen={setScreen} />;
       case 'schedule':
