@@ -1422,12 +1422,13 @@ button.metric-card {
 
 .photo-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
 }
 
 .photo-stage-groups,
-.photo-subitem-groups {
+.photo-subitem-groups,
+.photo-date-groups {
   display: grid;
   gap: 14px;
 }
@@ -1515,19 +1516,34 @@ button.metric-card {
   font-weight: 900;
 }
 
-.photo-card {
+.photo-date-group {
   display: grid;
-  grid-template-columns: 120px minmax(0, 1fr);
-  gap: 14px;
+  gap: 8px;
+}
+
+.photo-date-group + .photo-date-group {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 12px;
+}
+
+.photo-date-group h3 {
+  margin: 0;
+  color: #334155;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.photo-card {
+  min-width: 0;
+  overflow: hidden;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  padding: 12px;
   background: #fff;
 }
 
 .photo-thumb {
-  min-height: 112px;
-  border-radius: 8px;
+  width: 100%;
+  aspect-ratio: 4 / 3;
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -1538,7 +1554,6 @@ button.metric-card {
 .photo-thumb img {
   width: 100%;
   height: 100%;
-  min-height: 112px;
   object-fit: cover;
 }
 
@@ -1546,23 +1561,6 @@ button.metric-card {
 .photo-thumb.red { background: #dc2626; }
 .photo-thumb.purple { background: #7c3aed; }
 .photo-thumb.blue { background: #2563eb; }
-
-.photo-card strong,
-.photo-card span,
-.photo-card small {
-  display: block;
-}
-
-.photo-card span,
-.photo-card small {
-  color: #6b7280;
-  font-weight: 800;
-}
-
-.photo-card p {
-  margin: 8px 0;
-  color: #374151;
-}
 
 .modal-backdrop {
   position: fixed;
@@ -2692,7 +2690,6 @@ body.gantt-resizing * {
   .profile-grid,
   .standards-grid,
   .form-grid,
-  .photo-grid,
   .photo-upload-layout,
   .work-hero,
   .ai-panel,
@@ -2704,7 +2701,6 @@ body.gantt-resizing * {
     grid-template-columns: repeat(auto-fill, 164px);
   }
 
-  .photo-card,
   .issue-card,
   .work-head,
   .stage-main,
@@ -2712,8 +2708,8 @@ body.gantt-resizing * {
     grid-template-columns: 1fr;
   }
 
-  .photo-card {
-    grid-template-columns: 92px minmax(0, 1fr);
+  .photo-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .photo-subitem-group > header {
@@ -2723,14 +2719,6 @@ body.gantt-resizing * {
 
   .photo-subitem-group > header button {
     justify-content: center;
-  }
-
-  .photo-thumb {
-    min-height: 92px;
-  }
-
-  .photo-thumb img {
-    min-height: 92px;
   }
 
   .photo-modal {

@@ -1293,9 +1293,16 @@ function Photos({ photos, scheduleItems, addPhoto, setScreen }) {
                     </div>
                     <button type="button" onClick={() => addPhoto(subitem.nome)}><Camera size={17} /> Adicionar foto</button>
                   </header>
-                  <div className="photo-grid">
-                    {subitem.photos.map((photo) => (
-                      <PhotoCard photo={photo} key={photo.id} />
+                  <div className="photo-date-groups">
+                    {subitem.dateGroups.map((dateGroup) => (
+                      <section className="photo-date-group" key={dateGroup.date}>
+                        <h3>{dateGroup.date}</h3>
+                        <div className="photo-grid">
+                          {dateGroup.photos.map((photo) => (
+                            <PhotoCard photo={photo} key={photo.id} />
+                          ))}
+                        </div>
+                      </section>
                     ))}
                   </div>
                 </section>
@@ -1319,14 +1326,34 @@ function PhotoCard({ photo }) {
       <div className={`photo-thumb ${photo.cor}`}>
         {photo.photoUrl ? <img src={photo.photoUrl} alt={`Foto ${photo.etapa}`} /> : <Camera size={34} aria-hidden="true" />}
       </div>
-      <div>
-        <span>{photo.tipo} - {photo.data}</span>
-        <p>{photo.observacao}</p>
-        <small>{photo.usuario}</small>
-        {photo.fileName ? <small>{photo.fileName}</small> : null}
-      </div>
     </article>
   );
+}
+
+function groupPhotosByDate(photos) {
+  const groups = new Map();
+  photos.forEach((photo) => {
+    const date = photo.data || 'Sem data';
+    if (!groups.has(date)) groups.set(date, []);
+    groups.get(date).push(photo);
+  });
+
+  return [...groups.entries()]
+    .map(([date, datePhotos]) => ({ date, photos: datePhotos }))
+    .sort((a, b) => photoDateTimestamp(b.date) - photoDateTimestamp(a.date));
+}
+
+function photoDateTimestamp(value) {
+  const text = String(value || '');
+  const brazilian = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (brazilian) {
+    return new Date(Number(brazilian[3]), Number(brazilian[2]) - 1, Number(brazilian[1])).getTime();
+  }
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) {
+    return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3])).getTime();
+  }
+  return 0;
 }
 
 function buildPhotoGroups(photos, scheduleItems) {
@@ -1358,7 +1385,9 @@ function buildPhotoGroups(photos, scheduleItems) {
       subitems[0].photos = [...subitems[0].photos, ...legacyStagePhotos];
     }
 
-    const visibleSubitems = subitems.filter((item) => item.photos.length);
+    const visibleSubitems = subitems
+      .filter((item) => item.photos.length)
+      .map((item) => ({ ...item, dateGroups: groupPhotosByDate(item.photos) }));
     return {
       ...stage,
       subitems: visibleSubitems,
@@ -1372,7 +1401,12 @@ function buildPhotoGroups(photos, scheduleItems) {
       id: 'outros-registros',
       nome: 'Outros registros',
       photoCount: unmatched.length,
-      subitems: [{ id: 'outros-registros-subitem', nome: 'Sem subitem identificado', photos: unmatched }],
+      subitems: [{
+        id: 'outros-registros-subitem',
+        nome: 'Sem subitem identificado',
+        photos: unmatched,
+        dateGroups: groupPhotosByDate(unmatched),
+      }],
     });
   }
   return groups;
