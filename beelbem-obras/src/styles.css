@@ -1546,11 +1546,18 @@ button.metric-card {
 .photo-thumb {
   width: 100%;
   aspect-ratio: 4 / 3;
+  border: 0;
+  padding: 0;
   display: grid;
   place-items: center;
   overflow: hidden;
   color: #fff;
   background: #2563eb;
+  cursor: zoom-in;
+}
+
+.photo-thumb:disabled {
+  cursor: default;
 }
 
 .photo-thumb img {
@@ -1587,6 +1594,89 @@ button.metric-card {
 .photo-delete-button:disabled {
   cursor: wait;
   opacity: 0.55;
+}
+
+.photo-viewer-backdrop {
+  z-index: 80;
+  background: rgba(15, 23, 42, 0.82);
+}
+
+.photo-viewer-modal {
+  width: min(980px, 100%);
+  max-height: calc(100svh - 28px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #0f172a;
+  box-shadow: 0 24px 70px rgba(2, 6, 23, 0.42);
+}
+
+.photo-viewer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  color: #fff;
+}
+
+.photo-viewer-head span {
+  color: #bfdbfe;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.photo-viewer-head h2 {
+  margin: 3px 0 0;
+  font-size: clamp(18px, 3vw, 26px);
+}
+
+.photo-viewer-head .icon-button {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.photo-viewer-image {
+  min-height: 260px;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  background: #020617;
+}
+
+.photo-viewer-image img {
+  width: 100%;
+  max-height: calc(100svh - 180px);
+  object-fit: contain;
+}
+
+.photo-viewer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px;
+  color: #dbeafe;
+}
+
+.photo-viewer-actions button {
+  min-height: 44px;
+  border: 1px solid #93c5fd;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  color: #fff;
+  background: #2563eb;
+  font-weight: 900;
+}
+
+.photo-viewer-actions span {
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .modal-backdrop {

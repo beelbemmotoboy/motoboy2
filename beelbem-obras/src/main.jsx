@@ -1285,8 +1285,13 @@ function Photos({
   error,
   setScreen,
 }) {
+  const [selectedPhoto, setSelectedPhoto] = useState(null);
   const groups = buildPhotoGroups(photos, scheduleItems);
   const firstSubitem = scheduleItems.find((item) => item.parentId && item.visible !== false);
+
+  function openPhoto(photo) {
+    if (getBestPhotoUrl(photo)) setSelectedPhoto(photo);
+  }
 
   return (
     <>
@@ -1327,6 +1332,7 @@ function Photos({
                             <PhotoCard
                               photo={photo}
                               deleting={deletingPhotoId === photo.id}
+                              onOpen={() => openPhoto(photo)}
                               onDelete={() => deletePhoto(photo)}
                               key={photo.id}
                             />
@@ -1346,28 +1352,89 @@ function Photos({
         <ActionButton Icon={Camera} onClick={() => addPhoto(firstSubitem?.nome)}>Tirar foto</ActionButton>
         <ActionButton Icon={Upload} variant="secondary" onClick={() => addPhoto('PLS Caixa')}>Enviar da galeria</ActionButton>
       </div>
+      {selectedPhoto ? (
+        <PhotoViewerModal photo={selectedPhoto} onClose={() => setSelectedPhoto(null)} />
+      ) : null}
     </>
   );
 }
 
-function PhotoCard({ photo, deleting, onDelete }) {
+function PhotoCard({ photo, deleting, onOpen, onDelete }) {
   const photoUrl = getBestPhotoUrl(photo);
   return (
     <article className="photo-card">
-      <div className={`photo-thumb ${photo.cor}`}>
+      <button
+        className={`photo-thumb ${photo.cor}`}
+        type="button"
+        disabled={!photoUrl}
+        onClick={onOpen}
+        aria-label={`Abrir foto de ${photo.etapa}`}
+      >
         {photoUrl ? <img src={photoUrl} alt={`Foto ${photo.etapa}`} /> : <Camera size={34} aria-hidden="true" />}
-      </div>
+      </button>
       <button
         className="photo-delete-button"
         type="button"
         aria-label={`Excluir foto de ${photo.etapa}`}
         title="Excluir foto"
         disabled={deleting}
-        onClick={onDelete}
+        onClick={(event) => {
+          event.stopPropagation();
+          onDelete();
+        }}
       >
         <Trash2 size={18} aria-hidden="true" />
       </button>
     </article>
+  );
+}
+
+function PhotoViewerModal({ photo, onClose }) {
+  const [shareMessage, setShareMessage] = useState('');
+  const photoUrl = photo.photoUrl || getBestPhotoUrl(photo);
+
+  async function sharePhoto() {
+    if (!photoUrl) return;
+    const shareData = {
+      title: `Foto da obra - ${photo.etapa}`,
+      text: `Foto da etapa ${photo.etapa}`,
+      url: photoUrl,
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+        return;
+      }
+      await navigator.clipboard?.writeText(photoUrl);
+      setShareMessage('Link da foto copiado.');
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+      setShareMessage('Nao foi possivel compartilhar esta foto.');
+    }
+  }
+
+  return (
+    <div className="modal-backdrop photo-viewer-backdrop" role="presentation" onClick={onClose}>
+      <section className="photo-viewer-modal" role="dialog" aria-modal="true" aria-label={`Foto de ${photo.etapa}`} onClick={(event) => event.stopPropagation()}>
+        <div className="photo-viewer-head">
+          <div>
+            <span>{photo.data || 'Foto da obra'}</span>
+            <h2>{photo.etapa}</h2>
+          </div>
+          <IconButton label="Fechar" Icon={X} onClick={onClose} />
+        </div>
+        <div className="photo-viewer-image">
+          {photoUrl ? <img src={photoUrl} alt={`Foto ampliada de ${photo.etapa}`} /> : <Camera size={42} aria-hidden="true" />}
+        </div>
+        <div className="photo-viewer-actions">
+          <button type="button" onClick={sharePhoto}>
+            <Share2 size={18} aria-hidden="true" /> Compartilhar
+          </button>
+          {shareMessage ? <span>{shareMessage}</span> : null}
+        </div>
+      </section>
+    </div>
   );
 }
 
