@@ -1445,9 +1445,10 @@ button.metric-card {
   display: flex;
   align-items: center;
   padding: 14px 16px;
+  color: #fff;
   cursor: pointer;
   list-style: none;
-  background: #f8fafc;
+  background: linear-gradient(135deg, #1d4ed8, #2563eb);
 }
 
 .photo-stage-group > summary::-webkit-details-marker {
@@ -1464,7 +1465,7 @@ button.metric-card {
 }
 
 .photo-stage-group > summary span {
-  color: #64748b;
+  color: #dbeafe;
   font-size: 13px;
   font-weight: 800;
 }
