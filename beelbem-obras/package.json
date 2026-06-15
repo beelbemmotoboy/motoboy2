@@ -5,7 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "vite build --base=/obras/",
+    "build": "vite build",
+    "build:legacy": "vite build --base=/obras/",
+    "migrate:dry-run": "node scripts/migrate-obras.mjs",
+    "migrate:apply": "node scripts/migrate-obras.mjs --apply",
+    "migrate:invite": "node scripts/migrate-obras.mjs --apply --invite-users",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {

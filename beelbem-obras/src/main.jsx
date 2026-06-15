@@ -28,6 +28,7 @@ import {
   LogIn,
   MapPinned,
   Menu,
+  Minus,
   PackageCheck,
   Pencil,
   Plus,
@@ -45,10 +46,13 @@ import {
   XCircle,
 } from 'lucide-react';
 import {
+  bootstrapObrasOwner,
   claimObrasUser,
   fetchProjectChildren,
   fetchProjects,
   fetchObrasUsers,
+  getSession,
+  ensureProjectSchedule,
   insertChild,
   insertObrasUser,
   insertProject,
@@ -62,6 +66,8 @@ import {
   updateProject,
   uploadPhotoFile,
 } from './db.js';
+import { analisarProjetoComGemini, geminiProjectConfig } from './analisa_projeto_gemini.js';
+import { buildLocalScheduleItems, defaultScheduleBlueprint } from './scheduleBlueprint.js';
 import './styles.css';
 
 const STORAGE_KEY = 'beelbem-obras-local-v1';
@@ -121,7 +127,7 @@ const neighborhoodCatalog = {
   ],
 };
 
-const projectCollections = ['stages', 'photos', 'plsItems', 'issues', 'supplies', 'tools', 'checklist'];
+const projectCollections = ['stages', 'scheduleItems', 'scheduleLogs', 'photos', 'plsItems', 'issues', 'supplies', 'tools', 'checklist'];
 
 const initialData = {
   works: [
@@ -204,6 +210,8 @@ const initialData = {
     { id: 'eletrica', nome: 'Instalacao eletrica', percentual: 0, status: 'Nao iniciado', inicio: '01/09', fim: '08/09', pendencias: 0, fotosFaltando: 3 },
     { id: 'entrega', nome: 'Entrega da obra', percentual: 0, status: 'Nao iniciado', inicio: '04/11', fim: '05/11', pendencias: 0, fotosFaltando: 1 },
   ],
+  scheduleItems: buildLocalScheduleItems(),
+  scheduleLogs: [],
   photos: [
     { id: 'foto-1', etapa: 'Fundacao', tipo: 'Durante', data: '03/06/2026', usuario: 'Carlos Lima', observacao: 'Armadura conferida', cor: 'blue' },
     { id: 'foto-2', etapa: 'Muro de arrimo', tipo: 'Problema', data: '03/06/2026', usuario: 'Ana Prado', observacao: 'Dreno pendente', cor: 'red' },
@@ -435,8 +443,21 @@ function getFirstName(value) {
   return String(value || '').trim().split(/\s+/)[0] || 'Cliente';
 }
 
+function getEffectiveWorkStatus(work) {
+  const status = String(work?.status || '').trim();
+  const normalizedStatus = normalizeSearch(status);
+  const percentual = Math.min(100, Math.max(0, Number(work?.percentual) || 0));
+
+  if (percentual >= 100) return 'Concluida';
+  if (normalizedStatus.includes('atrasad')) return 'Atrasada';
+  if (normalizedStatus.includes('paralisad')) return status;
+  if (normalizedStatus.includes('concluid')) return 'Concluida';
+  if (percentual > 0 || normalizedStatus.includes('andamento')) return 'Em andamento';
+  return status || 'Nao iniciada';
+}
+
 function getWorkCardTone(work) {
-  const status = normalizeSearch(work.status);
+  const status = normalizeSearch(getEffectiveWorkStatus(work));
   const pls = normalizeSearch(work.pls);
   const percentual = Number(work.percentual) || 0;
   const pendencias = Number(work.pendencias) || 0;
@@ -482,6 +503,86 @@ function TextAreaField({ label, name, value }) {
       <textarea name={name} defaultValue={value || ''} rows={4} />
     </label>
   );
+}
+
+function getScheduleDateBoundary(items, field, boundary) {
+  const dates = items
+    .map((item) => item[field])
+    .filter(Boolean)
+    .sort();
+
+  if (!dates.length) return '';
+  return boundary === 'start' ? dates[0] : dates[dates.length - 1];
+}
+
+function deriveScheduleStages(items) {
+  const nextItems = items.map((item) => ({ ...item }));
+  const stages = nextItems.filter((item) => !item.parentId);
+
+  stages.forEach((stage) => {
+    const children = nextItems
+      .filter((item) => item.parentId === stage.id && item.visible !== false)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+    if (!children.length) return;
+
+    const percentual = Math.round(
+      children.reduce((total, item) => total + Math.min(100, Math.max(0, Number(item.percentual) || 0)), 0)
+      / children.length,
+    );
+    const status = percentual >= 100
+      ? 'Concluida'
+      : children.some((item) => item.status === 'Atencao')
+        ? 'Atencao'
+        : percentual > 0 || children.some((item) => item.status === 'Em andamento')
+          ? 'Em andamento'
+          : 'Nao iniciado';
+    const target = nextItems.find((item) => item.id === stage.id);
+    target.percentual = percentual;
+    target.status = status;
+    target.inicioPrevisto = getScheduleDateBoundary(children, 'inicioPrevisto', 'start');
+    target.fimPrevisto = getScheduleDateBoundary(children, 'fimPrevisto', 'end');
+    target.inicioReal = getScheduleDateBoundary(children, 'inicioReal', 'start');
+    target.fimReal = getScheduleDateBoundary(children, 'fimReal', 'end');
+  });
+
+  return nextItems;
+}
+
+function calculateScheduleProgress(items) {
+  const stages = items.filter((item) => !item.parentId && item.visible !== false);
+  if (!stages.length) return 0;
+  return Math.round(
+    stages.reduce((total, item) => total + Math.min(100, Math.max(0, Number(item.percentual) || 0)), 0)
+    / stages.length,
+  );
+}
+
+function getDerivedStageUpdates(previousItems, nextItems) {
+  return nextItems
+    .filter((item) => !item.parentId)
+    .filter((item) => {
+      const previous = previousItems.find((candidate) => candidate.id === item.id);
+      return previous
+        && (
+          previous.percentual !== item.percentual
+          || previous.status !== item.status
+          || previous.inicioPrevisto !== item.inicioPrevisto
+          || previous.fimPrevisto !== item.fimPrevisto
+          || previous.inicioReal !== item.inicioReal
+          || previous.fimReal !== item.fimReal
+        );
+    })
+    .map((item) => ({
+      id: item.id,
+      patch: {
+        percentual: item.percentual,
+        status: item.status,
+        inicioPrevisto: item.inicioPrevisto,
+        fimPrevisto: item.fimPrevisto,
+        inicioReal: item.inicioReal,
+        fimReal: item.fimReal,
+      },
+    }));
 }
 
 function Shell({ screen, setScreen, children, activeWork, selectedCity, cities, onCityChange }) {
@@ -616,8 +717,8 @@ function Dashboard({ data, setScreen }) {
   const pendingPls = data.works.filter((work) => !['aprovado', 'enviado'].includes(normalizeSearch(work.pls))).length;
   const metrics = [
     { label: 'Cidades', value: cityCount, Icon: MapPinned, tone: 'info', onIconClick: () => setScreen('cities'), iconLabel: 'Abrir cadastro e visualizacao de cidades' },
-    { label: 'Andamento', value: data.works.filter((work) => work.status === 'Em andamento').length, Icon: Clock3, tone: 'warning', onIconClick: () => setScreen('works'), iconLabel: 'Abrir obras em andamento' },
-    { label: 'Atrasadas', value: data.works.filter((work) => work.status === 'Atrasada').length, Icon: AlertTriangle, tone: 'danger', onIconClick: () => setScreen('works'), iconLabel: 'Abrir obras atrasadas' },
+    { label: 'Andamento', value: data.works.filter((work) => getEffectiveWorkStatus(work) === 'Em andamento').length, Icon: Clock3, tone: 'warning', onIconClick: () => setScreen('works'), iconLabel: 'Abrir obras em andamento' },
+    { label: 'Atrasadas', value: data.works.filter((work) => getEffectiveWorkStatus(work) === 'Atrasada').length, Icon: AlertTriangle, tone: 'danger', onIconClick: () => setScreen('works'), iconLabel: 'Abrir obras atrasadas' },
     { label: 'PLS', value: pendingPls, Icon: FileCheck2, tone: 'danger', onIconClick: () => setScreen('pls'), iconLabel: 'Abrir PLS Caixa' },
     { label: 'Pendencias', value: openIssues, Icon: ClipboardCheck, tone: 'danger', onIconClick: () => setScreen('issues'), iconLabel: 'Abrir pendencias' },
   ];
@@ -657,7 +758,7 @@ function getCitySummary(works) {
       ...city,
       obras: local.length,
       bairros: new Set(local.map((work) => work.bairroId)).size || (neighborhoodCatalog[city.id] || []).length,
-      atrasadas: local.filter((work) => work.status === 'Atrasada').length,
+      atrasadas: local.filter((work) => getEffectiveWorkStatus(work) === 'Atrasada').length,
     };
   });
 }
@@ -668,8 +769,8 @@ function getNeighborhoodSummary(works, city) {
     return {
       ...bairro,
       obras: local.length,
-      andamento: local.filter((work) => work.status === 'Em andamento').length,
-      atrasadas: local.filter((work) => work.status === 'Atrasada').length,
+      andamento: local.filter((work) => getEffectiveWorkStatus(work) === 'Em andamento').length,
+      atrasadas: local.filter((work) => getEffectiveWorkStatus(work) === 'Atrasada').length,
     };
   });
 }
@@ -752,7 +853,7 @@ function Works({ selectedCity, selectedNeighborhood, works, openWork, setScreen 
   const filtered = works.filter((obra) => {
     if (selectedNeighborhood && obra.bairroId !== selectedNeighborhood.id) return false;
     if (!selectedNeighborhood && selectedCity && obra.cidadeId !== selectedCity.id) return false;
-    if (status !== 'Todos' && obra.status !== status) return false;
+    if (status !== 'Todos' && getEffectiveWorkStatus(obra) !== status) return false;
     return `${obra.nome} ${obra.cliente} ${obra.endereco} ${obra.bairro} ${obra.cidade}`.toLowerCase().includes(query.toLowerCase());
   });
 
@@ -792,8 +893,15 @@ function Works({ selectedCity, selectedNeighborhood, works, openWork, setScreen 
   );
 }
 
-function NewWork({ createWork, setScreen, selectedCity }) {
+function NewWork({ createWork, setScreen, selectedCity, onProjectAnalyzed }) {
   const [cityId, setCityId] = useState(selectedCity?.id || cityCatalog[0].id);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
+  const [selectedFileName, setSelectedFileName] = useState('');
+  const pdfInputRef = useRef(null);
+  const imageInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
+  const manualFormRef = useRef(null);
   const neighborhoods = neighborhoodCatalog[cityId] || [];
 
   function submit(event) {
@@ -801,25 +909,64 @@ function NewWork({ createWork, setScreen, selectedCity }) {
     createWork(Object.fromEntries(new FormData(event.currentTarget).entries()));
   }
 
+  async function analyzeFile(file) {
+    if (!file) return;
+    setAiLoading(true);
+    setAiError('');
+    setSelectedFileName(file.name || 'Arquivo selecionado');
+
+    const result = await analisarProjetoComGemini({ arquivo: file });
+    setAiLoading(false);
+
+    if (!result.ok) {
+      setAiError(formatGeminiProjectError(result));
+      return;
+    }
+
+    const formCity = cityCatalog.find((city) => city.id === cityId) || selectedCity;
+    onProjectAnalyzed(buildAiProjectDraft(result, formCity));
+    setScreen('extractedData');
+  }
+
+  function handleFileInput(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    void analyzeFile(file);
+  }
+
+  function openManualForm() {
+    manualFormRef.current?.querySelector('input')?.focus();
+    manualFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
   return (
     <form onSubmit={submit}>
+      {aiLoading ? <AiAnalysisLoader fileName={selectedFileName} /> : null}
       <PageTitle eyebrow="Nova obra" title="Cadastro de obra" subtitle="Dados principais para abrir o painel da obra." onBack={() => setScreen('works')} />
       <section className="ai-panel">
         <div>
           <StatusPill status="Analise IA" />
           <h2>Cadastro inteligente por IA</h2>
-          <p>Fluxo preparado para anexos de projeto e conferencia antes da criacao.</p>
+          <p>Envie um PDF ou imagem de ate 10 MB e confira os dados antes da criacao.</p>
         </div>
         <div className="upload-grid">
-          <button type="button" onClick={() => setScreen('extractedData')}><Upload size={30} aria-hidden="true" /> Enviar PDF do projeto</button>
-          <button type="button" onClick={() => setScreen('extractedData')}><ImagePlus size={30} aria-hidden="true" /> Enviar imagem da planta</button>
-          <button type="button" onClick={() => setScreen('extractedData')}><Camera size={30} aria-hidden="true" /> Tirar foto do projeto</button>
-          <button type="button"><Pencil size={30} aria-hidden="true" /> Cadastrar manualmente</button>
+          <button type="button" disabled={aiLoading} onClick={() => pdfInputRef.current?.click()}><Upload size={30} aria-hidden="true" /> Enviar PDF do projeto</button>
+          <button type="button" disabled={aiLoading} onClick={() => imageInputRef.current?.click()}><ImagePlus size={30} aria-hidden="true" /> Enviar imagem da planta</button>
+          <button type="button" disabled={aiLoading} onClick={() => cameraInputRef.current?.click()}><Camera size={30} aria-hidden="true" /> Tirar foto do projeto</button>
+          <button type="button" disabled={aiLoading} onClick={openManualForm}><Pencil size={30} aria-hidden="true" /> Cadastrar manualmente</button>
+        </div>
+        <input ref={pdfInputRef} className="visually-hidden" type="file" accept="application/pdf" onChange={handleFileInput} />
+        <input ref={imageInputRef} className="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" onChange={handleFileInput} />
+        <input ref={cameraInputRef} className="visually-hidden" type="file" accept="image/*" capture="environment" onChange={handleFileInput} />
+        <div className="ai-panel-status" aria-live="polite">
+          {aiLoading ? <span>Analisando {selectedFileName || 'projeto'} com Gemini...</span> : null}
+          {!aiLoading && aiError ? <span className="ai-panel-error">{aiError}</span> : null}
+          {!aiLoading && !aiError && !geminiProjectConfig.configured ? <span>Gemini ainda nao configurado neste ambiente.</span> : null}
         </div>
       </section>
-      <section className="form-grid">
-        <Field label="Nome da obra" name="nome" value="Casa Joao Silva" required />
-        <Field label="Cliente" name="cliente" value="Joao Silva" required />
+      <section ref={manualFormRef} className="form-grid">
+        <Field label="Nome da obra" name="nome" required />
+        <Field label="Cliente" name="cliente" required />
         <label className="field">
           <span>Cidade</span>
           <select name="cidadeId" value={cityId} onChange={(event) => setCityId(event.target.value)}>
@@ -836,63 +983,150 @@ function NewWork({ createWork, setScreen, selectedCity }) {
             ))}
           </select>
         </label>
-        <Field label="Endereco" name="endereco" value="Rua 12, Qd. 8, Lt. 4" wide required />
-        <Field label="Quadra" name="quadra" value="8" />
-        <Field label="Lote" name="lote" value="4" />
-        <Field label="Area construida" name="areaConstruida" value="148 m2" />
-        <Field label="Area do terreno" name="areaTerreno" value="300 m2" />
-        <Field label="Numero de pavimentos" name="pavimentos" value="1" />
-        <Field label="Responsavel tecnico" name="responsavel" value="Eng. Ana Prado" />
-        <TextAreaField label="Observacoes" name="observacoes" value="Projeto residencial com acompanhamento PLS Caixa." />
+        <Field label="Endereco" name="endereco" wide required />
+        <Field label="Quadra" name="quadra" />
+        <Field label="Lote" name="lote" />
+        <Field label="Area construida" name="areaConstruida" />
+        <Field label="Area do terreno" name="areaTerreno" />
+        <Field label="Numero de pavimentos" name="pavimentos" />
+        <Field label="Responsavel tecnico" name="responsavel" />
+        <TextAreaField label="Observacoes" name="observacoes" />
       </section>
       <div className="form-actions">
         <ActionButton Icon={Save} type="submit">Salvar obra</ActionButton>
-        <ActionButton Icon={Bot} variant="secondary" onClick={() => setScreen('extractedData')}>Analisar com IA</ActionButton>
+        <ActionButton Icon={Bot} variant="secondary" disabled={aiLoading} onClick={() => pdfInputRef.current?.click()}>Analisar com IA</ActionButton>
         <ActionButton Icon={XCircle} variant="ghost" onClick={() => setScreen('works')}>Cancelar</ActionButton>
       </div>
     </form>
   );
 }
 
-function ExtractedData({ createWork, setScreen, selectedCity }) {
-  const city = selectedCity || cityCatalog[0];
-  const neighborhood = (neighborhoodCatalog[city.id] || [])[0];
-  const extracted = {
-    nome: 'Casa Joao Silva',
-    cliente: 'Joao Silva',
-    endereco: 'Rua 12, Qd. 8, Lt. 4',
-    cidadeId: city.id,
-    bairroId: neighborhood?.id || '',
-    areaConstruida: '148 m2',
-    areaTerreno: '300 m2',
-    pavimentos: '1',
-    responsavel: 'Eng. Ana Prado',
-    observacoes: 'Fundacao em sapatas isoladas e cobertura com telha termoacustica.',
-  };
+function AiAnalysisLoader({ fileName }) {
   return (
-    <>
+    <div className="ai-analysis-backdrop" role="status" aria-live="assertive" aria-label="Analise do projeto em andamento">
+      <section className="ai-analysis-loader">
+        <svg className="building-loader" viewBox="0 0 300 210" aria-hidden="true">
+          <rect className="building-ground" x="25" y="184" width="250" height="12" rx="6" />
+          <g className="building-foundation">
+            <rect x="55" y="169" width="190" height="15" rx="3" />
+          </g>
+          <g className="building-skeleton building-skeleton-one">
+            <rect x="67" y="126" width="9" height="43" />
+            <rect x="224" y="126" width="9" height="43" />
+            <rect x="64" y="122" width="172" height="9" />
+          </g>
+          <g className="building-skeleton building-skeleton-two">
+            <rect x="67" y="83" width="9" height="43" />
+            <rect x="224" y="83" width="9" height="43" />
+            <rect x="64" y="79" width="172" height="9" />
+          </g>
+          <g className="building-skeleton building-skeleton-three">
+            <rect x="67" y="40" width="9" height="43" />
+            <rect x="224" y="40" width="9" height="43" />
+            <rect x="64" y="36" width="172" height="9" />
+            <rect x="145" y="40" width="9" height="129" />
+          </g>
+          <g className="building-wall building-wall-one">
+            <rect x="77" y="132" width="67" height="36" />
+            <rect x="155" y="132" width="68" height="36" />
+          </g>
+          <g className="building-wall building-wall-two">
+            <rect x="77" y="89" width="67" height="32" />
+            <rect x="155" y="89" width="68" height="32" />
+          </g>
+          <g className="building-wall building-wall-three">
+            <rect x="77" y="46" width="67" height="32" />
+            <rect x="155" y="46" width="68" height="32" />
+          </g>
+          <g className="building-finish building-finish-one">
+            <rect x="91" y="139" width="24" height="29" rx="2" />
+            <rect x="174" y="139" width="30" height="18" rx="2" />
+          </g>
+          <g className="building-finish building-finish-two">
+            <rect x="91" y="96" width="30" height="18" rx="2" />
+            <rect x="174" y="96" width="30" height="18" rx="2" />
+          </g>
+          <g className="building-finish building-finish-three">
+            <rect x="91" y="53" width="30" height="18" rx="2" />
+            <rect x="174" y="53" width="30" height="18" rx="2" />
+            <rect className="building-roof" x="57" y="27" width="186" height="10" rx="3" />
+          </g>
+        </svg>
+        <div className="construction-stage" aria-hidden="true">
+          <span>Montando a estrutura</span>
+          <span>Fechando as paredes</span>
+          <span>Finalizando o predio</span>
+        </div>
+        <strong>A IA esta analisando o projeto</strong>
+        <span>{fileName || 'Preparando o arquivo...'}</span>
+        <div className="ai-loading-dots" aria-hidden="true"><i /><i /><i /></div>
+        <small>Aguarde. Esta janela fecha automaticamente quando a leitura terminar.</small>
+      </section>
+    </div>
+  );
+}
+
+function ExtractedData({ createWork, setScreen, draft }) {
+  const initialCityId = draft?.cidadeId || cityCatalog[0].id;
+  const [cityId, setCityId] = useState(initialCityId);
+  const neighborhoods = neighborhoodCatalog[cityId] || [];
+
+  if (!draft) {
+    return (
+      <>
+        <PageTitle eyebrow="IA" title="Nenhuma analise disponivel" subtitle="Envie um PDF ou imagem para iniciar." onBack={() => setScreen('newWork')} />
+        <EmptyNotice Icon={Bot} title="Projeto nao analisado" text="A IA ainda nao recebeu um arquivo para leitura." />
+      </>
+    );
+  }
+
+  function submit(event) {
+    event.preventDefault();
+    createWork(Object.fromEntries(new FormData(event.currentTarget).entries()));
+  }
+
+  return (
+    <form onSubmit={submit}>
       <PageTitle eyebrow="IA" title="Conferir dados extraidos" subtitle="Revise antes de criar a obra." onBack={() => setScreen('newWork')} />
       <section className="warning-strip">
         <AlertTriangle size={22} aria-hidden="true" />
         <span>A IA pode cometer erros. Confira os dados antes de criar a obra.</span>
       </section>
+      <section className="ai-result-summary">
+        <strong>{draft.arquivo?.nome || 'Projeto analisado'}</strong>
+        <span>Modelo: {draft.modelo}</span>
+        {(draft.avisos || []).map((warning) => <p key={warning}>{warning}</p>)}
+      </section>
       <section className="form-grid">
-        <Field label="Nome da obra" value={extracted.nome} />
-        <Field label="Cliente" value={extracted.cliente} />
-        <Field label="Endereco" value={extracted.endereco} wide />
-        <Field label="Cidade" value="Rio Verde" />
-        <Field label="Bairro" value="Centro" />
-        <Field label="Area construida" value={extracted.areaConstruida} />
-        <Field label="Area do terreno" value={extracted.areaTerreno} />
-        <Field label="Responsavel tecnico" value={extracted.responsavel} />
-        <TextAreaField label="Observacoes tecnicas" value={extracted.observacoes} />
+        <Field label="Nome da obra" name="nome" value={draft.nome} required />
+        <Field label="Cliente" name="cliente" value={draft.cliente} required />
+        <label className="field">
+          <span>Cidade</span>
+          <select name="cidadeId" value={cityId} onChange={(event) => setCityId(event.target.value)}>
+            {cityCatalog.map((city) => <option value={city.id} key={city.id}>{city.nome}</option>)}
+          </select>
+        </label>
+        <label className="field">
+          <span>Bairro</span>
+          <select name="bairroId" key={cityId} defaultValue={cityId === draft.cidadeId ? draft.bairroId : neighborhoods[0]?.id || ''}>
+            {neighborhoods.map((neighborhood) => <option value={neighborhood.id} key={neighborhood.id}>{neighborhood.nome}</option>)}
+          </select>
+        </label>
+        <Field label="Endereco" name="endereco" value={draft.endereco} wide required />
+        <Field label="Quadra" name="quadra" value={draft.quadra} />
+        <Field label="Lote" name="lote" value={draft.lote} />
+        <Field label="Area construida" name="areaConstruida" value={draft.areaConstruida} />
+        <Field label="Area do terreno" name="areaTerreno" value={draft.areaTerreno} />
+        <Field label="Numero de pavimentos" name="pavimentos" value={draft.pavimentos} />
+        <Field label="Responsavel tecnico" name="responsavel" value={draft.responsavel} />
+        <TextAreaField label="Observacoes tecnicas" name="observacoes" value={draft.observacoes} />
       </section>
       <div className="form-actions">
-        <ActionButton Icon={CheckCircle2} onClick={() => createWork(extracted)}>Confirmar e criar obra</ActionButton>
+        <ActionButton Icon={CheckCircle2} type="submit">Confirmar e criar obra</ActionButton>
         <ActionButton Icon={Pencil} variant="secondary" onClick={() => setScreen('newWork')}>Corrigir manualmente</ActionButton>
         <ActionButton Icon={XCircle} variant="ghost" onClick={() => setScreen('dashboard')}>Cancelar</ActionButton>
       </div>
-    </>
+    </form>
   );
 }
 
@@ -910,19 +1144,10 @@ function WorkPanel({ obra, data, setScreen }) {
     ['Relatorios', BarChart3, 'reports'],
     ['Dados da obra', FileText, 'profile'],
   ];
-  const summary = [
-    ['Concluidas', data.stages.filter((stage) => stage.status === 'Concluida').length, CheckCircle2, 'success'],
-    ['Andamento', data.stages.filter((stage) => ['Em andamento', 'Atencao'].includes(stage.status)).length, Clock3, 'warning'],
-    ['Pendencias', data.issues.filter((issue) => issue.status !== 'Resolvida').length, AlertTriangle, 'danger'],
-    ['Fotos', data.photos.length, Camera, 'info'],
-    ['PLS', data.plsItems.filter((item) => !['Aprovado', 'Enviado'].includes(item.status)).length, FileCheck2, 'danger'],
-    ['Atraso', obra.atraso, CalendarDays, obra.atraso ? 'danger' : 'success'],
-  ];
-
   return (
     <>
       <PageTitle eyebrow="Painel da obra" title={obra.nome} subtitle={`${obra.cliente} - ${obra.bairro}, ${obra.cidade}`}>
-        <StatusPill status={obra.status} />
+        <StatusPill status={getEffectiveWorkStatus(obra)} />
       </PageTitle>
       <section className="work-hero">
         <div>
@@ -941,11 +1166,6 @@ function WorkPanel({ obra, data, setScreen }) {
             <Icon size={30} aria-hidden="true" />
             <span>{label}</span>
           </button>
-        ))}
-      </section>
-      <section className="metric-grid compact">
-        {summary.map(([label, value, Icon, tone]) => (
-          <MetricCard key={label} label={label} value={value} Icon={Icon} tone={tone} />
         ))}
       </section>
       <nav className="work-tabs" aria-label="Menu da obra">
@@ -1045,44 +1265,126 @@ function StageDetail({ stage, updateStage, addPhoto, addIssue, setScreen }) {
   );
 }
 
-function Photos({ photos, addPhoto, setScreen }) {
+function Photos({ photos, scheduleItems, addPhoto, setScreen }) {
+  const groups = buildPhotoGroups(photos, scheduleItems);
+  const firstSubitem = scheduleItems.find((item) => item.parentId && item.visible !== false);
+
   return (
     <>
-      <PageTitle eyebrow="Fotos da obra" title="Registros por etapa" subtitle="Etapa, tipo, data, usuario e PLS Caixa." onBack={() => setScreen('workPanel')}>
-        <ActionButton Icon={Camera} onClick={() => addPhoto('Fundacao')}>Adicionar foto</ActionButton>
+      <PageTitle eyebrow="Fotos da obra" title="Registros por etapa e subitem" subtitle="Somente etapas e subitens que possuem fotos." onBack={() => setScreen('workPanel')}>
+        <ActionButton Icon={Camera} onClick={() => addPhoto(firstSubitem?.nome)}>Adicionar foto</ActionButton>
       </PageTitle>
-      <div className="toolbar">
-        {['Etapa', 'Tipo da foto', 'Data', 'Usuario', 'PLS Caixa'].map((item) => (
-          <button type="button" key={item}><Filter size={18} aria-hidden="true" /> {item}</button>
-        ))}
-      </div>
-      <section className="photo-grid">
-        {photos.map((photo) => (
-          <article className="photo-card" key={photo.id}>
-            <div className={`photo-thumb ${photo.cor}`}>
-              {photo.photoUrl ? <img src={photo.photoUrl} alt={`Foto ${photo.etapa}`} /> : <Camera size={34} aria-hidden="true" />}
+      <section className="photo-stage-groups">
+        {groups.map((stage) => (
+          <details className="photo-stage-group" key={stage.id} open>
+            <summary>
+              <div>
+                <strong>{stage.nome}</strong>
+                <span>{stage.photoCount} foto{stage.photoCount === 1 ? '' : 's'}</span>
+              </div>
+            </summary>
+            <div className="photo-subitem-groups">
+              {stage.subitems.map((subitem) => (
+                <section className="photo-subitem-group" key={subitem.id}>
+                  <header>
+                    <div>
+                      <span>Subitem</span>
+                      <h2>{subitem.nome}</h2>
+                    </div>
+                    <button type="button" onClick={() => addPhoto(subitem.nome)}><Camera size={17} /> Adicionar foto</button>
+                  </header>
+                  <div className="photo-grid">
+                    {subitem.photos.map((photo) => (
+                      <PhotoCard photo={photo} key={photo.id} />
+                    ))}
+                  </div>
+                </section>
+              ))}
             </div>
-            <div>
-              <strong>{photo.etapa}</strong>
-              <span>{photo.tipo} - {photo.data}</span>
-              <p>{photo.observacao}</p>
-              <small>{photo.usuario}</small>
-              {photo.fileName ? <small>{photo.fileName}</small> : null}
-            </div>
-          </article>
+          </details>
         ))}
+        {!groups.length ? <EmptyNotice Icon={Camera} title="Nenhuma foto cadastrada" text="Adicione fotos nos subitens do cronograma." /> : null}
       </section>
       <div className="form-actions">
-        <ActionButton Icon={Camera} onClick={() => addPhoto('Fundacao')}>Tirar foto</ActionButton>
+        <ActionButton Icon={Camera} onClick={() => addPhoto(firstSubitem?.nome)}>Tirar foto</ActionButton>
         <ActionButton Icon={Upload} variant="secondary" onClick={() => addPhoto('PLS Caixa')}>Enviar da galeria</ActionButton>
       </div>
     </>
   );
 }
 
-function PhotoUploadModal({ etapa, stages, saving, error, onClose, onSave }) {
+function PhotoCard({ photo }) {
+  return (
+    <article className="photo-card">
+      <div className={`photo-thumb ${photo.cor}`}>
+        {photo.photoUrl ? <img src={photo.photoUrl} alt={`Foto ${photo.etapa}`} /> : <Camera size={34} aria-hidden="true" />}
+      </div>
+      <div>
+        <span>{photo.tipo} - {photo.data}</span>
+        <p>{photo.observacao}</p>
+        <small>{photo.usuario}</small>
+        {photo.fileName ? <small>{photo.fileName}</small> : null}
+      </div>
+    </article>
+  );
+}
+
+function buildPhotoGroups(photos, scheduleItems) {
+  const visibleItems = scheduleItems.filter((item) => item.visible !== false);
+  const stages = visibleItems
+    .filter((item) => !item.parentId)
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+  const assigned = new Set();
+
+  const groups = stages.map((stage) => {
+    const children = visibleItems
+      .filter((item) => item.parentId === stage.id)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+    const subitems = children.map((child) => {
+      const childPhotos = photos.filter((photo) => {
+        if (assigned.has(photo.id) || photo.etapa !== child.nome) return false;
+        assigned.add(photo.id);
+        return true;
+      });
+      return { ...child, photos: childPhotos };
+    });
+
+    const legacyStagePhotos = photos.filter((photo) => {
+      if (assigned.has(photo.id) || photo.etapa !== stage.nome) return false;
+      assigned.add(photo.id);
+      return true;
+    });
+    if (legacyStagePhotos.length && subitems.length) {
+      subitems[0].photos = [...subitems[0].photos, ...legacyStagePhotos];
+    }
+
+    const visibleSubitems = subitems.filter((item) => item.photos.length);
+    return {
+      ...stage,
+      subitems: visibleSubitems,
+      photoCount: visibleSubitems.reduce((total, item) => total + item.photos.length, 0),
+    };
+  }).filter((stage) => stage.photoCount);
+
+  const unmatched = photos.filter((photo) => !assigned.has(photo.id));
+  if (unmatched.length) {
+    groups.push({
+      id: 'outros-registros',
+      nome: 'Outros registros',
+      photoCount: unmatched.length,
+      subitems: [{ id: 'outros-registros-subitem', nome: 'Sem subitem identificado', photos: unmatched }],
+    });
+  }
+  return groups;
+}
+
+function PhotoUploadModal({ etapa, scheduleItems, saving, error, onClose, onSave }) {
   const [files, setFiles] = useState([]);
-  const stageOptions = [...new Set([etapa, ...stages.filter((stage) => stage.status !== 'Inativo').map((stage) => stage.nome), 'PLS Caixa'].filter(Boolean))];
+  const stageOptions = [...new Set([
+    etapa,
+    ...scheduleItems.filter((item) => item.parentId && item.visible !== false).map((item) => item.nome),
+    'PLS Caixa',
+  ].filter(Boolean))];
   const [previewUrls, setPreviewUrls] = useState([]);
 
   useEffect(() => {
@@ -1213,39 +1515,669 @@ function Pls({ plsItems, updatePls, addPhoto, setScreen }) {
   );
 }
 
-function Schedule({ stages, updateStage, setScreen }) {
-  const firstOpen = stages.find((stage) => stage.status !== 'Concluida')?.id;
+function Schedule({
+  items,
+  logs,
+  saving,
+  error,
+  onSaveItem,
+  onUpdateItem,
+  onSetVisibility,
+  onSaveLog,
+  addPhoto,
+  setScreen,
+}) {
+  const [itemModal, setItemModal] = useState(null);
+  const [logItem, setLogItem] = useState(null);
+  const [showRemoved, setShowRemoved] = useState(false);
+  const [ganttOpen, setGanttOpen] = useState(false);
+  const visibleItems = items.filter((item) => item.visible !== false);
+  const removedItems = items.filter((item) => item.visible === false);
+  const removedEntries = removedItems.filter((item) => (
+    !item.parentId || items.find((parent) => parent.id === item.parentId)?.visible !== false
+  ));
+  const stages = visibleItems
+    .filter((item) => !item.parentId)
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+
+  function childrenFor(parentId) {
+    return visibleItems
+      .filter((item) => item.parentId === parentId)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  }
+
+  function logsFor(itemId) {
+    return logs.filter((log) => log.scheduleItemId === itemId);
+  }
+
+  async function setVisibility(item, visible) {
+    await onSetVisibility(item.id, visible);
+  }
+
   return (
     <>
-      <PageTitle eyebrow="Cronograma" title="Datas por etapa" subtitle="Previsto, real, atraso e percentual." onBack={() => setScreen('workPanel')}>
-        <ActionButton Icon={Pencil} onClick={() => updateStage(firstOpen, { status: 'Em andamento' })}>Editar cronograma</ActionButton>
+      <PageTitle eyebrow="Cronograma" title="Cronograma inteligente" subtitle="Etapas, subitens e diario de campo especificos desta obra." onBack={() => setScreen('workPanel')}>
+        <ActionButton Icon={Plus} onClick={() => setItemModal({ itemType: 'stage' })}>Adicionar etapa</ActionButton>
       </PageTitle>
-      <section className="schedule-table">
-        <div className="table-head">
-          <span>Etapa</span>
-          <span>Inicio previsto</span>
-          <span>Fim previsto</span>
-          <span>Inicio real</span>
-          <span>Fim real</span>
-          <span>Status</span>
-          <span>Atraso</span>
-          <span>%</span>
-        </div>
-        {stages.map((stage, index) => (
-          <article className="table-row" key={stage.id}>
-            <strong>{stage.nome}</strong>
-            <span>{stage.inicio}</span>
-            <span>{stage.fim}</span>
-            <span>{index < 4 ? stage.inicio : '-'}</span>
-            <span>{stage.status === 'Concluida' ? stage.fim : '-'}</span>
-            <StatusPill status={stage.status} />
-            <span>{stage.status === 'Atencao' ? '2 dias' : '0 dia'}</span>
-            <span>{stage.percentual}%</span>
-          </article>
-        ))}
+      <section className="schedule-toolbar">
+        <span><strong>{stages.length}</strong> etapas ativas</span>
+        <span><strong>{visibleItems.length - stages.length}</strong> subitens</span>
+        <span><strong>{logs.length}</strong> registros de visita</span>
+        <button className="schedule-gantt-link" type="button" onClick={() => setGanttOpen(true)}>
+          <BarChart3 size={17} /> Abrir cronograma Gantt
+        </button>
+        {removedEntries.length ? (
+          <button type="button" onClick={() => setShowRemoved((current) => !current)}>
+            {showRemoved ? 'Ocultar removidos' : `Removidos (${removedEntries.length})`}
+          </button>
+        ) : null}
       </section>
+
+      {error ? <p className="auth-message error">{error}</p> : null}
+
+      <section className="smart-schedule">
+        {stages.map((stage) => {
+          const children = childrenFor(stage.id);
+          return (
+            <details className="schedule-stage-group" key={stage.id} open>
+              <summary>
+                <div>
+                  <strong>{stage.nome}</strong>
+                  <span>{children.length} subitem{children.length === 1 ? '' : 's'}</span>
+                </div>
+              </summary>
+              <div className="schedule-stage-body">
+                <ScheduleDates item={stage} />
+                <div className="schedule-actions stage-only">
+                  <button type="button" onClick={() => setItemModal(stage)}><Pencil size={17} /> Editar descricao</button>
+                  <button type="button" onClick={() => setItemModal({ itemType: 'task', parentId: stage.id })}><Plus size={17} /> Subitem</button>
+                  <button className="danger" type="button" disabled={saving} onClick={() => setVisibility(stage, false)}><Minus size={17} /> Remover</button>
+                </div>
+
+                <div className="schedule-subitems">
+                  {children.map((item) => {
+                    const itemLogs = logsFor(item.id);
+                    return (
+                      <article className="schedule-subitem" key={item.id}>
+                        <div className="schedule-subitem-main">
+                          <button
+                            className={`schedule-check ${item.status === 'Concluida' ? 'checked' : ''}`}
+                            type="button"
+                            aria-label={item.status === 'Concluida' ? 'Reabrir subitem' : 'Concluir subitem'}
+                            onClick={() => onUpdateItem(item.id, {
+                              status: item.status === 'Concluida' ? 'Nao iniciado' : 'Concluida',
+                              percentual: item.status === 'Concluida' ? 0 : 100,
+                              fimReal: item.status === 'Concluida' ? '' : new Date().toISOString().slice(0, 10),
+                            })}
+                          >
+                            <CheckCircle2 size={20} />
+                          </button>
+                          <div>
+                            <strong>{item.nome}</strong>
+                            <span>{itemLogs.length} registros - {scheduleDateLabel(item.inicioPrevisto)} ate {scheduleDateLabel(item.fimPrevisto)}</span>
+                          </div>
+                          <StatusPill status={item.status} />
+                        </div>
+                        <ScheduleQuickDates item={item} saving={saving} onSave={onUpdateItem} />
+                        <div className="schedule-actions compact">
+                          <button type="button" onClick={() => setItemModal(item)}><Pencil size={16} /> Editar</button>
+                          <button type="button" onClick={() => setLogItem(item)}><ClipboardCheck size={16} /> Diario</button>
+                          <button type="button" onClick={() => addPhoto(item.nome)}><Camera size={16} /> Foto</button>
+                          <button className="danger" type="button" disabled={saving} onClick={() => setVisibility(item, false)}><Minus size={16} /> Remover</button>
+                        </div>
+                        {itemLogs.slice(0, 2).map((log) => <ScheduleLogSummary log={log} key={log.id} />)}
+                      </article>
+                    );
+                  })}
+                  {!children.length ? <p className="schedule-empty">Nenhum subitem. Use + Subitem para detalhar esta etapa.</p> : null}
+                </div>
+              </div>
+            </details>
+          );
+        })}
+        {!stages.length ? <EmptyNotice Icon={CalendarDays} title="Cronograma vazio" text="Adicione uma etapa ou monte o modelo padrao." /> : null}
+      </section>
+
+      {showRemoved ? (
+        <section className="schedule-removed">
+          <h2>Itens removidos desta obra</h2>
+          <p>Os registros continuam no banco. Restaurar apenas devolve o item ao cronograma.</p>
+          {removedEntries.map((item) => (
+            <div key={item.id}>
+              <span>{item.itemType === 'stage' ? 'Etapa' : 'Subitem'}: <strong>{item.nome}</strong></span>
+              <button type="button" disabled={saving} onClick={() => setVisibility(item, true)}><Plus size={16} /> Restaurar</button>
+            </div>
+          ))}
+        </section>
+      ) : null}
+
+      {itemModal ? (
+        <ScheduleItemModal
+          item={itemModal}
+          saving={saving}
+          onClose={() => setItemModal(null)}
+          onSave={async (values) => {
+            const saved = await onSaveItem(values);
+            if (saved) setItemModal(null);
+          }}
+        />
+      ) : null}
+
+      {logItem ? (
+        <ScheduleLogModal
+          item={logItem}
+          saving={saving}
+          onClose={() => setLogItem(null)}
+          onSave={async (values, addPhotoAfter) => {
+            const saved = await onSaveLog(values);
+            if (!saved) return;
+            setLogItem(null);
+            if (addPhotoAfter) addPhoto(logItem.nome);
+          }}
+        />
+      ) : null}
+
+      {ganttOpen ? <ScheduleGanttModal items={visibleItems} onClose={() => setGanttOpen(false)} /> : null}
     </>
   );
+}
+
+function ScheduleGanttModal({ items, onClose }) {
+  const [labelWidth, setLabelWidth] = useState(() => (window.innerWidth <= 760 ? 210 : 270));
+  const [timelineWidth, setTimelineWidth] = useState(900);
+  const resizeRef = useRef(null);
+  const stages = items
+    .filter((item) => !item.parentId)
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+  const rows = stages.flatMap((stage) => [
+    { ...stage, depth: 0 },
+    ...items
+      .filter((item) => item.parentId === stage.id)
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((item) => ({ ...item, depth: 1 })),
+  ]);
+  const datedRows = rows.filter((item) => ganttStartDate(item) && ganttEndDate(item));
+  const undatedRows = rows.filter((item) => !ganttStartDate(item) || !ganttEndDate(item));
+  const timeline = buildGanttTimeline(datedRows);
+  const stateCounts = rows.reduce((counts, item) => {
+    const state = ganttStageState(item);
+    counts[state] += 1;
+    return counts;
+  }, { completed: 0, progressing: 0, late: 0, planned: 0 });
+
+  useEffect(() => {
+    function closeOnEscape(event) {
+      if (event.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [onClose]);
+
+  useEffect(() => {
+    function resizeColumn(event) {
+      const resize = resizeRef.current;
+      if (!resize) return;
+      const width = resize.startWidth + event.clientX - resize.startX;
+      if (resize.column === 'label') {
+        setLabelWidth(Math.min(520, Math.max(180, width)));
+      } else {
+        setTimelineWidth(Math.min(2600, Math.max(540, width)));
+      }
+    }
+
+    function stopResize() {
+      if (!resizeRef.current) return;
+      resizeRef.current = null;
+      document.body.classList.remove('gantt-resizing');
+    }
+
+    window.addEventListener('pointermove', resizeColumn);
+    window.addEventListener('pointerup', stopResize);
+    window.addEventListener('pointercancel', stopResize);
+    window.addEventListener('mousemove', resizeColumn);
+    window.addEventListener('mouseup', stopResize);
+    return () => {
+      window.removeEventListener('pointermove', resizeColumn);
+      window.removeEventListener('pointerup', stopResize);
+      window.removeEventListener('pointercancel', stopResize);
+      window.removeEventListener('mousemove', resizeColumn);
+      window.removeEventListener('mouseup', stopResize);
+      document.body.classList.remove('gantt-resizing');
+    };
+  }, []);
+
+  function startResize(column, event) {
+    event.preventDefault();
+    resizeRef.current = {
+      column,
+      startX: event.clientX,
+      startWidth: column === 'label' ? labelWidth : timelineWidth,
+    };
+    document.body.classList.add('gantt-resizing');
+  }
+
+  function resizeWithKeyboard(column, event) {
+    if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+    event.preventDefault();
+    const direction = event.key === 'ArrowRight' ? 1 : -1;
+    const step = event.shiftKey ? 60 : 20;
+    if (column === 'label') {
+      setLabelWidth((width) => Math.min(520, Math.max(180, width + direction * step)));
+    } else {
+      setTimelineWidth((width) => Math.min(2600, Math.max(540, width + direction * step)));
+    }
+  }
+
+  return (
+    <div
+      className="modal-backdrop gantt-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section className="gantt-modal" role="dialog" aria-modal="true" aria-labelledby="gantt-title">
+        <header className="gantt-head">
+          <div>
+            <span>Visao geral da obra</span>
+            <h2 id="gantt-title">Cronograma Gantt</h2>
+            <p>Planejado, executado, em andamento e atrasos das etapas principais.</p>
+          </div>
+          <IconButton label="Fechar" Icon={X} onClick={onClose} />
+        </header>
+
+        <div className="gantt-legend" aria-label="Legenda do cronograma">
+          <span><i className="completed" /> Concluido <strong>{stateCounts.completed}</strong></span>
+          <span><i className="progressing" /> Em andamento <strong>{stateCounts.progressing}</strong></span>
+          <span><i className="late" /> Atrasado <strong>{stateCounts.late}</strong></span>
+          <span><i className="planned" /> Nao iniciado <strong>{stateCounts.planned}</strong></span>
+          <span><i className="baseline" /> Periodo previsto</span>
+        </div>
+
+        {timeline ? (
+          <div className="gantt-scroll">
+            <div className="gantt-resize-help">
+              <span>Arraste os divisores azuis para ajustar a coluna de etapas.</span>
+              <label>
+                Largura das datas
+                <input
+                  type="range"
+                  min="540"
+                  max="2600"
+                  step="20"
+                  value={timelineWidth}
+                  aria-label="Ajustar largura das colunas de datas"
+                  onChange={(event) => setTimelineWidth(Number(event.target.value))}
+                />
+              </label>
+            </div>
+            <div
+              className="gantt-chart"
+              style={{
+                gridTemplateColumns: `${labelWidth}px minmax(${timelineWidth}px, 1fr)`,
+                minWidth: `${labelWidth + timelineWidth}px`,
+              }}
+            >
+              <div className="gantt-axis-label">
+                Etapa
+                <button
+                  className="gantt-column-resizer gantt-label-resizer"
+                  type="button"
+                  role="separator"
+                  aria-label="Redimensionar coluna de etapas"
+                  aria-orientation="vertical"
+                  aria-valuemin="180"
+                  aria-valuemax="520"
+                  aria-valuenow={Math.round(labelWidth)}
+                  title="Arraste para ajustar a coluna de etapas"
+                  onPointerDown={(event) => startResize('label', event)}
+                  onMouseDown={(event) => startResize('label', event)}
+                  onKeyDown={(event) => resizeWithKeyboard('label', event)}
+                />
+              </div>
+              <div className="gantt-axis">
+                {timeline.markers.map((marker) => (
+                  <span key={marker.key} style={{ left: `${marker.left}%` }}>{marker.label}</span>
+                ))}
+                {timeline.todayLeft !== null ? (
+                  <i className="gantt-today-line" style={{ left: `${timeline.todayLeft}%` }}>
+                    <span>Hoje</span>
+                  </i>
+                ) : null}
+                <button
+                  className="gantt-column-resizer gantt-timeline-resizer"
+                  type="button"
+                  role="separator"
+                  aria-label="Redimensionar colunas de datas"
+                  aria-orientation="vertical"
+                  aria-valuemin="540"
+                  aria-valuemax="2600"
+                  aria-valuenow={Math.round(timelineWidth)}
+                  title="Arraste para aumentar ou diminuir as colunas de datas"
+                  onPointerDown={(event) => startResize('timeline', event)}
+                  onMouseDown={(event) => startResize('timeline', event)}
+                  onKeyDown={(event) => resizeWithKeyboard('timeline', event)}
+                />
+              </div>
+
+              {rows.map((item) => {
+                const hasDates = Boolean(ganttStartDate(item) && ganttEndDate(item));
+                const placement = hasDates ? ganttPlacement(item, timeline) : null;
+                const state = ganttStageState(item);
+                const progressValue = ganttProgressValue(item);
+                return (
+                  <React.Fragment key={item.id}>
+                    <div className={`gantt-row-label ${item.depth ? 'child' : 'stage'}`}>
+                      <strong>{item.nome}</strong>
+                      <span>{item.depth ? 'Subitem' : 'Etapa'} - {ganttStateLabel(state)} - {progressValue}%</span>
+                    </div>
+                    <div className={`gantt-track ${item.depth ? 'child' : 'stage'} ${hasDates ? '' : 'undated'}`}>
+                      {hasDates ? (
+                        <>
+                          <span
+                            className="gantt-plan-bar"
+                            style={{ left: `${placement.left}%`, width: `${placement.width}%` }}
+                            title={`Previsto: ${scheduleDateLabel(item.inicioPrevisto)} a ${scheduleDateLabel(item.fimPrevisto)}`}
+                          />
+                          <span
+                            className={`gantt-progress-bar ${state}`}
+                            style={{ left: `${placement.left}%`, width: `${placement.progressWidth}%` }}
+                            title={`${ganttStateLabel(state)}: ${progressValue}%`}
+                          >
+                            {placement.progressWidth >= 9 ? `${progressValue}%` : ''}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="gantt-missing-dates">Defina inicio e conclusao no cronograma</span>
+                      )}
+                    </div>
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <EmptyNotice Icon={CalendarDays} title="Datas ainda nao informadas" text="Edite as etapas e preencha inicio e fim previstos para montar o grafico." />
+        )}
+
+        {undatedRows.length ? <p className="gantt-undated-note">{undatedRows.length} itens aparecem sem barra porque ainda nao possuem periodo previsto.</p> : null}
+      </section>
+    </div>
+  );
+}
+
+function buildGanttTimeline(items) {
+  const dates = items.flatMap((item) => [ganttStartDate(item), ganttEndDate(item)]).filter(Boolean);
+  if (!dates.length) return null;
+
+  const minDate = new Date(Math.min(...dates.map((date) => date.getTime())));
+  const maxDate = new Date(Math.max(...dates.map((date) => date.getTime())));
+  minDate.setDate(minDate.getDate() - 1);
+  maxDate.setDate(maxDate.getDate() + 1);
+  const totalDays = Math.max(1, daysBetween(minDate, maxDate));
+  const markers = [];
+  const markerStep = totalDays <= 31 ? 3 : totalDays <= 90 ? 7 : totalDays <= 180 ? 14 : 30;
+  const cursor = new Date(minDate);
+
+  while (cursor <= maxDate) {
+    markers.push({
+      key: cursor.toISOString(),
+      label: formatDayMonth(cursor),
+      left: (daysBetween(minDate, cursor) / totalDays) * 100,
+    });
+    cursor.setDate(cursor.getDate() + markerStep);
+  }
+  if (markers.at(-1)?.left < 96) {
+    markers.push({
+      key: `end-${maxDate.toISOString()}`,
+      label: formatDayMonth(maxDate),
+      left: 100,
+    });
+  }
+
+  const today = parseScheduleDate(new Date().toISOString().slice(0, 10));
+  const todayLeft = today >= minDate && today <= maxDate
+    ? (daysBetween(minDate, today) / totalDays) * 100
+    : null;
+  return { minDate, maxDate, totalDays, markers, todayLeft };
+}
+
+function formatDayMonth(date) {
+  return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' }).format(date);
+}
+
+function ganttPlacement(item, timeline) {
+  const start = ganttStartDate(item);
+  const end = ganttEndDate(item);
+  const left = (daysBetween(timeline.minDate, start) / timeline.totalDays) * 100;
+  const width = Math.max(1.2, ((daysBetween(start, end) + 1) / timeline.totalDays) * 100);
+  const progress = ganttProgressValue(item);
+  return {
+    left,
+    width,
+    progressWidth: Math.max(progress > 0 ? 0.8 : 0, width * (progress / 100)),
+  };
+}
+
+function ganttProgressValue(item) {
+  return item.status === 'Concluida'
+    ? 100
+    : Math.min(100, Math.max(0, Number(item.percentual) || 0));
+}
+
+function ganttStageState(item) {
+  const percentual = Math.min(100, Math.max(0, Number(item.percentual) || 0));
+  if (item.status === 'Concluida' || percentual >= 100) return 'completed';
+  const plannedEnd = parseScheduleDate(item.fimPrevisto);
+  const today = parseScheduleDate(new Date().toISOString().slice(0, 10));
+  if (plannedEnd && plannedEnd < today) return 'late';
+  if (percentual > 0 || item.status === 'Em andamento' || item.inicioReal) return 'progressing';
+  return 'planned';
+}
+
+function ganttStateLabel(state) {
+  return {
+    completed: 'Concluido',
+    progressing: 'Em andamento',
+    late: 'Atrasado',
+    planned: 'Nao iniciado',
+  }[state];
+}
+
+function ganttStartDate(item) {
+  return parseScheduleDate(item.inicioPrevisto || item.inicioReal);
+}
+
+function ganttEndDate(item) {
+  return parseScheduleDate(item.fimPrevisto || item.fimReal || item.inicioPrevisto || item.inicioReal);
+}
+
+function parseScheduleDate(value) {
+  if (!value) return null;
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function daysBetween(start, end) {
+  return Math.round((end.getTime() - start.getTime()) / 86400000);
+}
+
+function ScheduleQuickDates({ item, saving, onSave }) {
+  const [inicioPrevisto, setInicioPrevisto] = useState(item.inicioPrevisto || '');
+  const [fimPrevisto, setFimPrevisto] = useState(item.fimPrevisto || '');
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    setInicioPrevisto(item.inicioPrevisto || '');
+    setFimPrevisto(item.fimPrevisto || '');
+  }, [item.inicioPrevisto, item.fimPrevisto]);
+
+  async function saveDates(event) {
+    event.preventDefault();
+    setMessage('');
+    if (inicioPrevisto && fimPrevisto && fimPrevisto < inicioPrevisto) {
+      setMessage('A conclusao deve ser igual ou posterior ao inicio.');
+      return;
+    }
+    const saved = await onSave(item.id, { inicioPrevisto, fimPrevisto });
+    if (saved) setMessage('Datas salvas.');
+  }
+
+  return (
+    <form className="schedule-quick-dates" onSubmit={saveDates}>
+      <label>
+        <span>Inicio previsto</span>
+        <input
+          type="date"
+          value={inicioPrevisto}
+          max={fimPrevisto || undefined}
+          onChange={(event) => {
+            setInicioPrevisto(event.target.value);
+            setMessage('');
+          }}
+        />
+      </label>
+      <label>
+        <span>Conclusao prevista</span>
+        <input
+          type="date"
+          value={fimPrevisto}
+          min={inicioPrevisto || undefined}
+          onChange={(event) => {
+            setFimPrevisto(event.target.value);
+            setMessage('');
+          }}
+        />
+      </label>
+      <button type="submit" disabled={saving}>
+        <Save size={16} /> {saving ? 'Salvando...' : 'Salvar datas'}
+      </button>
+      {message ? <small className={message === 'Datas salvas.' ? 'success' : 'error'}>{message}</small> : null}
+    </form>
+  );
+}
+
+function ScheduleDates({ item }) {
+  return (
+    <div className="schedule-dates">
+      <span>Inicio previsto: <strong>{scheduleDateLabel(item.inicioPrevisto)}</strong></span>
+      <span>Termino previsto: <strong>{scheduleDateLabel(item.fimPrevisto)}</strong></span>
+    </div>
+  );
+}
+
+function ScheduleLogSummary({ log }) {
+  return (
+    <article className="schedule-log-summary">
+      <strong>{scheduleDateLabel(log.visitDate)}</strong>
+      <span>{log.observacoes || log.checklist || 'Registro diario da obra'}</span>
+      {log.pedidoMaterial ? <small>Material: {log.pedidoMaterial}</small> : null}
+      {log.ferramentas ? <small>Ferramentas: {log.ferramentas}</small> : null}
+      {log.maoObra ? <small>Mao de obra: {log.maoObra}</small> : null}
+    </article>
+  );
+}
+
+function ScheduleItemModal({ item, saving, onClose, onSave }) {
+  const isStage = !item.parentId;
+
+  function submit(event) {
+    event.preventDefault();
+    const values = {
+      ...item,
+      ...Object.fromEntries(new FormData(event.currentTarget).entries()),
+    };
+    if (!isStage) {
+      values.percentual = Number(event.currentTarget.elements.percentual.value || 0);
+    }
+    onSave(values);
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <form className="issue-modal schedule-modal" onSubmit={submit}>
+        <div className="modal-head">
+          <div>
+            <span>{item.parentId ? 'Subitem da etapa' : 'Etapa da obra'}</span>
+            <h2>{item.id ? 'Editar cronograma' : 'Adicionar ao cronograma'}</h2>
+          </div>
+          <IconButton label="Fechar" Icon={X} onClick={onClose} />
+        </div>
+        <input type="hidden" name="id" defaultValue={item.id || ''} />
+        <input type="hidden" name="parentId" defaultValue={item.parentId || ''} />
+        <input type="hidden" name="itemType" defaultValue={item.parentId ? 'task' : 'stage'} />
+        <div className="form-grid modal-fields">
+          <Field label="Nome" name="nome" value={item.nome || ''} wide required />
+          {isStage ? (
+            <p className="schedule-stage-derived-note">As datas, o percentual e o status desta etapa sao calculados automaticamente pelos subitens.</p>
+          ) : (
+            <>
+              <Field label="Inicio previsto" name="inicioPrevisto" type="date" value={item.inicioPrevisto || ''} />
+              <Field label="Fim previsto" name="fimPrevisto" type="date" value={item.fimPrevisto || ''} />
+              <Field label="Inicio real" name="inicioReal" type="date" value={item.inicioReal || ''} />
+              <Field label="Fim real" name="fimReal" type="date" value={item.fimReal || ''} />
+              <label className="field">
+                <span>Status</span>
+                <select name="status" defaultValue={item.status || 'Nao iniciado'}>
+                  {['Nao iniciado', 'Em andamento', 'Atencao', 'Concluida'].map((status) => <option key={status}>{status}</option>)}
+                </select>
+              </label>
+              <Field label="Percentual" name="percentual" type="number" value={item.percentual ?? 0} />
+            </>
+          )}
+        </div>
+        <div className="form-actions">
+          <ActionButton Icon={Save} type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</ActionButton>
+          <ActionButton Icon={XCircle} variant="ghost" onClick={onClose}>Cancelar</ActionButton>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function ScheduleLogModal({ item, saving, onClose, onSave }) {
+  function submit(event) {
+    event.preventDefault();
+    const values = Object.fromEntries(new FormData(event.currentTarget).entries());
+    const submitter = event.nativeEvent.submitter;
+    onSave({ ...values, scheduleItemId: item.id }, submitter?.dataset?.action === 'photo');
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <form className="issue-modal schedule-modal" onSubmit={submit}>
+        <div className="modal-head">
+          <div>
+            <span>Diario da obra</span>
+            <h2>{item.nome}</h2>
+          </div>
+          <IconButton label="Fechar" Icon={X} onClick={onClose} />
+        </div>
+        <div className="form-grid modal-fields">
+          <Field label="Data da visita" name="visitDate" type="date" value={new Date().toISOString().slice(0, 10)} required />
+          <TextAreaField label="Checklist executado" name="checklist" value="" />
+          <TextAreaField label="Observacoes" name="observacoes" value="" />
+          <TextAreaField label="Pedido de material" name="pedidoMaterial" value="" />
+          <TextAreaField label="Ferramentas necessarias ou usadas" name="ferramentas" value="" />
+          <TextAreaField label="Mao de obra presente" name="maoObra" value="" />
+          <TextAreaField label="Observacao sobre fotos" name="fotosObservacao" value="" />
+        </div>
+        <div className="form-actions">
+          <button className="action-button primary" type="submit" data-action="save" disabled={saving}><Save size={20} /><span>Salvar registro</span></button>
+          <button className="action-button secondary" type="submit" data-action="photo" disabled={saving}><Camera size={20} /><span>Salvar e adicionar fotos</span></button>
+          <ActionButton Icon={XCircle} variant="ghost" onClick={onClose}>Cancelar</ActionButton>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function scheduleDateLabel(value) {
+  if (!value) return '-';
+  const [year, month, day] = String(value).split('-');
+  return year && month && day ? `${day}/${month}/${year}` : value;
 }
 
 function Issues({ issues, addIssue, resolveIssue, setScreen }) {
@@ -1774,12 +2706,61 @@ function resolveLocation(values) {
   return { city, neighborhood };
 }
 
+function buildAiProjectDraft(result, selectedCity) {
+  const values = result.valores || {};
+  const requestedCity = normalizeSearch(values.cidade);
+  const city = cityCatalog.find((item) => {
+    const catalogName = normalizeSearch(item.nome);
+    return requestedCity && (requestedCity === catalogName || requestedCity.includes(catalogName));
+  }) || selectedCity || cityCatalog[0];
+  const neighborhoods = neighborhoodCatalog[city.id] || [];
+  const requestedNeighborhood = normalizeSearch(values.bairro);
+  const neighborhood = neighborhoods.find((item) => {
+    const catalogName = normalizeSearch(item.nome);
+    return requestedNeighborhood
+      && (requestedNeighborhood === catalogName
+        || requestedNeighborhood.includes(catalogName)
+        || catalogName.includes(requestedNeighborhood));
+  }) || neighborhoods[0];
+  const warnings = [...(result.avisos || [])];
+
+  if (values.cidade && city.nome !== values.cidade) {
+    warnings.push(`Cidade interpretada como "${values.cidade}". Confira a cidade selecionada.`);
+  }
+  if (values.bairro && neighborhood?.nome !== values.bairro) {
+    warnings.push(`Bairro interpretado como "${values.bairro}". Confira o bairro selecionado.`);
+  }
+
+  return {
+    ...values,
+    cidadeId: city.id,
+    bairroId: neighborhood?.id || '',
+    arquivo: result.arquivo,
+    modelo: result.modelo,
+    avisos: [...new Set(warnings.filter(Boolean))],
+  };
+}
+
+function formatGeminiProjectError(result) {
+  if (result?.codigo === 'gemini_api_key_missing') {
+    return 'A analise por IA ainda nao esta configurada. Reinicie o Obras depois de configurar a chave do Gemini.';
+  }
+  if (result?.httpStatus === 429 || result?.status === 'RESOURCE_EXHAUSTED') {
+    return 'A cota gratuita do Gemini foi atingida. Aguarde a liberacao e tente novamente.';
+  }
+  if (result?.httpStatus === 400 || result?.status === 'INVALID_ARGUMENT') {
+    return 'O Gemini recusou o arquivo. Confira o formato, o tamanho e tente novamente.';
+  }
+  return result?.motivo || 'Nao foi possivel analisar o projeto.';
+}
+
 function App() {
   const [screen, setScreenState] = useState('login');
   const screenRef = useRef('login');
   const screenHistoryRef = useRef([]);
-  const [data, setData] = useState(loadData);
+  const [data, setData] = useState(() => (supabaseConfigured ? initialData : loadData()));
   const [session, setSession] = useState(null);
+  const [authInitializing, setAuthInitializing] = useState(supabaseConfigured);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
   const [dataLoading, setDataLoading] = useState(false);
@@ -1792,12 +2773,15 @@ function App() {
   const [issueError, setIssueError] = useState('');
   const [stageSaving, setStageSaving] = useState(false);
   const [stageError, setStageError] = useState('');
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [scheduleError, setScheduleError] = useState('');
   const [obrasUsers, setObrasUsers] = useState(localObrasUsers);
   const [currentObrasUser, setCurrentObrasUser] = useState(localObrasUsers[0]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersSaving, setUsersSaving] = useState(false);
   const [usersError, setUsersError] = useState('');
   const [usersMessage, setUsersMessage] = useState('');
+  const [aiProjectDraft, setAiProjectDraft] = useState(null);
   const [selectedCity, setSelectedCity] = useState(cityCatalog[0]);
   const [selectedNeighborhood, setSelectedNeighborhood] = useState(null);
   const [selectedWorkId, setSelectedWorkId] = useState(initialData.works[0].id);
@@ -1832,7 +2816,9 @@ function App() {
   }), [goBack, screen]);
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    if (!supabaseConfigured) {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
   }, [data]);
 
   useEffect(() => {
@@ -1940,6 +2926,32 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!supabaseConfigured) {
+      setAuthInitializing(false);
+      return undefined;
+    }
+
+    let mounted = true;
+    getSession()
+      .then((existingSession) => {
+        if (!mounted || !existingSession) return;
+        setSession(existingSession);
+        screenRef.current = 'dashboard';
+        setScreenState('dashboard');
+      })
+      .catch((error) => {
+        if (mounted) setAuthError(error.message || 'Nao foi possivel restaurar a sessao.');
+      })
+      .finally(() => {
+        if (mounted) setAuthInitializing(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!supabaseConfigured || !session) return;
     void hydrateRemoteSession();
   }, [session?.user?.id]);
@@ -1961,8 +2973,21 @@ function App() {
   const canManageObrasUsers = !supabaseConfigured || ['owner', 'admin'].includes(currentObrasUser?.role);
 
   async function hydrateRemoteSession() {
-    await loadRemoteUsers();
-    await loadRemoteData();
+    try {
+      const activeUser = await loadRemoteUsers();
+      if (!activeUser) {
+        await signOut();
+        setSession(null);
+        setCurrentObrasUser(null);
+        setObrasUsers([]);
+        setAuthError('Este e-mail nao esta cadastrado no sistema Obras.');
+        setScreen('login');
+        return;
+      }
+      await loadRemoteData();
+    } catch {
+      // The specific loading error is already displayed by the failing request.
+    }
   }
 
   async function loadRemoteUsers() {
@@ -1975,12 +3000,14 @@ function App() {
     setUsersLoading(true);
     setUsersError('');
     try {
-      const currentUser = await claimObrasUser();
+      const currentUser = await ensureCurrentObrasUser();
       const users = await fetchObrasUsers();
       setCurrentObrasUser(currentUser || users.find((item) => item.authUserId === session.user.id) || null);
       setObrasUsers(users);
+      return currentUser || users.find((item) => item.authUserId === session.user.id) || null;
     } catch (error) {
       setUsersError(error.message || 'Nao foi possivel carregar usuarios do Obras.');
+      throw error;
     } finally {
       setUsersLoading(false);
     }
@@ -1993,9 +3020,14 @@ function App() {
       let works = await fetchProjects();
 
       if (!works.length) {
-        const created = await insertProject(initialData.works[0]);
-        await seedProjectChildren(created.id, initialData);
-        works = [created];
+        setData({
+          ...initialData,
+          works: [],
+          ...Object.fromEntries(projectCollections.map((collection) => [collection, []])),
+        });
+        setSelectedWorkId('');
+        setDataLoading(false);
+        return;
       }
 
       const cityProject = works.find((work) => work.cidadeId === selectedCity.id);
@@ -2004,7 +3036,10 @@ function App() {
         : cityProject?.id || works[0].id;
       const project = works.find((work) => work.id === projectId);
       const projectCity = cityCatalog.find((city) => city.id === project?.cidadeId);
-      const children = await fetchProjectChildren(projectId);
+      const { projectSummary, ...children } = await loadProjectChildren(projectId, project.status);
+      works = works.map((work) => (
+        work.id === projectId ? { ...work, ...projectSummary } : work
+      ));
       setData({ ...initialData, ...children, works });
       if (projectCity) setSelectedCity(projectCity);
       setSelectedNeighborhood(null);
@@ -2021,13 +3056,97 @@ function App() {
     setDataLoading(true);
     setDataError('');
     try {
-      const children = await fetchProjectChildren(projectId);
-      setData((current) => ({ ...current, ...children }));
+      const currentProject = data.works.find((work) => work.id === projectId);
+      const { projectSummary, ...children } = await loadProjectChildren(projectId, currentProject?.status);
+      setData((current) => ({
+        ...current,
+        ...children,
+        works: current.works.map((work) => (
+          work.id === projectId ? { ...work, ...projectSummary } : work
+        )),
+      }));
       setDataLoading(false);
     } catch (error) {
       setDataError(error.message || 'Nao foi possivel carregar a obra.');
       setDataLoading(false);
     }
+  }
+
+  async function loadProjectChildren(projectId, currentStatus = 'Nao iniciada') {
+    await ensureProjectSchedule(projectId, defaultScheduleBlueprint);
+    let children = await fetchProjectChildren(projectId);
+    const stagesWithoutChildren = children.scheduleItems.filter((item) => (
+      !item.parentId
+      && !children.scheduleItems.some((candidate) => candidate.parentId === item.id)
+    ));
+
+    if (stagesWithoutChildren.length) {
+      await Promise.all(stagesWithoutChildren.map((stage) => insertChild('scheduleItems', projectId, {
+        parentId: stage.id,
+        nome: stage.nome,
+        itemType: 'task',
+        inicioPrevisto: stage.inicioPrevisto,
+        fimPrevisto: stage.fimPrevisto,
+        inicioReal: stage.inicioReal,
+        fimReal: stage.fimReal,
+        status: stage.status,
+        percentual: stage.percentual,
+        sortOrder: 0,
+        visible: stage.visible,
+      })));
+      children = await fetchProjectChildren(projectId);
+    }
+
+    const initialChildren = children.scheduleItems.filter((item) => item.parentId);
+    const initialStages = children.scheduleItems.filter((item) => !item.parentId);
+    const childrenToSeed = initialStages.flatMap((stage) => {
+      const stageChildren = initialChildren.filter((item) => item.parentId === stage.id);
+      if (stageChildren.length !== 1) return [];
+      const child = stageChildren[0];
+      const childIsBlank = !child.inicioPrevisto
+        && !child.fimPrevisto
+        && !child.inicioReal
+        && !child.fimReal
+        && child.percentual === 0
+        && child.status === 'Nao iniciado';
+      const stageHasData = Boolean(
+        stage.inicioPrevisto
+        || stage.fimPrevisto
+        || stage.inicioReal
+        || stage.fimReal
+        || stage.percentual > 0
+        || stage.status !== 'Nao iniciado',
+      );
+      return childIsBlank && stageHasData && child.nome === stage.nome
+        ? [{ child, stage }]
+        : [];
+    });
+
+    if (childrenToSeed.length) {
+      await Promise.all(childrenToSeed.map(({ child, stage }) => updateChild('scheduleItems', child.id, {
+        inicioPrevisto: stage.inicioPrevisto,
+        fimPrevisto: stage.fimPrevisto,
+        inicioReal: stage.inicioReal,
+        fimReal: stage.fimReal,
+        status: stage.status,
+        percentual: stage.status === 'Concluida' ? 100 : stage.percentual,
+      })));
+      children = await fetchProjectChildren(projectId);
+    }
+
+    const derivedItems = deriveScheduleStages(children.scheduleItems);
+    const updates = getDerivedStageUpdates(children.scheduleItems, derivedItems);
+    const percentual = calculateScheduleProgress(derivedItems);
+    const status = getEffectiveWorkStatus({ status: currentStatus, percentual });
+    if (updates.length) {
+      await Promise.all(updates.map(({ id, patch }) => updateChild('scheduleItems', id, patch)));
+    }
+    await updateProject(projectId, { percentual, status });
+    children.scheduleItems = derivedItems;
+    return {
+      ...children,
+      projectSummary: { percentual, status },
+    };
   }
 
   async function handleCityChange(cityId, destination = 'dashboard') {
@@ -2071,7 +3190,7 @@ function App() {
     setAuthLoading(true);
     try {
       const nextSession = await signIn(email, password);
-      const obrasUser = await claimObrasUser();
+      const obrasUser = await ensureCurrentObrasUser(nextSession);
       if (!obrasUser) {
         await signOut();
         setSession(null);
@@ -2090,7 +3209,31 @@ function App() {
     }
   }
 
+  async function ensureCurrentObrasUser(activeSession = session) {
+    const claimedUser = await claimObrasUser();
+    if (claimedUser) return claimedUser;
+
+    const email = activeSession?.user?.email || '';
+    const metadataName = activeSession?.user?.user_metadata?.name
+      || activeSession?.user?.user_metadata?.full_name;
+    const defaultName = metadataName || email.split('@')[0] || 'Proprietario Obras';
+
+    try {
+      return await bootstrapObrasOwner({
+        nome: defaultName,
+        cidadeId: selectedCity.id,
+        cidade: selectedCity.nome,
+      });
+    } catch (error) {
+      if (String(error?.message || '').includes('conta inicial do Obras ja foi criada')) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
   async function createWork(values) {
+    setDataError('');
     const { city, neighborhood } = resolveLocation(values);
     let nextWork = {
       id: makeId('obra'),
@@ -2119,10 +3262,13 @@ function App() {
         nextWork = await insertProject(nextWork);
         await seedProjectChildren(nextWork.id, {
           ...initialData,
+          scheduleItems: [],
+          scheduleLogs: [],
           photos: [],
           plsItems: [],
           issues: [],
         });
+        await ensureProjectSchedule(nextWork.id, defaultScheduleBlueprint);
         const children = await fetchProjectChildren(nextWork.id);
         setData((current) => ({ ...current, ...children, works: [nextWork, ...current.works] }));
       } catch (error) {
@@ -2141,17 +3287,21 @@ function App() {
 
   async function updateStage(id, patch) {
     if (!id) return;
+    const percentual = Math.max(activeWork.percentual, patch.percentual || 0);
+    const status = getEffectiveWorkStatus({ ...activeWork, percentual });
     setData((current) => ({
       ...current,
       stages: current.stages.map((stage) => (stage.id === id ? { ...stage, ...patch } : stage)),
-      works: current.works.map((work) => (work.id === activeWork.id ? { ...work, percentual: Math.max(work.percentual, patch.percentual || 0) } : work)),
+      works: current.works.map((work) => (
+        work.id === activeWork.id ? { ...work, percentual, status } : work
+      )),
     }));
 
     if (supabaseConfigured && session) {
       try {
         await updateChild('stages', id, patch);
         if (patch.percentual !== undefined) {
-          await updateProject(activeWork.id, { percentual: Math.max(activeWork.percentual, patch.percentual) });
+          await updateProject(activeWork.id, { percentual, status });
         }
       } catch (error) {
         setDataError(error.message || 'Nao foi possivel atualizar a etapa.');
@@ -2228,9 +3378,212 @@ function App() {
     await saveStage({ ...stage, status: 'Inativo' });
   }
 
+  function commitScheduleItems(nextItems, percentual, status) {
+    setData((current) => ({
+      ...current,
+      scheduleItems: nextItems,
+      works: current.works.map((work) => (
+        work.id === activeWork.id ? { ...work, percentual, status } : work
+      )),
+    }));
+  }
+
+  async function persistScheduleDerivations(previousItems, nextItems) {
+    const percentual = calculateScheduleProgress(nextItems);
+    const status = getEffectiveWorkStatus({ ...activeWork, percentual });
+    if (supabaseConfigured && session) {
+      const stageUpdates = getDerivedStageUpdates(previousItems, nextItems);
+      await Promise.all(stageUpdates.map(({ id, patch }) => updateChild('scheduleItems', id, patch)));
+      await updateProject(activeWork.id, { percentual, status });
+    }
+    commitScheduleItems(nextItems, percentual, status);
+  }
+
+  async function saveScheduleItem(values) {
+    if (!activeWork?.id) {
+      setScheduleError('Selecione uma obra antes de alterar o cronograma.');
+      return null;
+    }
+
+    const previousItems = data.scheduleItems;
+    const parentId = values.parentId || '';
+    const normalized = {
+      nome: String(values.nome || '').trim() || (parentId ? 'Novo subitem' : 'Nova etapa'),
+      parentId,
+      itemType: parentId ? 'task' : 'stage',
+      visible: values.visible !== false,
+      ...(parentId ? {
+        inicioPrevisto: values.inicioPrevisto || '',
+        fimPrevisto: values.fimPrevisto || '',
+        inicioReal: values.inicioReal || '',
+        fimReal: values.fimReal || '',
+        status: values.status || 'Nao iniciado',
+        percentual: Math.min(100, Math.max(0, Number(values.percentual) || 0)),
+      } : {}),
+    };
+
+    setScheduleSaving(true);
+    setScheduleError('');
+    try {
+      let saved;
+      let rawItems;
+      if (values.id) {
+        saved = { ...previousItems.find((item) => item.id === values.id), ...normalized };
+        if (supabaseConfigured && session) {
+          await updateChild('scheduleItems', values.id, normalized);
+        }
+        rawItems = previousItems.map((item) => (item.id === values.id ? saved : item));
+      } else {
+        const siblings = previousItems.filter((item) => item.parentId === parentId);
+        const item = {
+          ...normalized,
+          id: makeId(parentId ? 'subitem' : 'etapa-cronograma'),
+          sortOrder: siblings.length
+            ? Math.max(...siblings.map((sibling) => Number(sibling.sortOrder) || 0)) + 1
+            : 0,
+        };
+        saved = supabaseConfigured && session
+          ? await insertChild('scheduleItems', activeWork.id, item)
+          : item;
+        rawItems = [...previousItems, saved];
+
+        if (!parentId) {
+          const initialChild = {
+            id: makeId('subitem'),
+            parentId: saved.id,
+            nome: saved.nome,
+            itemType: 'task',
+            inicioPrevisto: '',
+            fimPrevisto: '',
+            inicioReal: '',
+            fimReal: '',
+            status: 'Nao iniciado',
+            percentual: 0,
+            sortOrder: 0,
+            visible: true,
+          };
+          const savedChild = supabaseConfigured && session
+            ? await insertChild('scheduleItems', activeWork.id, initialChild)
+            : initialChild;
+          rawItems.push(savedChild);
+        }
+      }
+
+      const nextItems = deriveScheduleStages(rawItems);
+      await persistScheduleDerivations(previousItems, nextItems);
+      return saved;
+    } catch (error) {
+      setScheduleError(error.message || 'Nao foi possivel salvar o item do cronograma.');
+      return null;
+    } finally {
+      setScheduleSaving(false);
+    }
+  }
+
+  async function updateScheduleItem(id, patch) {
+    if (!id || scheduleSaving) return false;
+    const previousItems = data.scheduleItems;
+    const rawItems = previousItems.map((item) => (item.id === id ? { ...item, ...patch } : item));
+    const nextItems = deriveScheduleStages(rawItems);
+
+    setScheduleSaving(true);
+    setScheduleError('');
+    try {
+      if (supabaseConfigured && session) {
+        await updateChild('scheduleItems', id, patch);
+      }
+      await persistScheduleDerivations(previousItems, nextItems);
+      return true;
+    } catch (error) {
+      setScheduleError(error.message || 'Nao foi possivel atualizar o cronograma.');
+      return false;
+    } finally {
+      setScheduleSaving(false);
+    }
+  }
+
+  async function setScheduleItemVisibility(id, visible) {
+    if (!id || scheduleSaving) return false;
+    const previousItems = data.scheduleItems;
+    const target = previousItems.find((item) => item.id === id);
+    if (!target) return false;
+
+    const affectedIds = new Set([id]);
+    if (!target.parentId) {
+      previousItems
+        .filter((item) => item.parentId === id)
+        .forEach((item) => affectedIds.add(item.id));
+    }
+    const rawItems = previousItems.map((item) => (
+      affectedIds.has(item.id) ? { ...item, visible } : item
+    ));
+    const nextItems = deriveScheduleStages(rawItems);
+
+    setScheduleSaving(true);
+    setScheduleError('');
+    try {
+      if (supabaseConfigured && session) {
+        await Promise.all([...affectedIds].map((itemId) => (
+          updateChild('scheduleItems', itemId, { visible })
+        )));
+      }
+      await persistScheduleDerivations(previousItems, nextItems);
+      return true;
+    } catch (error) {
+      setScheduleError(error.message || 'Nao foi possivel alterar a exibicao deste item.');
+      return false;
+    } finally {
+      setScheduleSaving(false);
+    }
+  }
+
+  async function saveScheduleLog(values) {
+    if (!activeWork?.id || !values.scheduleItemId) {
+      setScheduleError('Selecione um item do cronograma antes de registrar a visita.');
+      return null;
+    }
+
+    const nextLog = {
+      ...values,
+      visitDate: values.visitDate || new Date().toISOString().slice(0, 10),
+    };
+    setScheduleSaving(true);
+    setScheduleError('');
+    try {
+      const saved = supabaseConfigured && session
+        ? await insertChild('scheduleLogs', activeWork.id, nextLog)
+        : { ...nextLog, id: makeId('diario'), createdAt: new Date().toISOString() };
+      setData((current) => ({
+        ...current,
+        scheduleLogs: [saved, ...current.scheduleLogs],
+      }));
+      return saved;
+    } catch (error) {
+      setScheduleError(error.message || 'Nao foi possivel salvar o diario da obra.');
+      return null;
+    } finally {
+      setScheduleSaving(false);
+    }
+  }
+
   function addPhoto(etapa) {
     setPhotoError('');
-    setPhotoDraftStage(etapa || activeStage?.nome || 'Fundacao');
+    const visibleItems = data.scheduleItems.filter((item) => item.visible !== false);
+    const exactSubitem = visibleItems.find((item) => item.parentId && item.nome === etapa);
+    const selectedStage = visibleItems.find((item) => !item.parentId && item.nome === etapa);
+    const firstStageChild = selectedStage
+      ? visibleItems
+          .filter((item) => item.parentId === selectedStage.id)
+          .sort((a, b) => a.sortOrder - b.sortOrder)[0]
+      : null;
+    const firstSubitem = visibleItems
+      .filter((item) => item.parentId)
+      .sort((a, b) => a.sortOrder - b.sortOrder)[0];
+    setPhotoDraftStage(
+      etapa === 'PLS Caixa'
+        ? etapa
+        : exactSubitem?.nome || firstStageChild?.nome || firstSubitem?.nome || etapa || 'Subitem da obra',
+    );
   }
 
   async function savePhoto({ etapa, tipo, observacao, files }) {
@@ -2472,6 +3825,17 @@ function App() {
   }
 
   function renderScreen() {
+    if (authInitializing) {
+      return (
+        <LoginScreen
+          onLogin={(event) => event.preventDefault()}
+          authError=""
+          authLoading
+          dbAvailable={supabaseConfigured}
+        />
+      );
+    }
+
     if (screen !== 'login' && dataLoading) {
       return <EmptyNotice Icon={Database} title="Carregando banco de dados" text="Sincronizando obras, etapas e pendencias." />;
     }
@@ -2513,9 +3877,9 @@ function App() {
       case 'works':
         return <Works selectedCity={selectedCity} selectedNeighborhood={selectedNeighborhood} works={cityWorks} openWork={(work) => { setSelectedWorkId(work.id); void loadProject(work.id); setScreen('workPanel'); }} setScreen={setScreen} />;
       case 'newWork':
-        return <NewWork createWork={createWork} setScreen={setScreen} selectedCity={selectedCity} />;
+        return <NewWork createWork={createWork} setScreen={setScreen} selectedCity={selectedCity} onProjectAnalyzed={setAiProjectDraft} />;
       case 'extractedData':
-        return <ExtractedData createWork={createWork} setScreen={setScreen} selectedCity={selectedCity} />;
+        return <ExtractedData createWork={createWork} setScreen={setScreen} draft={aiProjectDraft} />;
       case 'workPanel':
         return <WorkPanel obra={activeWork} data={cityData} setScreen={setScreen} />;
       case 'stages':
@@ -2523,11 +3887,24 @@ function App() {
       case 'stageDetail':
         return <StageDetail stage={activeStage} updateStage={updateStage} addPhoto={addPhoto} addIssue={addIssue} setScreen={setScreen} />;
       case 'photos':
-        return <Photos photos={data.photos} addPhoto={addPhoto} setScreen={setScreen} />;
+        return <Photos photos={data.photos} scheduleItems={data.scheduleItems} addPhoto={addPhoto} setScreen={setScreen} />;
       case 'pls':
         return <Pls plsItems={data.plsItems} updatePls={updatePls} addPhoto={addPhoto} setScreen={setScreen} />;
       case 'schedule':
-        return <Schedule stages={data.stages} updateStage={updateStage} setScreen={setScreen} />;
+        return (
+          <Schedule
+            items={data.scheduleItems}
+            logs={data.scheduleLogs}
+            saving={scheduleSaving}
+            error={scheduleError}
+            onSaveItem={saveScheduleItem}
+            onUpdateItem={updateScheduleItem}
+            onSetVisibility={setScheduleItemVisibility}
+            onSaveLog={saveScheduleLog}
+            addPhoto={addPhoto}
+            setScreen={setScreen}
+          />
+        );
       case 'issues':
         return <Issues issues={data.issues} addIssue={addIssue} resolveIssue={resolveIssue} setScreen={setScreen} />;
       case 'users':
@@ -2589,7 +3966,7 @@ function App() {
         {photoDraftStage ? (
           <PhotoUploadModal
             etapa={photoDraftStage}
-            stages={data.stages}
+            scheduleItems={data.scheduleItems}
             saving={photoSaving}
             error={photoError}
             onClose={() => {

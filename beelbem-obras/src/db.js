@@ -1,13 +1,21 @@
 import { createClient } from '@supabase/supabase-js';
 
-const fallbackSupabaseUrl = 'https://idgfttdliweqvnwigmnf.supabase.co';
-const fallbackSupabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlkZ2Z0dGRsaXdlcXZud2lnbW5mIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3OTU2NDgsImV4cCI6MjA5MzM3MTY0OH0.3OMV7AZtSqeifWy12p5Bq4lWA1pAVeQHh5w-mjlAdB8';
-
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || fallbackSupabaseUrl;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || fallbackSupabaseAnonKey;
+const obrasSupabaseUrl = import.meta.env.VITE_OBRAS_SUPABASE_URL || '';
+const obrasSupabaseAnonKey = import.meta.env.VITE_OBRAS_SUPABASE_ANON_KEY || '';
+const legacySupabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const legacySupabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const supabaseUrl = obrasSupabaseUrl || legacySupabaseUrl;
+const supabaseAnonKey = obrasSupabaseAnonKey || legacySupabaseAnonKey;
+const userInvitesEnabled = import.meta.env.VITE_OBRAS_USER_INVITES_ENABLED === 'true';
 const photoBucket = 'obras-photos';
 
 export const supabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+export const usingLegacySupabaseConfig = Boolean(
+  !obrasSupabaseUrl
+  && !obrasSupabaseAnonKey
+  && legacySupabaseUrl
+  && legacySupabaseAnonKey,
+);
 
 export const supabase = supabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey, {
@@ -22,6 +30,8 @@ export const supabase = supabaseConfigured
 
 const childTables = {
   stages: 'obras_stages',
+  scheduleItems: 'obras_project_schedule_items',
+  scheduleLogs: 'obras_schedule_daily_logs',
   photos: 'obras_photos',
   plsItems: 'obras_pls_items',
   issues: 'obras_issues',
@@ -140,6 +150,83 @@ export const rowMappers = {
       ...(patch.fotosFaltando !== undefined ? { fotos_faltando: patch.fotosFaltando } : {}),
       ...(patch.pendencias !== undefined ? { pendencias: patch.pendencias } : {}),
       ...(patch.sortOrder !== undefined ? { sort_order: patch.sortOrder } : {}),
+    }),
+  },
+  scheduleItems: {
+    fromDb: (row) => ({
+      id: row.id,
+      libraryItemId: row.library_item_id || '',
+      parentId: row.parent_item_id || '',
+      nome: row.nome,
+      itemType: row.item_type || 'task',
+      inicioPrevisto: row.inicio_previsto || '',
+      fimPrevisto: row.fim_previsto || '',
+      inicioReal: row.inicio_real || '',
+      fimReal: row.fim_real || '',
+      status: row.status || 'Nao iniciado',
+      percentual: row.percentual ?? 0,
+      sortOrder: row.sort_order ?? 0,
+      visible: row.visible !== false,
+    }),
+    toDb: (item, index = 0) => ({
+      ...(item.libraryItemId ? { library_item_id: item.libraryItemId } : {}),
+      parent_item_id: item.parentId || null,
+      nome: item.nome,
+      item_type: item.itemType || 'task',
+      inicio_previsto: item.inicioPrevisto || null,
+      fim_previsto: item.fimPrevisto || null,
+      inicio_real: item.inicioReal || null,
+      fim_real: item.fimReal || null,
+      status: item.status || 'Nao iniciado',
+      percentual: item.percentual ?? 0,
+      sort_order: item.sortOrder ?? index,
+      visible: item.visible !== false,
+    }),
+    patchToDb: (patch) => ({
+      ...(patch.parentId !== undefined ? { parent_item_id: patch.parentId || null } : {}),
+      ...(patch.nome !== undefined ? { nome: patch.nome } : {}),
+      ...(patch.inicioPrevisto !== undefined ? { inicio_previsto: patch.inicioPrevisto || null } : {}),
+      ...(patch.fimPrevisto !== undefined ? { fim_previsto: patch.fimPrevisto || null } : {}),
+      ...(patch.inicioReal !== undefined ? { inicio_real: patch.inicioReal || null } : {}),
+      ...(patch.fimReal !== undefined ? { fim_real: patch.fimReal || null } : {}),
+      ...(patch.status !== undefined ? { status: patch.status } : {}),
+      ...(patch.percentual !== undefined ? { percentual: patch.percentual } : {}),
+      ...(patch.sortOrder !== undefined ? { sort_order: patch.sortOrder } : {}),
+      ...(patch.visible !== undefined ? { visible: patch.visible } : {}),
+    }),
+  },
+  scheduleLogs: {
+    fromDb: (row) => ({
+      id: row.id,
+      scheduleItemId: row.schedule_item_id,
+      visitDate: row.visit_date || '',
+      checklist: row.checklist || '',
+      observacoes: row.observacoes || '',
+      pedidoMaterial: row.pedido_material || '',
+      ferramentas: row.ferramentas || '',
+      maoObra: row.mao_obra || '',
+      fotosObservacao: row.fotos_observacao || '',
+      createdBy: row.created_by || '',
+      createdAt: row.created_at || '',
+    }),
+    toDb: (item) => ({
+      schedule_item_id: item.scheduleItemId,
+      visit_date: item.visitDate || new Date().toISOString().slice(0, 10),
+      checklist: item.checklist || null,
+      observacoes: item.observacoes || null,
+      pedido_material: item.pedidoMaterial || null,
+      ferramentas: item.ferramentas || null,
+      mao_obra: item.maoObra || null,
+      fotos_observacao: item.fotosObservacao || null,
+    }),
+    patchToDb: (patch) => ({
+      ...(patch.visitDate !== undefined ? { visit_date: patch.visitDate } : {}),
+      ...(patch.checklist !== undefined ? { checklist: patch.checklist || null } : {}),
+      ...(patch.observacoes !== undefined ? { observacoes: patch.observacoes || null } : {}),
+      ...(patch.pedidoMaterial !== undefined ? { pedido_material: patch.pedidoMaterial || null } : {}),
+      ...(patch.ferramentas !== undefined ? { ferramentas: patch.ferramentas || null } : {}),
+      ...(patch.maoObra !== undefined ? { mao_obra: patch.maoObra || null } : {}),
+      ...(patch.fotosObservacao !== undefined ? { fotos_observacao: patch.fotosObservacao || null } : {}),
     }),
   },
   photos: {
@@ -313,7 +400,18 @@ export function onAuthStateChange(callback) {
 export async function claimObrasUser() {
   const { data, error } = await supabase.rpc('obras_claim_user');
   if (error) throw error;
-  return data ? obrasUserFromDb(data) : null;
+  return data?.id ? obrasUserFromDb(data) : null;
+}
+
+export async function bootstrapObrasOwner({ nome, cidadeId, cidade }) {
+  const { data, error } = await supabase.rpc('obras_bootstrap_owner', {
+    p_nome: nome,
+    p_cidade_id: cidadeId,
+    p_cidade: cidade,
+  });
+
+  if (error) throw error;
+  return data?.id ? obrasUserFromDb(data) : null;
 }
 
 export async function fetchCurrentObrasUser(authUserId) {
@@ -339,6 +437,27 @@ export async function fetchObrasUsers() {
 }
 
 export async function insertObrasUser(accountId, user) {
+  if (userInvitesEnabled) {
+    const { data, error } = await supabase.functions.invoke('invite-obras-user', {
+      body: {
+        accountId,
+        nome: user.nome,
+        email: String(user.email || '').trim().toLowerCase(),
+        telefone: user.telefone || '',
+        cidadeId: user.cidadeId,
+        cidade: user.cidade,
+        role: user.role || 'operador',
+        active: user.active !== false,
+        loginEnabled: user.loginEnabled !== false,
+        redirectTo: `${window.location.origin}${import.meta.env.BASE_URL}`,
+      },
+    });
+
+    if (error) throw error;
+    if (!data?.user) throw new Error(data?.error || 'Nao foi possivel convidar o usuario.');
+    return obrasUserFromDb(data.user);
+  }
+
   const { data, error } = await supabase
     .from('obras_users')
     .insert(obrasUserToDb(user, accountId))
@@ -375,9 +494,11 @@ export async function fetchProjectChildren(projectId) {
   const entries = await Promise.all(
     Object.entries(childTables).map(async ([key, table]) => {
       let query = supabase.from(table).select('*').eq('project_id', projectId);
-      query = key === 'stages'
+      query = ['stages', 'scheduleItems'].includes(key)
         ? query.order('sort_order', { ascending: true })
-        : query.order('created_at', { ascending: false });
+        : key === 'scheduleLogs'
+          ? query.order('visit_date', { ascending: false })
+          : query.order('created_at', { ascending: false });
       const { data, error } = await query;
       if (error) throw error;
       let rows = (data || []).map(rowMappers[key].fromDb);
@@ -387,6 +508,15 @@ export async function fetchProjectChildren(projectId) {
   );
 
   return Object.fromEntries(entries);
+}
+
+export async function ensureProjectSchedule(projectId, blueprint) {
+  const { data, error } = await supabase.rpc('obras_apply_schedule_blueprint', {
+    p_project_id: projectId,
+    p_blueprint: blueprint,
+  });
+  if (error) throw error;
+  return Number(data || 0);
 }
 
 export async function insertProject(work) {
