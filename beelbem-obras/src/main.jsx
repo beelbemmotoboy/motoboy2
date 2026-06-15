@@ -517,6 +517,16 @@ function getScheduleDateBoundary(items, field, boundary) {
   return boundary === 'start' ? dates[0] : dates[dates.length - 1];
 }
 
+function calculateScheduleStageProgress(children) {
+  if (!children.length) return 0;
+  return Math.round(
+    children.reduce(
+      (total, item) => total + Math.min(100, Math.max(0, Number(item.percentual) || 0)),
+      0,
+    ) / children.length,
+  );
+}
+
 function deriveScheduleStages(items) {
   const nextItems = items.map((item) => ({ ...item }));
   const stages = nextItems.filter((item) => !item.parentId);
@@ -527,10 +537,7 @@ function deriveScheduleStages(items) {
       .sort((a, b) => a.sortOrder - b.sortOrder);
     if (!children.length) return;
 
-    const percentual = Math.round(
-      children.reduce((total, item) => total + Math.min(100, Math.max(0, Number(item.percentual) || 0)), 0)
-      / children.length,
-    );
+    const percentual = calculateScheduleStageProgress(children);
     const status = percentual >= 100
       ? 'Concluida'
       : children.some((item) => item.status === 'Atencao')
@@ -1643,12 +1650,17 @@ function Schedule({
       <section className="smart-schedule">
         {stages.map((stage) => {
           const children = childrenFor(stage.id);
+          const stageProgress = calculateScheduleStageProgress(children);
           return (
-            <details className="schedule-stage-group" key={stage.id} open>
+            <details className="schedule-stage-group" key={stage.id}>
               <summary>
                 <div>
                   <strong>{stage.nome}</strong>
                   <span>{children.length} subitem{children.length === 1 ? '' : 's'}</span>
+                </div>
+                <div className="schedule-summary-progress">
+                  <ProgressBar value={stageProgress} />
+                  <strong>{stageProgress}%</strong>
                 </div>
               </summary>
               <div className="schedule-stage-body">

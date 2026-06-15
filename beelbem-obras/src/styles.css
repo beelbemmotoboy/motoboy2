@@ -2286,7 +2286,7 @@ body.gantt-resizing * {
 .schedule-stage-group > summary {
   min-height: 74px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 42%);
   align-items: center;
   gap: 14px;
   padding: 14px 16px;
@@ -2320,6 +2320,11 @@ body.gantt-resizing * {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.schedule-summary-progress .progress {
+  flex: 1;
+  min-width: 120px;
 }
 
 .schedule-summary-progress > strong {
