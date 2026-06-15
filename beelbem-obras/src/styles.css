@@ -188,6 +188,13 @@ button {
   appearance: none;
 }
 
+.field small {
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
 .login-panel input:focus,
 .field input:focus,
 .field textarea:focus,

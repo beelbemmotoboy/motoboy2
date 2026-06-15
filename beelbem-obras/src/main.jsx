@@ -71,6 +71,11 @@ import {
 } from './db.js';
 import { analisarProjetoComGemini, geminiProjectConfig } from './analisa_projeto_gemini.js';
 import { getBestPhotoUrl, preparePhotoUpload } from './photoFunctions.js';
+import {
+  DEFAULT_SCHEDULE_SOURCE,
+  buildScheduleCopyPlan,
+  buildScheduleSourceOptions,
+} from './scheduleFunctions.js';
 import { buildLocalScheduleItems, defaultScheduleBlueprint } from './scheduleBlueprint.js';
 import './styles.css';
 
@@ -509,6 +514,27 @@ function TextAreaField({ label, name, value }) {
   );
 }
 
+function ScheduleSourceField({ works = [] }) {
+  const options = buildScheduleSourceOptions(works);
+
+  return (
+    <label className="field wide schedule-source-field">
+      <span>Cronograma</span>
+      <select name="scheduleSourceProjectId" defaultValue={DEFAULT_SCHEDULE_SOURCE}>
+        <option value={DEFAULT_SCHEDULE_SOURCE}>Usar cronograma padrao</option>
+        {options.map((option) => (
+          <option value={option.value} key={option.value}>Copiar de {option.label}</option>
+        ))}
+      </select>
+      <small>
+        {options.length
+          ? 'Escolha uma obra existente para copiar apenas etapas e subitens. Datas, fotos, diario e andamento comecam em branco.'
+          : 'Nenhuma obra existente para copiar. A nova obra usara o cronograma padrao.'}
+      </small>
+    </label>
+  );
+}
+
 function getScheduleDateBoundary(items, field, boundary) {
   const dates = items
     .map((item) => item[field])
@@ -904,7 +930,7 @@ function Works({ selectedCity, selectedNeighborhood, works, openWork, setScreen 
   );
 }
 
-function NewWork({ createWork, setScreen, selectedCity, onProjectAnalyzed }) {
+function NewWork({ createWork, setScreen, selectedCity, onProjectAnalyzed, works = [] }) {
   const [cityId, setCityId] = useState(selectedCity?.id || cityCatalog[0].id);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
@@ -1001,6 +1027,7 @@ function NewWork({ createWork, setScreen, selectedCity, onProjectAnalyzed }) {
         <Field label="Area do terreno" name="areaTerreno" />
         <Field label="Numero de pavimentos" name="pavimentos" />
         <Field label="Responsavel tecnico" name="responsavel" />
+        <ScheduleSourceField works={works} />
         <TextAreaField label="Observacoes" name="observacoes" />
       </section>
       <div className="form-actions">
@@ -1077,7 +1104,7 @@ function AiAnalysisLoader({ fileName }) {
   );
 }
 
-function ExtractedData({ createWork, setScreen, draft }) {
+function ExtractedData({ createWork, setScreen, draft, works = [] }) {
   const initialCityId = draft?.cidadeId || cityCatalog[0].id;
   const [cityId, setCityId] = useState(initialCityId);
   const neighborhoods = neighborhoodCatalog[cityId] || [];
@@ -1130,6 +1157,7 @@ function ExtractedData({ createWork, setScreen, draft }) {
         <Field label="Area do terreno" name="areaTerreno" value={draft.areaTerreno} />
         <Field label="Numero de pavimentos" name="pavimentos" value={draft.pavimentos} />
         <Field label="Responsavel tecnico" name="responsavel" value={draft.responsavel} />
+        <ScheduleSourceField works={works} />
         <TextAreaField label="Observacoes tecnicas" name="observacoes" value={draft.observacoes} />
       </section>
       <div className="form-actions">
@@ -3220,9 +3248,37 @@ function App() {
     }
   }
 
+  async function createInitialProjectSchedule(projectId, sourceProjectId) {
+    const selectedSource = String(sourceProjectId || DEFAULT_SCHEDULE_SOURCE);
+    if (selectedSource === DEFAULT_SCHEDULE_SOURCE) {
+      await ensureProjectSchedule(projectId, defaultScheduleBlueprint);
+      return;
+    }
+
+    const sourceItems = selectedSource === selectedWorkId && data.scheduleItems.length
+      ? data.scheduleItems
+      : (await fetchProjectChildren(selectedSource)).scheduleItems;
+    const copyPlan = buildScheduleCopyPlan(sourceItems);
+
+    if (!copyPlan.length) {
+      await ensureProjectSchedule(projectId, defaultScheduleBlueprint);
+      return;
+    }
+
+    for (const group of copyPlan) {
+      const stage = await insertChild('scheduleItems', projectId, group.stage);
+      for (const child of group.children) {
+        await insertChild('scheduleItems', projectId, { ...child, parentId: stage.id });
+      }
+    }
+  }
+
   async function loadProjectChildren(projectId, currentStatus = 'Nao iniciada') {
-    await ensureProjectSchedule(projectId, defaultScheduleBlueprint);
     let children = await fetchProjectChildren(projectId);
+    if (!children.scheduleItems.length) {
+      await ensureProjectSchedule(projectId, defaultScheduleBlueprint);
+      children = await fetchProjectChildren(projectId);
+    }
     const stagesWithoutChildren = children.scheduleItems.filter((item) => (
       !item.parentId
       && !children.scheduleItems.some((candidate) => candidate.parentId === item.id)
@@ -3383,6 +3439,7 @@ function App() {
   async function createWork(values) {
     setDataError('');
     const { city, neighborhood } = resolveLocation(values);
+    const scheduleSourceProjectId = String(values.scheduleSourceProjectId || DEFAULT_SCHEDULE_SOURCE);
     let nextWork = {
       id: makeId('obra'),
       nome: values.nome || 'Nova obra',
@@ -3416,8 +3473,9 @@ function App() {
           plsItems: [],
           issues: [],
         });
-        await ensureProjectSchedule(nextWork.id, defaultScheduleBlueprint);
-        const children = await fetchProjectChildren(nextWork.id);
+        await createInitialProjectSchedule(nextWork.id, scheduleSourceProjectId);
+        const { projectSummary, ...children } = await loadProjectChildren(nextWork.id, nextWork.status);
+        nextWork = { ...nextWork, ...projectSummary };
         setData((current) => ({ ...current, ...children, works: [nextWork, ...current.works] }));
       } catch (error) {
         setDataError(error.message || 'Nao foi possivel salvar a obra no banco.');
@@ -4090,9 +4148,9 @@ function App() {
       case 'works':
         return <Works selectedCity={selectedCity} selectedNeighborhood={selectedNeighborhood} works={cityWorks} openWork={(work) => { setSelectedWorkId(work.id); void loadProject(work.id); setScreen('workPanel'); }} setScreen={setScreen} />;
       case 'newWork':
-        return <NewWork createWork={createWork} setScreen={setScreen} selectedCity={selectedCity} onProjectAnalyzed={setAiProjectDraft} />;
+        return <NewWork createWork={createWork} setScreen={setScreen} selectedCity={selectedCity} works={data.works} onProjectAnalyzed={setAiProjectDraft} />;
       case 'extractedData':
-        return <ExtractedData createWork={createWork} setScreen={setScreen} draft={aiProjectDraft} />;
+        return <ExtractedData createWork={createWork} setScreen={setScreen} draft={aiProjectDraft} works={data.works} />;
       case 'workPanel':
         return <WorkPanel obra={activeWork} data={cityData} setScreen={setScreen} />;
       case 'stages':
