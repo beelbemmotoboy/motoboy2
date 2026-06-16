@@ -3766,12 +3766,10 @@ function App() {
 
       const touch = event.touches[0];
       const target = event.target;
-      const isInteractive = target instanceof Element
-        && target.closest('input, textarea, select, button, [contenteditable="true"], .modal-backdrop');
-      const isHorizontalSurface = target instanceof Element
-        && target.closest('.gantt-backdrop, .gantt-scroll, .gantt-chart, .photo-viewer-backdrop');
+      const isGanttSurface = target instanceof Element
+        && target.closest('.gantt-backdrop, .gantt-scroll, .gantt-chart');
 
-      if (isInteractive || isHorizontalSurface) return;
+      if (isGanttSurface) return;
 
       tracking = true;
       startX = touch.clientX;
