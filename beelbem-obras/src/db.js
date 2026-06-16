@@ -6,7 +6,6 @@ const legacySupabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const legacySupabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 const supabaseUrl = obrasSupabaseUrl || legacySupabaseUrl;
 const supabaseAnonKey = obrasSupabaseAnonKey || legacySupabaseAnonKey;
-const userInvitesEnabled = import.meta.env.VITE_OBRAS_USER_INVITES_ENABLED !== 'false';
 const photoBucket = 'obras-photos';
 const userAvatarBucket = 'obras-user-avatars';
 const photoThumbnailTable = 'obras_photo_thumbnails';
@@ -547,7 +546,7 @@ export async function fetchObrasUsers() {
 }
 
 export async function insertObrasUser(accountId, user) {
-  if (userInvitesEnabled) {
+  if (supabaseConfigured) {
     return syncObrasUserAccess(accountId, user);
   }
 
@@ -562,7 +561,7 @@ export async function insertObrasUser(accountId, user) {
 }
 
 export async function updateObrasUser(userId, patch) {
-  if (userInvitesEnabled && patch.loginEnabled !== false && (patch.password || !patch.authUserId)) {
+  if (supabaseConfigured && patch.loginEnabled !== false && (patch.password || !patch.authUserId)) {
     if (!patch.password) {
       throw new Error('Informe uma senha temporaria para criar ou corrigir o login deste usuario.');
     }

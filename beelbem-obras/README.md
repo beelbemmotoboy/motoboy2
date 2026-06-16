@@ -54,8 +54,8 @@ Ele cria:
 - funcao de bootstrap para o primeiro proprietario.
 
 A Edge Function `invite-obras-user` cria ou convida usuarios no Auth do projeto
-Obras. Ela deve ser publicada no novo projeto antes de habilitar os convites no
-frontend.
+Obras. Ela deve estar publicada no projeto antes de cadastrar usuarios com
+login.
 
 ## Migracao
 

@@ -82,7 +82,6 @@ Configure no projeto de deploy independente:
 ```env
 VITE_OBRAS_SUPABASE_URL=https://novo-projeto-obras.supabase.co
 VITE_OBRAS_SUPABASE_ANON_KEY=chave-anon-do-novo-projeto
-VITE_OBRAS_USER_INVITES_ENABLED=true
 ```
 
 Publique o Obras na rota `https://www.beelbem.com.br/obras/`. O Motoboy
