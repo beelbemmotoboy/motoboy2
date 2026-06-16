@@ -8,6 +8,7 @@ const supabaseUrl = obrasSupabaseUrl || legacySupabaseUrl;
 const supabaseAnonKey = obrasSupabaseAnonKey || legacySupabaseAnonKey;
 const userInvitesEnabled = import.meta.env.VITE_OBRAS_USER_INVITES_ENABLED === 'true';
 const photoBucket = 'obras-photos';
+const userAvatarBucket = 'obras-user-avatars';
 const photoThumbnailTable = 'obras_photo_thumbnails';
 
 export const supabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
@@ -100,11 +101,18 @@ export function obrasUserFromDb(row) {
     nome: row.nome || '',
     email: row.email || '',
     telefone: row.telefone || '',
+    cpf: row.cpf || '',
+    professionalRegistry: row.professional_registry || '',
     cidadeId: row.cidade_id || '',
     cidade: row.cidade || '',
     role: row.role || 'operador',
     active: row.active !== false,
     loginEnabled: row.login_enabled !== false,
+    avatarStoragePath: row.avatar_storage_path || '',
+    avatarFileName: row.avatar_file_name || '',
+    avatarMimeType: row.avatar_mime_type || '',
+    avatarFileSize: Number(row.avatar_file_size || 0),
+    avatarUrl: '',
     createdAt: row.created_at || '',
   };
 }
@@ -112,14 +120,20 @@ export function obrasUserFromDb(row) {
 export function obrasUserToDb(user, accountId) {
   return {
     ...(accountId ? { account_id: accountId } : {}),
-    nome: user.nome,
-    email: String(user.email || '').trim().toLowerCase(),
-    telefone: user.telefone || null,
-    cidade_id: user.cidadeId,
-    cidade: user.cidade,
-    role: user.role || 'operador',
-    active: user.active !== false,
-    login_enabled: user.loginEnabled !== false,
+    ...(user.nome !== undefined ? { nome: user.nome } : {}),
+    ...(user.email !== undefined ? { email: String(user.email || '').trim().toLowerCase() } : {}),
+    ...(user.telefone !== undefined ? { telefone: user.telefone || null } : {}),
+    ...(user.cpf !== undefined ? { cpf: user.cpf || null } : {}),
+    ...(user.professionalRegistry !== undefined ? { professional_registry: user.professionalRegistry || null } : {}),
+    ...(user.cidadeId !== undefined ? { cidade_id: user.cidadeId } : {}),
+    ...(user.cidade !== undefined ? { cidade: user.cidade } : {}),
+    ...(user.role !== undefined ? { role: user.role || 'operador' } : {}),
+    ...(user.active !== undefined ? { active: user.active !== false } : {}),
+    ...(user.loginEnabled !== undefined ? { login_enabled: user.loginEnabled !== false } : {}),
+    ...(user.avatarStoragePath !== undefined ? { avatar_storage_path: user.avatarStoragePath || null } : {}),
+    ...(user.avatarFileName !== undefined ? { avatar_file_name: user.avatarFileName || null } : {}),
+    ...(user.avatarMimeType !== undefined ? { avatar_mime_type: user.avatarMimeType || null } : {}),
+    ...(user.avatarFileSize !== undefined ? { avatar_file_size: user.avatarFileSize || null } : {}),
   };
 }
 
@@ -496,7 +510,7 @@ export function onAuthStateChange(callback) {
 export async function claimObrasUser() {
   const { data, error } = await supabase.rpc('obras_claim_user');
   if (error) throw error;
-  return data?.id ? obrasUserFromDb(data) : null;
+  return data?.id ? withSignedObrasUserAvatar(obrasUserFromDb(data)) : null;
 }
 
 export async function bootstrapObrasOwner({ nome, cidadeId, cidade }) {
@@ -507,7 +521,7 @@ export async function bootstrapObrasOwner({ nome, cidadeId, cidade }) {
   });
 
   if (error) throw error;
-  return data?.id ? obrasUserFromDb(data) : null;
+  return data?.id ? withSignedObrasUserAvatar(obrasUserFromDb(data)) : null;
 }
 
 export async function fetchCurrentObrasUser(authUserId) {
@@ -519,7 +533,7 @@ export async function fetchCurrentObrasUser(authUserId) {
     .maybeSingle();
 
   if (error) throw error;
-  return data ? obrasUserFromDb(data) : null;
+  return data ? withSignedObrasUserAvatar(obrasUserFromDb(data)) : null;
 }
 
 export async function fetchObrasUsers() {
@@ -529,7 +543,7 @@ export async function fetchObrasUsers() {
     .order('created_at', { ascending: false });
 
   if (error) throw error;
-  return (data || []).map(obrasUserFromDb);
+  return Promise.all((data || []).map((row) => withSignedObrasUserAvatar(obrasUserFromDb(row))));
 }
 
 export async function insertObrasUser(accountId, user) {
@@ -540,18 +554,21 @@ export async function insertObrasUser(accountId, user) {
         nome: user.nome,
         email: String(user.email || '').trim().toLowerCase(),
         telefone: user.telefone || '',
+        cpf: user.cpf || '',
+        professionalRegistry: user.professionalRegistry || '',
         cidadeId: user.cidadeId,
         cidade: user.cidade,
         role: user.role || 'operador',
         active: user.active !== false,
         loginEnabled: user.loginEnabled !== false,
+        password: user.password || '',
         redirectTo: `${window.location.origin}${import.meta.env.BASE_URL}`,
       },
     });
 
     if (error) throw error;
     if (!data?.user) throw new Error(data?.error || 'Nao foi possivel convidar o usuario.');
-    return obrasUserFromDb(data.user);
+    return withSignedObrasUserAvatar(obrasUserFromDb(data.user));
   }
 
   const { data, error } = await supabase
@@ -561,7 +578,7 @@ export async function insertObrasUser(accountId, user) {
     .single();
 
   if (error) throw error;
-  return obrasUserFromDb(data);
+  return withSignedObrasUserAvatar(obrasUserFromDb(data));
 }
 
 export async function updateObrasUser(userId, patch) {
@@ -573,7 +590,7 @@ export async function updateObrasUser(userId, patch) {
     .single();
 
   if (error) throw error;
-  return obrasUserFromDb(data);
+  return withSignedObrasUserAvatar(obrasUserFromDb(data));
 }
 
 export async function fetchCommercialPlans({ includeInactive = false } = {}) {
@@ -788,6 +805,30 @@ export async function deletePhotoRecord(photo) {
   return storageError?.message || '';
 }
 
+export async function uploadObrasUserAvatar({ accountId, userId, file, previousPath }) {
+  const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const fileName = safeFileName(file.name || `${id}.jpg`);
+  const storagePath = `${accountId}/${userId}/${id}-${fileName}`;
+  const { error } = await supabase.storage.from(userAvatarBucket).upload(storagePath, file, {
+    cacheControl: '3600',
+    contentType: file.type || 'image/jpeg',
+    upsert: false,
+  });
+
+  if (error) throw error;
+  if (previousPath && previousPath !== storagePath) {
+    await supabase.storage.from(userAvatarBucket).remove([previousPath]);
+  }
+
+  return {
+    avatarStoragePath: storagePath,
+    avatarFileName: fileName,
+    avatarMimeType: file.type || 'image/jpeg',
+    avatarFileSize: file.size || 0,
+    avatarUrl: await createSignedAvatarUrl(storagePath),
+  };
+}
+
 export async function uploadPhotoFile({ userId, projectId, file, thumbnailFile }) {
   const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const upload = await uploadPhotoStorageObject({
@@ -902,6 +943,24 @@ async function withSignedThumbnailUrl(thumbnail) {
 
 async function createSignedPhotoUrl(storagePath) {
   const { data, error } = await supabase.storage.from(photoBucket).createSignedUrl(storagePath, 60 * 60 * 24);
+  if (error) throw error;
+  return data.signedUrl;
+}
+
+async function withSignedObrasUserAvatar(user) {
+  if (!user?.avatarStoragePath) return user;
+  try {
+    return {
+      ...user,
+      avatarUrl: await createSignedAvatarUrl(user.avatarStoragePath),
+    };
+  } catch {
+    return user;
+  }
+}
+
+async function createSignedAvatarUrl(storagePath) {
+  const { data, error } = await supabase.storage.from(userAvatarBucket).createSignedUrl(storagePath, 60 * 60 * 24);
   if (error) throw error;
   return data.signedUrl;
 }

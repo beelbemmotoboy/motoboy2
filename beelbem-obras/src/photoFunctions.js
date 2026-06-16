@@ -12,6 +12,13 @@ const THUMBNAIL_UPLOAD_SETTINGS = {
   suffix: 'miniatura',
 };
 
+const AVATAR_UPLOAD_SETTINGS = {
+  maxWidth: 640,
+  maxHeight: 640,
+  quality: 0.78,
+  suffix: 'perfil',
+};
+
 const outputType = 'image/jpeg';
 
 export async function preparePhotoUpload(file) {
@@ -29,6 +36,11 @@ export async function preparePhotoUpload(file) {
     thumbnailWidth: thumbnail.width,
     thumbnailHeight: thumbnail.height,
   };
+}
+
+export async function prepareAvatarUpload(file) {
+  const avatar = await resizeImageFile(file, AVATAR_UPLOAD_SETTINGS);
+  return avatar.file;
 }
 
 export function getBestPhotoUrl(photo) {

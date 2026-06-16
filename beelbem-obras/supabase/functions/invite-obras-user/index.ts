@@ -63,6 +63,9 @@ Deno.serve(async (request) => {
     const cidade = String(body.cidade || '').trim();
     const role = String(body.role || 'operador');
     const accountId = String(body.accountId || currentUser.account_id);
+    const password = String(body.password || '');
+    const cpf = String(body.cpf || '').trim();
+    const professionalRegistry = String(body.professionalRegistry || '').trim();
 
     if (!email || !nome || !cidadeId || !cidade) {
       return json({ error: 'Nome, e-mail e cidade sao obrigatorios.' }, 400);
@@ -70,8 +73,14 @@ Deno.serve(async (request) => {
     if (accountId !== currentUser.account_id) {
       return json({ error: 'A conta informada nao pertence ao administrador atual.' }, 403);
     }
-    if (!['owner', 'admin', 'engenheiro', 'operador', 'viewer'].includes(role)) {
+    if (!['owner', 'admin', 'engenheiro', 'arquiteto', 'operador', 'viewer'].includes(role)) {
       return json({ error: 'Perfil de acesso invalido.' }, 400);
+    }
+    if (['engenheiro', 'arquiteto'].includes(role) && !professionalRegistry) {
+      return json({ error: role === 'arquiteto' ? 'Informe o CAU do arquiteto.' : 'Informe o CREA do engenheiro.' }, 400);
+    }
+    if (password && password.length < 6) {
+      return json({ error: 'A senha deve ter pelo menos 6 caracteres.' }, 400);
     }
 
     let authUser = null;
@@ -83,9 +92,46 @@ Deno.serve(async (request) => {
     }
 
     if (!authUser) {
-      const { data, error } = await adminClient.auth.admin.inviteUserByEmail(email, {
-        redirectTo: body.redirectTo || undefined,
-        data: { application: 'beelbem-obras', name: nome },
+      if (password) {
+        const { data, error } = await adminClient.auth.admin.createUser({
+          email,
+          password,
+          email_confirm: true,
+          user_metadata: {
+            application: 'beelbem-obras',
+            name: nome,
+            cpf: cpf || undefined,
+            professional_registry: professionalRegistry || undefined,
+            role,
+          },
+        });
+        if (error) throw error;
+        authUser = data.user;
+      } else {
+        const { data, error } = await adminClient.auth.admin.inviteUserByEmail(email, {
+          redirectTo: body.redirectTo || undefined,
+          data: {
+            application: 'beelbem-obras',
+            name: nome,
+            cpf: cpf || undefined,
+            professional_registry: professionalRegistry || undefined,
+            role,
+          },
+        });
+        if (error) throw error;
+        authUser = data.user;
+      }
+    } else if (password) {
+      const { data, error } = await adminClient.auth.admin.updateUserById(authUser.id, {
+        password,
+        user_metadata: {
+          ...(authUser.user_metadata || {}),
+          application: 'beelbem-obras',
+          name: nome,
+          cpf: cpf || undefined,
+          professional_registry: professionalRegistry || undefined,
+          role,
+        },
       });
       if (error) throw error;
       authUser = data.user;
@@ -97,6 +143,8 @@ Deno.serve(async (request) => {
       nome,
       email,
       telefone: String(body.telefone || '').trim() || null,
+      cpf: cpf || null,
+      professional_registry: professionalRegistry || null,
       cidade_id: cidadeId,
       cidade,
       role,

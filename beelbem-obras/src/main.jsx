@@ -74,10 +74,11 @@ import {
   updateObrasUser,
   updateProject,
   updateSignupRequest,
+  uploadObrasUserAvatar,
   uploadPhotoFile,
 } from './db.js';
 import { analisarProjetoComGemini, geminiProjectConfig } from './analisa_projeto_gemini.js';
-import { getBestPhotoUrl, preparePhotoUpload } from './photoFunctions.js';
+import { getBestPhotoUrl, prepareAvatarUpload, preparePhotoUpload } from './photoFunctions.js';
 import {
   DEFAULT_SCHEDULE_SOURCE,
   buildScheduleCopyPlan,
@@ -319,6 +320,7 @@ const obrasRoles = [
   { value: 'owner', label: 'Proprietario' },
   { value: 'admin', label: 'Administrador' },
   { value: 'engenheiro', label: 'Engenheiro' },
+  { value: 'arquiteto', label: 'Arquiteto' },
   { value: 'operador', label: 'Operador' },
   { value: 'viewer', label: 'Visualizador' },
 ];
@@ -2800,15 +2802,17 @@ function Users({ users, currentUser, loading, error, message, saving, canManage,
   const [modalOpen, setModalOpen] = useState(false);
   const normalizedQuery = normalizeSearch(query);
   const filteredUsers = normalizedQuery
-    ? users.filter((user) => normalizeSearch(`${user.nome} ${user.email} ${user.telefone} ${user.cidade} ${roleLabel(user.role)}`).includes(normalizedQuery))
+    ? users.filter((user) => normalizeSearch(`${user.nome} ${user.email} ${user.telefone} ${user.cpf} ${user.professionalRegistry} ${user.cidade} ${roleLabel(user.role)}`).includes(normalizedQuery))
     : users;
 
   function openNewUser() {
+    if (!canManage) return;
     setEditingUser(null);
     setModalOpen(true);
   }
 
   function openEditUser(user) {
+    if (!canManage) return;
     setEditingUser(user);
     setModalOpen(true);
   }
@@ -2861,7 +2865,7 @@ function Users({ users, currentUser, loading, error, message, saving, canManage,
               <article className="user-card" key={user.id}>
                 <div className="user-card-head">
                   <div className="user-avatar">
-                    <UserRound size={24} aria-hidden="true" />
+                    {user.avatarUrl ? <img src={user.avatarUrl} alt={`Foto de ${user.nome}`} /> : <UserRound size={24} aria-hidden="true" />}
                   </div>
                   <StatusPill status={user.active ? 'Ativo' : 'Inativo'} />
                 </div>
@@ -2870,6 +2874,8 @@ function Users({ users, currentUser, loading, error, message, saving, canManage,
                 <span>{user.telefone || 'Sem telefone'}</span>
                 <div className="user-meta">
                   <small>{roleLabel(user.role)}</small>
+                  {user.cpf ? <small>CPF {user.cpf}</small> : null}
+                  {user.professionalRegistry ? <small>{user.role === 'arquiteto' ? 'CAU' : 'CREA'} {user.professionalRegistry}</small> : null}
                   <small>{user.cidade}</small>
                   <small>{user.authUserId ? 'Login vinculado' : 'Aguardando login'}</small>
                   <small>{user.loginEnabled ? 'Acesso Obras' : 'Sem login Obras'}</small>
@@ -2910,11 +2916,32 @@ function Users({ users, currentUser, loading, error, message, saving, canManage,
 
 function UserModal({ user, currentUser, saving, onClose, onSave }) {
   const defaultCityId = user?.cidadeId || currentUser?.cidadeId || cityCatalog[0].id;
+  const [selectedRole, setSelectedRole] = useState(user?.role || 'operador');
+  const [avatarPreview, setAvatarPreview] = useState(user?.avatarUrl || '');
+  const needsRegistry = ['engenheiro', 'arquiteto'].includes(selectedRole);
+  const registryLabel = selectedRole === 'arquiteto' ? 'CAU' : 'CREA';
+
+  useEffect(() => {
+    return () => {
+      if (avatarPreview?.startsWith('blob:')) URL.revokeObjectURL(avatarPreview);
+    };
+  }, [avatarPreview]);
+
+  function handleAvatarChange(event) {
+    const file = event.currentTarget.files?.[0];
+    if (!file) {
+      setAvatarPreview(user?.avatarUrl || '');
+      return;
+    }
+    if (avatarPreview?.startsWith('blob:')) URL.revokeObjectURL(avatarPreview);
+    setAvatarPreview(URL.createObjectURL(file));
+  }
 
   function submit(event) {
     event.preventDefault();
     const form = event.currentTarget;
     const selectedCity = cityCatalog.find((city) => city.id === form.elements.cidadeId.value) || cityCatalog[0];
+    const role = form.elements.role.value;
     onSave({
       id: user?.id,
       authUserId: user?.authUserId || '',
@@ -2922,11 +2949,20 @@ function UserModal({ user, currentUser, saving, onClose, onSave }) {
       nome: form.elements.nome.value.trim(),
       email: form.elements.email.value.trim(),
       telefone: form.elements.telefone.value.trim(),
+      cpf: form.elements.cpf.value.trim(),
+      professionalRegistry: form.elements.professionalRegistry?.value.trim() || '',
       cidadeId: selectedCity.id,
       cidade: selectedCity.nome,
-      role: form.elements.role.value,
+      role,
       active: form.elements.active.checked,
       loginEnabled: form.elements.loginEnabled.checked,
+      password: form.elements.password?.value || '',
+      avatarFile: form.elements.avatarFile?.files?.[0] || null,
+      avatarStoragePath: user?.avatarStoragePath || '',
+      avatarFileName: user?.avatarFileName || '',
+      avatarMimeType: user?.avatarMimeType || '',
+      avatarFileSize: user?.avatarFileSize || 0,
+      avatarUrl: user?.avatarUrl || '',
       createdAt: user?.createdAt || '',
     });
   }
@@ -2942,9 +2978,23 @@ function UserModal({ user, currentUser, saving, onClose, onSave }) {
           <IconButton label="Fechar" Icon={X} onClick={onClose} />
         </div>
         <div className="form-grid modal-fields">
+          <label className="field user-avatar-field">
+            <span>Foto do usuario</span>
+            <div className="user-avatar-preview">
+              {avatarPreview ? <img src={avatarPreview} alt="Previa da foto do usuario" /> : <UserRound size={34} aria-hidden="true" />}
+            </div>
+            <input type="file" name="avatarFile" accept="image/*" onChange={handleAvatarChange} />
+            <small>Use uma foto de rosto. O app reduz o tamanho antes de salvar.</small>
+          </label>
           <Field label="Nome" name="nome" value={user?.nome || ''} required />
           <Field label="E-mail" name="email" value={user?.email || ''} type="email" required />
           <Field label="Telefone" name="telefone" value={user?.telefone || ''} />
+          <Field label="CPF" name="cpf" value={user?.cpf || ''} />
+          <label className="field">
+            <span>{user ? 'Nova senha' : 'Senha temporaria'}</span>
+            <input type="password" name="password" autoComplete="new-password" placeholder={user ? 'Deixe em branco para manter' : 'Senha inicial do usuario'} />
+            <small>{user ? 'Preencha somente se quiser alterar a senha.' : 'Usada para o primeiro acesso do usuario.'}</small>
+          </label>
           <label className="field">
             <span>Cidade</span>
             <select name="cidadeId" defaultValue={defaultCityId}>
@@ -2955,12 +3005,13 @@ function UserModal({ user, currentUser, saving, onClose, onSave }) {
           </label>
           <label className="field">
             <span>Perfil</span>
-            <select name="role" defaultValue={user?.role || 'operador'}>
+            <select name="role" value={selectedRole} onChange={(event) => setSelectedRole(event.target.value)}>
               {obrasRoles.map((role) => (
                 <option value={role.value} key={role.value}>{role.label}</option>
               ))}
             </select>
           </label>
+          {needsRegistry ? <Field label={`Numero ${registryLabel}`} name="professionalRegistry" value={user?.professionalRegistry || ''} required /> : null}
           <label className="field check-field">
             <span>Status</span>
             <input type="checkbox" name="active" defaultChecked={user?.active !== false} />
@@ -2974,7 +3025,7 @@ function UserModal({ user, currentUser, saving, onClose, onSave }) {
         </div>
         <section className="detail-note user-note">
           <strong>Login</strong>
-          <p>O acesso fica separado do Motoboy. Quando a pessoa entrar com este e-mail no Obras, o cadastro sera vinculado automaticamente.</p>
+          <p>Apenas proprietarios e administradores podem cadastrar usuarios. A senha e enviada para o Supabase Auth, nao fica salva na tabela do Obras.</p>
         </section>
         <div className="form-actions">
           <ActionButton Icon={Save} type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Salvar usuario'}</ActionButton>
@@ -4741,12 +4792,28 @@ function App() {
     setUsersError('');
     setUsersMessage('');
 
+    if (!canManageObrasUsers) {
+      setUsersError('Apenas proprietarios e administradores podem cadastrar ou alterar usuarios.');
+      return false;
+    }
     if (!values.nome) {
       setUsersError('Informe o nome do usuario.');
       return false;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) {
       setUsersError('Informe um e-mail valido.');
+      return false;
+    }
+    if (!values.id && values.loginEnabled !== false && !values.password) {
+      setUsersError('Informe uma senha temporaria para o novo usuario.');
+      return false;
+    }
+    if (values.password && values.password.length < 6) {
+      setUsersError('A senha deve ter pelo menos 6 caracteres.');
+      return false;
+    }
+    if (['engenheiro', 'arquiteto'].includes(values.role) && !values.professionalRegistry) {
+      setUsersError(values.role === 'arquiteto' ? 'Informe o numero do CAU.' : 'Informe o numero do CREA.');
       return false;
     }
     if (currentObrasUser?.id === values.id && !['owner', 'admin'].includes(values.role)) {
@@ -4763,12 +4830,34 @@ function App() {
         savedUser = values.id
           ? await updateObrasUser(values.id, values)
           : await insertObrasUser(accountId, values);
+        if (values.avatarFile) {
+          const avatarFile = await prepareAvatarUpload(values.avatarFile);
+          const avatarUpload = await uploadObrasUserAvatar({
+            accountId,
+            userId: savedUser.id,
+            file: avatarFile,
+            previousPath: savedUser.avatarStoragePath,
+          });
+          savedUser = await updateObrasUser(savedUser.id, {
+            ...savedUser,
+            avatarStoragePath: avatarUpload.avatarStoragePath,
+            avatarFileName: avatarUpload.avatarFileName,
+            avatarMimeType: avatarUpload.avatarMimeType,
+            avatarFileSize: avatarUpload.avatarFileSize,
+          });
+          savedUser = { ...savedUser, avatarUrl: avatarUpload.avatarUrl };
+        }
       } else {
+        let avatarUrl = values.avatarUrl || '';
+        if (values.avatarFile) {
+          avatarUrl = URL.createObjectURL(values.avatarFile);
+        }
         savedUser = {
           ...values,
           id: values.id || makeId('usuario'),
           accountId: values.accountId || 'local-account',
           active: values.active !== false,
+          avatarUrl,
         };
       }
 

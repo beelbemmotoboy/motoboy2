@@ -1949,10 +1949,39 @@ button.metric-card {
   width: 46px;
   height: 46px;
   border-radius: 8px;
+  overflow: hidden;
   display: grid;
   place-items: center;
   color: #1e3a8a;
   background: #dbeafe;
+}
+
+.user-avatar img,
+.user-avatar-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.user-avatar-field {
+  align-content: start;
+}
+
+.user-avatar-preview {
+  width: 96px;
+  height: 96px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  color: #1e3a8a;
+  background: #eff6ff;
+}
+
+.user-avatar-field input[type="file"] {
+  min-height: auto;
+  padding: 11px;
 }
 
 .user-card strong {
