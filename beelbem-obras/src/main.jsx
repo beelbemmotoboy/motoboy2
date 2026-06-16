@@ -50,6 +50,7 @@ import {
 import {
   bootstrapObrasOwner,
   claimObrasUser,
+  deleteChild,
   deleteProject,
   deletePhotoRecord,
   fetchProjectChildren,
@@ -1998,11 +1999,13 @@ function Schedule({
   onUpdateItem,
   onSetVisibility,
   onSaveLog,
+  onDeleteLog,
   addPhoto,
   setScreen,
 }) {
   const [itemModal, setItemModal] = useState(null);
   const [logItem, setLogItem] = useState(null);
+  const [editingLog, setEditingLog] = useState(null);
   const [showRemoved, setShowRemoved] = useState(false);
   const [ganttOpen, setGanttOpen] = useState(false);
   const [removeCandidate, setRemoveCandidate] = useState(null);
@@ -2115,7 +2118,17 @@ function Schedule({
                           <button type="button" onClick={() => addPhoto(item.nome)}><Camera size={16} /> Foto</button>
                           <button className="danger" type="button" disabled={saving} onClick={() => requestRemove(item)}><Minus size={16} /> Remover</button>
                         </div>
-                        {itemLogs.slice(0, 2).map((log) => <ScheduleLogSummary log={log} key={log.id} />)}
+                        {itemLogs.slice(0, 2).map((log) => (
+                          <ScheduleLogSummary
+                            log={log}
+                            key={log.id}
+                            saving={saving}
+                            onEdit={() => {
+                              setEditingLog(log);
+                              setLogItem(item);
+                            }}
+                          />
+                        ))}
                       </article>
                     );
                   })}
@@ -2156,14 +2169,25 @@ function Schedule({
       {logItem ? (
         <ScheduleLogModal
           item={logItem}
+          log={editingLog}
           saving={saving}
-          onClose={() => setLogItem(null)}
+          onClose={() => {
+            setLogItem(null);
+            setEditingLog(null);
+          }}
           onSave={async (values, addPhotoAfter) => {
             const saved = await onSaveLog(values);
             if (!saved) return;
             setLogItem(null);
+            setEditingLog(null);
             if (addPhotoAfter) addPhoto(logItem.nome);
           }}
+          onDelete={editingLog ? async () => {
+            const deleted = await onDeleteLog(editingLog.id);
+            if (!deleted) return;
+            setLogItem(null);
+            setEditingLog(null);
+          } : null}
         />
       ) : null}
 
@@ -2605,11 +2629,14 @@ function ScheduleDates({ item }) {
   );
 }
 
-function ScheduleLogSummary({ log }) {
+function ScheduleLogSummary({ log, saving, onEdit }) {
   return (
     <article className="schedule-log-summary">
       <strong>{scheduleDateLabel(log.visitDate)}</strong>
       <span>{log.observacoes || log.checklist || 'Registro diario da obra'}</span>
+      <button type="button" onClick={onEdit} disabled={saving}>
+        <Pencil size={15} aria-hidden="true" /> Editar
+      </button>
       {log.pedidoMaterial ? <small>Material: {log.pedidoMaterial}</small> : null}
       {log.ferramentas ? <small>Ferramentas: {log.ferramentas}</small> : null}
       {log.maoObra ? <small>Mao de obra: {log.maoObra}</small> : null}
@@ -2674,12 +2701,19 @@ function ScheduleItemModal({ item, saving, onClose, onSave }) {
   );
 }
 
-function ScheduleLogModal({ item, saving, onClose, onSave }) {
+function ScheduleLogModal({ item, log, saving, onClose, onSave, onDelete }) {
+  const editing = Boolean(log?.id);
+
   function submit(event) {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.currentTarget).entries());
     const submitter = event.nativeEvent.submitter;
-    onSave({ ...values, scheduleItemId: item.id }, submitter?.dataset?.action === 'photo');
+    onSave({ ...values, id: log?.id || '', scheduleItemId: item.id }, submitter?.dataset?.action === 'photo');
+  }
+
+  function confirmDelete() {
+    const confirmed = window.confirm('Excluir este registro do diario? Esta acao nao pode ser desfeita.');
+    if (confirmed && onDelete) onDelete();
   }
 
   return (
@@ -2688,22 +2722,23 @@ function ScheduleLogModal({ item, saving, onClose, onSave }) {
         <div className="modal-head">
           <div>
             <span>Diario da obra</span>
-            <h2>{item.nome}</h2>
+            <h2>{editing ? 'Editar registro' : item.nome}</h2>
           </div>
           <IconButton label="Fechar" Icon={X} onClick={onClose} />
         </div>
         <div className="form-grid modal-fields">
-          <Field label="Data da visita" name="visitDate" type="date" value={new Date().toISOString().slice(0, 10)} required />
-          <TextAreaField label="Checklist executado" name="checklist" value="" />
-          <TextAreaField label="Observacoes" name="observacoes" value="" />
-          <TextAreaField label="Pedido de material" name="pedidoMaterial" value="" />
-          <TextAreaField label="Ferramentas necessarias ou usadas" name="ferramentas" value="" />
-          <TextAreaField label="Mao de obra presente" name="maoObra" value="" />
-          <TextAreaField label="Observacao sobre fotos" name="fotosObservacao" value="" />
+          <Field label="Data da visita" name="visitDate" type="date" value={log?.visitDate || new Date().toISOString().slice(0, 10)} required />
+          <TextAreaField label="Checklist executado" name="checklist" value={log?.checklist || ''} />
+          <TextAreaField label="Observacoes" name="observacoes" value={log?.observacoes || ''} />
+          <TextAreaField label="Pedido de material" name="pedidoMaterial" value={log?.pedidoMaterial || ''} />
+          <TextAreaField label="Ferramentas necessarias ou usadas" name="ferramentas" value={log?.ferramentas || ''} />
+          <TextAreaField label="Mao de obra presente" name="maoObra" value={log?.maoObra || ''} />
+          <TextAreaField label="Observacao sobre fotos" name="fotosObservacao" value={log?.fotosObservacao || ''} />
         </div>
         <div className="form-actions">
-          <button className="action-button primary" type="submit" data-action="save" disabled={saving}><Save size={20} /><span>Salvar registro</span></button>
-          <button className="action-button secondary" type="submit" data-action="photo" disabled={saving}><Camera size={20} /><span>Salvar e adicionar fotos</span></button>
+          <button className="action-button primary" type="submit" data-action="save" disabled={saving}><Save size={20} /><span>{editing ? 'Salvar alteracoes' : 'Salvar registro'}</span></button>
+          <button className="action-button secondary" type="submit" data-action="photo" disabled={saving}><Camera size={20} /><span>{editing ? 'Salvar e adicionar fotos' : 'Salvar e adicionar fotos'}</span></button>
+          {editing ? <ActionButton Icon={Trash2} variant="danger" onClick={confirmDelete} disabled={saving}>Excluir</ActionButton> : null}
           <ActionButton Icon={XCircle} variant="ghost" onClick={onClose}>Cancelar</ActionButton>
         </div>
       </form>
@@ -4567,17 +4602,52 @@ function App() {
     setScheduleSaving(true);
     setScheduleError('');
     try {
-      const saved = supabaseConfigured && session
-        ? await insertChild('scheduleLogs', activeWork.id, nextLog)
-        : { ...nextLog, id: makeId('diario'), createdAt: new Date().toISOString() };
+      let saved;
+      if (nextLog.id) {
+        saved = {
+          ...(data.scheduleLogs.find((log) => log.id === nextLog.id) || {}),
+          ...nextLog,
+        };
+        if (supabaseConfigured && session) {
+          await updateChild('scheduleLogs', nextLog.id, nextLog);
+        }
+      } else {
+        saved = supabaseConfigured && session
+          ? await insertChild('scheduleLogs', activeWork.id, nextLog)
+          : { ...nextLog, id: makeId('diario'), createdAt: new Date().toISOString() };
+      }
       setData((current) => ({
         ...current,
-        scheduleLogs: [saved, ...current.scheduleLogs],
+        scheduleLogs: nextLog.id
+          ? current.scheduleLogs.map((log) => (log.id === saved.id ? saved : log))
+          : [saved, ...current.scheduleLogs],
       }));
       return saved;
     } catch (error) {
       setScheduleError(error.message || 'Nao foi possivel salvar o diario da obra.');
       return null;
+    } finally {
+      setScheduleSaving(false);
+    }
+  }
+
+  async function deleteScheduleLog(logId) {
+    if (!logId || scheduleSaving) return false;
+
+    setScheduleSaving(true);
+    setScheduleError('');
+    try {
+      if (supabaseConfigured && session) {
+        await deleteChild('scheduleLogs', logId);
+      }
+      setData((current) => ({
+        ...current,
+        scheduleLogs: current.scheduleLogs.filter((log) => log.id !== logId),
+      }));
+      return true;
+    } catch (error) {
+      setScheduleError(error.message || 'Nao foi possivel excluir o registro do diario.');
+      return false;
     } finally {
       setScheduleSaving(false);
     }
@@ -5119,6 +5189,7 @@ function App() {
             onUpdateItem={updateScheduleItem}
             onSetVisibility={setScheduleItemVisibility}
             onSaveLog={saveScheduleLog}
+            onDeleteLog={deleteScheduleLog}
             addPhoto={addPhoto}
             setScreen={setScreen}
           />

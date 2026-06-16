@@ -2889,7 +2889,7 @@ body.gantt-resizing * {
 
 .schedule-log-summary {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 4px 10px;
   border-left: 3px solid #60a5fa;
   padding: 9px 11px;
@@ -2904,8 +2904,27 @@ body.gantt-resizing * {
 }
 
 .schedule-log-summary small {
-  grid-column: 2;
+  grid-column: 2 / -1;
   color: #4b5563;
+}
+
+.schedule-log-summary button {
+  min-height: 30px;
+  border: 1px solid #bfdbfe;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  color: #1d4ed8;
+  background: #eff6ff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.schedule-log-summary button:disabled {
+  cursor: wait;
+  opacity: 0.55;
 }
 
 .schedule-removed {

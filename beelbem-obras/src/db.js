@@ -794,6 +794,12 @@ export async function updateChild(collection, id, patch) {
   if (error) throw error;
 }
 
+export async function deleteChild(collection, id) {
+  const table = childTables[collection];
+  const { error } = await supabase.from(table).delete().eq('id', id);
+  if (error) throw error;
+}
+
 export async function deletePhotoRecord(photo) {
   const storagePaths = [];
   if (photo.storagePath) storagePaths.push(photo.storagePath);
