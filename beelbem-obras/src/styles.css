@@ -323,7 +323,7 @@ button {
   z-index: 10;
   min-height: 72px;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 14px;
   padding: 12px clamp(16px, 4vw, 34px);
@@ -342,6 +342,10 @@ button {
 
 .topbar strong {
   font-size: 16px;
+}
+
+.topbar-title {
+  min-width: 0;
 }
 
 .topbar-city {
@@ -372,9 +376,16 @@ button {
   outline-offset: 3px;
 }
 
+.topbar-work {
+  max-width: min(52vw, 520px);
+  margin-top: 4px;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .menu-button,
 .icon-button,
-.topbar-ai,
 .topbar-logout {
   width: 44px;
   height: 44px;
@@ -388,17 +399,6 @@ button {
 
 .menu-button {
   display: none;
-}
-
-.topbar-ai {
-  width: auto;
-  min-width: 56px;
-  display: inline-flex;
-  gap: 6px;
-  padding: 0 12px;
-  color: #581c87;
-  background: #f3e8ff;
-  font-weight: 900;
 }
 
 .topbar-logout {

@@ -755,7 +755,7 @@ function Shell({ screen, setScreen, children, activeWork, selectedCity, cities, 
           <button className="menu-button" type="button" aria-label="Abrir menu" onClick={() => setMobileMenuOpen(true)}>
             <Menu size={24} aria-hidden="true" />
           </button>
-          <div>
+          <div className="topbar-title">
             <strong>Beelbem Obras</strong>
             <label className="topbar-city">
               <MapPinned size={15} aria-hidden="true" />
@@ -765,11 +765,8 @@ function Shell({ screen, setScreen, children, activeWork, selectedCity, cities, 
                 ))}
               </select>
             </label>
+            {activeWork?.nome ? <span className="topbar-work">{activeWork.nome}</span> : null}
           </div>
-          <button className="topbar-ai" type="button" onClick={() => setScreen('newWork')}>
-            <Bot size={19} aria-hidden="true" />
-            <span>IA</span>
-          </button>
           <button className="topbar-logout" type="button" onClick={onLogout} title="Sair do Obras" aria-label="Sair do Obras">
             <LogOut size={19} aria-hidden="true" />
             <span>Sair</span>
