@@ -6,7 +6,7 @@ const legacySupabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const legacySupabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 const supabaseUrl = obrasSupabaseUrl || legacySupabaseUrl;
 const supabaseAnonKey = obrasSupabaseAnonKey || legacySupabaseAnonKey;
-const userInvitesEnabled = import.meta.env.VITE_OBRAS_USER_INVITES_ENABLED === 'true';
+const userInvitesEnabled = import.meta.env.VITE_OBRAS_USER_INVITES_ENABLED !== 'false';
 const photoBucket = 'obras-photos';
 const userAvatarBucket = 'obras-user-avatars';
 const photoThumbnailTable = 'obras_photo_thumbnails';
@@ -548,27 +548,7 @@ export async function fetchObrasUsers() {
 
 export async function insertObrasUser(accountId, user) {
   if (userInvitesEnabled) {
-    const { data, error } = await supabase.functions.invoke('invite-obras-user', {
-      body: {
-        accountId,
-        nome: user.nome,
-        email: String(user.email || '').trim().toLowerCase(),
-        telefone: user.telefone || '',
-        cpf: user.cpf || '',
-        professionalRegistry: user.professionalRegistry || '',
-        cidadeId: user.cidadeId,
-        cidade: user.cidade,
-        role: user.role || 'operador',
-        active: user.active !== false,
-        loginEnabled: user.loginEnabled !== false,
-        password: user.password || '',
-        redirectTo: `${window.location.origin}${import.meta.env.BASE_URL}`,
-      },
-    });
-
-    if (error) throw error;
-    if (!data?.user) throw new Error(data?.error || 'Nao foi possivel convidar o usuario.');
-    return withSignedObrasUserAvatar(obrasUserFromDb(data.user));
+    return syncObrasUserAccess(accountId, user);
   }
 
   const { data, error } = await supabase
@@ -582,6 +562,13 @@ export async function insertObrasUser(accountId, user) {
 }
 
 export async function updateObrasUser(userId, patch) {
+  if (userInvitesEnabled && patch.loginEnabled !== false && (patch.password || !patch.authUserId)) {
+    if (!patch.password) {
+      throw new Error('Informe uma senha temporaria para criar ou corrigir o login deste usuario.');
+    }
+    return syncObrasUserAccess(patch.accountId, patch);
+  }
+
   const { data, error } = await supabase
     .from('obras_users')
     .update(obrasUserToDb(patch))
@@ -591,6 +578,30 @@ export async function updateObrasUser(userId, patch) {
 
   if (error) throw error;
   return withSignedObrasUserAvatar(obrasUserFromDb(data));
+}
+
+async function syncObrasUserAccess(accountId, user) {
+  const { data, error } = await supabase.functions.invoke('invite-obras-user', {
+    body: {
+      accountId,
+      nome: user.nome,
+      email: String(user.email || '').trim().toLowerCase(),
+      telefone: user.telefone || '',
+      cpf: user.cpf || '',
+      professionalRegistry: user.professionalRegistry || '',
+      cidadeId: user.cidadeId,
+      cidade: user.cidade,
+      role: user.role || 'operador',
+      active: user.active !== false,
+      loginEnabled: user.loginEnabled !== false,
+      password: user.password || '',
+      redirectTo: `${window.location.origin}${import.meta.env.BASE_URL}`,
+    },
+  });
+
+  if (error) throw error;
+  if (!data?.user) throw new Error(data?.error || 'Nao foi possivel sincronizar o login do usuario.');
+  return withSignedObrasUserAvatar(obrasUserFromDb(data.user));
 }
 
 export async function fetchCommercialPlans({ includeInactive = false } = {}) {

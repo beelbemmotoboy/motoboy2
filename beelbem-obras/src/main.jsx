@@ -4848,6 +4848,10 @@ function App() {
       setUsersError('Informe uma senha temporaria para o novo usuario.');
       return false;
     }
+    if (values.id && values.loginEnabled !== false && !values.authUserId && !values.password) {
+      setUsersError('Este usuario ainda nao tem login vinculado. Informe uma senha temporaria e salve novamente.');
+      return false;
+    }
     if (values.password && values.password.length < 6) {
       setUsersError('A senha deve ter pelo menos 6 caracteres.');
       return false;
