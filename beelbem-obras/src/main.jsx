@@ -1984,6 +1984,7 @@ function Schedule({
   const [logItem, setLogItem] = useState(null);
   const [showRemoved, setShowRemoved] = useState(false);
   const [ganttOpen, setGanttOpen] = useState(false);
+  const [removeCandidate, setRemoveCandidate] = useState(null);
   const visibleItems = items.filter((item) => item.visible !== false);
   const removedItems = items.filter((item) => item.visible === false);
   const removedEntries = removedItems.filter((item) => (
@@ -2005,6 +2006,16 @@ function Schedule({
 
   async function setVisibility(item, visible) {
     await onSetVisibility(item.id, visible);
+  }
+
+  function requestRemove(item) {
+    setRemoveCandidate(item);
+  }
+
+  async function confirmRemove() {
+    if (!removeCandidate || saving) return;
+    const removed = await onSetVisibility(removeCandidate.id, false);
+    if (removed) setRemoveCandidate(null);
   }
 
   return (
@@ -2049,7 +2060,7 @@ function Schedule({
                 <div className="schedule-actions stage-only">
                   <button type="button" onClick={() => setItemModal(stage)}><Pencil size={17} /> Editar descricao</button>
                   <button type="button" onClick={() => setItemModal({ itemType: 'task', parentId: stage.id })}><Plus size={17} /> Subitem</button>
-                  <button className="danger" type="button" disabled={saving} onClick={() => setVisibility(stage, false)}><Minus size={17} /> Remover</button>
+                  <button className="danger" type="button" disabled={saving} onClick={() => requestRemove(stage)}><Minus size={17} /> Remover</button>
                 </div>
 
                 <div className="schedule-subitems">
@@ -2081,7 +2092,7 @@ function Schedule({
                           <button type="button" onClick={() => setItemModal(item)}><Pencil size={16} /> Editar</button>
                           <button type="button" onClick={() => setLogItem(item)}><ClipboardCheck size={16} /> Diario</button>
                           <button type="button" onClick={() => addPhoto(item.nome)}><Camera size={16} /> Foto</button>
-                          <button className="danger" type="button" disabled={saving} onClick={() => setVisibility(item, false)}><Minus size={16} /> Remover</button>
+                          <button className="danger" type="button" disabled={saving} onClick={() => requestRemove(item)}><Minus size={16} /> Remover</button>
                         </div>
                         {itemLogs.slice(0, 2).map((log) => <ScheduleLogSummary log={log} key={log.id} />)}
                       </article>
@@ -2136,7 +2147,54 @@ function Schedule({
       ) : null}
 
       {ganttOpen ? <ScheduleGanttModal items={visibleItems} onClose={() => setGanttOpen(false)} /> : null}
+
+      {removeCandidate ? (
+        <ScheduleRemoveConfirmModal
+          item={removeCandidate}
+          saving={saving}
+          onClose={() => {
+            if (!saving) setRemoveCandidate(null);
+          }}
+          onConfirm={confirmRemove}
+        />
+      ) : null}
     </>
+  );
+}
+
+function ScheduleRemoveConfirmModal({ item, saving, onClose, onConfirm }) {
+  const isStage = !item.parentId;
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="photo-modal confirm-modal" role="dialog" aria-modal="true" aria-labelledby="schedule-remove-title">
+        <div className="modal-head">
+          <div>
+            <span>{isStage ? 'Remover etapa' : 'Remover subitem'}</span>
+            <h2 id="schedule-remove-title">Confirmar remocao</h2>
+          </div>
+          <IconButton label="Fechar" Icon={X} onClick={onClose} />
+        </div>
+        <div className="confirm-modal-body">
+          <AlertTriangle size={34} aria-hidden="true" />
+          <div>
+            <strong>{item.nome}</strong>
+            <p>
+              {isStage
+                ? 'Esta etapa e seus subitens sairao da tela do cronograma desta obra.'
+                : 'Este subitem saira da tela do cronograma desta obra.'}
+            </p>
+            <p>Os dados continuam salvos no banco e podem ser restaurados em Removidos.</p>
+          </div>
+        </div>
+        <div className="form-actions">
+          <ActionButton Icon={Minus} variant="danger" onClick={onConfirm} disabled={saving}>
+            {saving ? 'Removendo...' : 'Confirmar remocao'}
+          </ActionButton>
+          <ActionButton Icon={XCircle} variant="ghost" onClick={onClose} disabled={saving}>Cancelar</ActionButton>
+        </div>
+      </section>
+    </div>
   );
 }
 

@@ -1737,6 +1737,10 @@ button.metric-card {
   width: min(760px, 100%);
 }
 
+.confirm-modal {
+  width: min(560px, 100%);
+}
+
 .modal-head {
   display: flex;
   align-items: start;
@@ -1755,6 +1759,33 @@ button.metric-card {
 .modal-head h2 {
   margin: 6px 0 0;
   font-size: 26px;
+}
+
+.confirm-modal-body {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  margin-bottom: 18px;
+  padding: 14px;
+  color: #7f1d1d;
+  background: #fff7f7;
+}
+
+.confirm-modal-body strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #111827;
+  font-size: 20px;
+  overflow-wrap: anywhere;
+}
+
+.confirm-modal-body p {
+  margin: 0 0 6px;
+  color: #374151;
+  font-weight: 800;
+  line-height: 1.4;
 }
 
 .photo-upload-layout {
