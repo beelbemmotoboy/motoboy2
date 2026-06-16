@@ -123,6 +123,97 @@ export function obrasUserToDb(user, accountId) {
   };
 }
 
+export function commercialPlanFromDb(row) {
+  return {
+    id: row.id,
+    nome: row.nome || '',
+    descricao: row.descricao || '',
+    tipo: row.tipo || 'empresa',
+    valorMensal: Number(row.valor_mensal || 0),
+    limiteObras: row.limite_obras ?? null,
+    limiteUsuarios: row.limite_usuarios ?? null,
+    recursos: Array.isArray(row.recursos) ? row.recursos : [],
+    active: row.active !== false,
+    sortOrder: row.sort_order ?? 0,
+    createdAt: row.created_at || '',
+  };
+}
+
+export function signupRequestFromDb(row) {
+  return {
+    id: row.id,
+    accountType: row.account_type || 'empresa',
+    nomeResponsavel: row.nome_responsavel || '',
+    empresa: row.empresa || '',
+    documento: row.documento || '',
+    email: row.email || '',
+    telefone: row.telefone || '',
+    cidade: row.cidade || '',
+    estado: row.estado || '',
+    planId: row.plan_id || '',
+    observacoes: row.observacoes || '',
+    status: row.status || 'novo',
+    convertedAccountId: row.converted_account_id || '',
+    createdAt: row.created_at || '',
+    updatedAt: row.updated_at || '',
+  };
+}
+
+export function signupRequestToDb(values) {
+  return {
+    account_type: values.accountType || 'empresa',
+    nome_responsavel: String(values.nomeResponsavel || '').trim(),
+    empresa: String(values.empresa || '').trim() || null,
+    documento: String(values.documento || '').trim() || null,
+    email: String(values.email || '').trim().toLowerCase(),
+    telefone: String(values.telefone || '').trim(),
+    cidade: String(values.cidade || '').trim(),
+    estado: String(values.estado || 'GO').trim().toUpperCase(),
+    plan_id: values.planId || null,
+    observacoes: String(values.observacoes || '').trim() || null,
+    ...(values.status ? { status: values.status } : {}),
+    ...(values.convertedAccountId !== undefined ? { converted_account_id: values.convertedAccountId || null } : {}),
+  };
+}
+
+export function signupRequestPatchToDb(values) {
+  return {
+    ...(values.accountType !== undefined ? { account_type: values.accountType || 'empresa' } : {}),
+    ...(values.nomeResponsavel !== undefined ? { nome_responsavel: String(values.nomeResponsavel || '').trim() } : {}),
+    ...(values.empresa !== undefined ? { empresa: String(values.empresa || '').trim() || null } : {}),
+    ...(values.documento !== undefined ? { documento: String(values.documento || '').trim() || null } : {}),
+    ...(values.email !== undefined ? { email: String(values.email || '').trim().toLowerCase() } : {}),
+    ...(values.telefone !== undefined ? { telefone: String(values.telefone || '').trim() } : {}),
+    ...(values.cidade !== undefined ? { cidade: String(values.cidade || '').trim() } : {}),
+    ...(values.estado !== undefined ? { estado: String(values.estado || 'GO').trim().toUpperCase() } : {}),
+    ...(values.planId !== undefined ? { plan_id: values.planId || null } : {}),
+    ...(values.observacoes !== undefined ? { observacoes: String(values.observacoes || '').trim() || null } : {}),
+    ...(values.status !== undefined ? { status: values.status } : {}),
+    ...(values.convertedAccountId !== undefined ? { converted_account_id: values.convertedAccountId || null } : {}),
+  };
+}
+
+export function subscriptionFromDb(row) {
+  return {
+    id: row.id,
+    accountId: row.account_id || '',
+    planId: row.plan_id || '',
+    status: row.status || 'trial',
+    startedAt: row.started_at || '',
+    trialEndsAt: row.trial_ends_at || '',
+    currentPeriodEndsAt: row.current_period_ends_at || '',
+    cancelledAt: row.cancelled_at || '',
+    limiteObras: row.limite_obras ?? null,
+    limiteUsuarios: row.limite_usuarios ?? null,
+    valorMensal: Number(row.valor_mensal || 0),
+    paymentProvider: row.payment_provider || '',
+    externalReference: row.external_reference || '',
+    notes: row.notes || '',
+    createdAt: row.created_at || '',
+    updatedAt: row.updated_at || '',
+  };
+}
+
 export const rowMappers = {
   stages: {
     fromDb: (row) => ({
@@ -483,6 +574,72 @@ export async function updateObrasUser(userId, patch) {
 
   if (error) throw error;
   return obrasUserFromDb(data);
+}
+
+export async function fetchCommercialPlans({ includeInactive = false } = {}) {
+  let query = supabase
+    .from('obras_plans')
+    .select('*')
+    .order('sort_order', { ascending: true })
+    .order('valor_mensal', { ascending: true });
+
+  if (!includeInactive) query = query.eq('active', true);
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data || []).map(commercialPlanFromDb);
+}
+
+export async function insertSignupRequest(values) {
+  const { data, error } = await supabase
+    .from('obras_signup_requests')
+    .insert(signupRequestToDb(values))
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return signupRequestFromDb(data);
+}
+
+export async function fetchSignupRequests() {
+  const { data, error } = await supabase
+    .from('obras_signup_requests')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return (data || []).map(signupRequestFromDb);
+}
+
+export async function updateSignupRequest(requestId, patch) {
+  const dbPatch = signupRequestPatchToDb(patch);
+  if (!Object.keys(dbPatch).length) return null;
+
+  const { data, error } = await supabase
+    .from('obras_signup_requests')
+    .update(dbPatch)
+    .eq('id', requestId)
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return signupRequestFromDb(data);
+}
+
+export async function fetchObrasSubscriptions() {
+  const { data, error } = await supabase
+    .from('obras_subscriptions')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return (data || []).map(subscriptionFromDb);
+}
+
+export async function isObrasPlatformAdmin() {
+  const { data, error } = await supabase.rpc('obras_is_platform_admin');
+  if (error) throw error;
+  return Boolean(data);
 }
 
 export async function fetchProjects() {

@@ -53,13 +53,18 @@ import {
   deletePhotoRecord,
   fetchProjectChildren,
   fetchProjects,
+  fetchCommercialPlans,
+  fetchObrasSubscriptions,
   fetchObrasUsers,
+  fetchSignupRequests,
   getSession,
   ensureProjectSchedule,
   insertChild,
   insertPhotoThumbnail,
   insertObrasUser,
   insertProject,
+  insertSignupRequest,
+  isObrasPlatformAdmin,
   onAuthStateChange,
   seedProjectChildren,
   signIn,
@@ -68,6 +73,7 @@ import {
   updateChild,
   updateObrasUser,
   updateProject,
+  updateSignupRequest,
   uploadPhotoFile,
 } from './db.js';
 import { analisarProjetoComGemini, geminiProjectConfig } from './analisa_projeto_gemini.js';
@@ -106,6 +112,15 @@ const statusClasses = {
   Enviado: 'info',
   IA: 'ai',
   'Analise IA': 'ai',
+  Novo: 'neutral',
+  'Em analise': 'warning',
+  Rejeitado: 'danger',
+  Convertido: 'info',
+  Trial: 'info',
+  Ativa: 'success',
+  Bloqueada: 'danger',
+  Cancelada: 'neutral',
+  Vencida: 'danger',
 };
 
 const cityCatalog = [
@@ -294,6 +309,7 @@ const quickRoutes = [
 const sidebarRoutes = [
   ...quickRoutes,
   { id: 'users', label: 'Usuarios', Icon: UsersRound },
+  { id: 'commercial', label: 'Assinaturas', Icon: Landmark },
   { id: 'pls', label: 'PLS Caixa', Icon: FileCheck2 },
   { id: 'reports', label: 'Relatorios', Icon: BarChart3 },
   { id: 'stageLibrary', label: 'Cadastro etapas', Icon: Library },
@@ -305,6 +321,42 @@ const obrasRoles = [
   { value: 'engenheiro', label: 'Engenheiro' },
   { value: 'operador', label: 'Operador' },
   { value: 'viewer', label: 'Visualizador' },
+];
+
+const localCommercialPlans = [
+  {
+    id: 'engenheiro-individual',
+    nome: 'Engenheiro individual',
+    descricao: 'Para profissional autonomo acompanhar obras residenciais.',
+    tipo: 'engenheiro',
+    valorMensal: 79.90,
+    limiteObras: 8,
+    limiteUsuarios: 3,
+    recursos: ['Cronograma inteligente', 'Fotos por etapa', 'Pendencias', 'Relatorios basicos'],
+    active: true,
+  },
+  {
+    id: 'empresa-campo',
+    nome: 'Empresa de obras',
+    descricao: 'Para empresas com equipe propria e varias obras em andamento.',
+    tipo: 'empresa',
+    valorMensal: 149.90,
+    limiteObras: 30,
+    limiteUsuarios: 12,
+    recursos: ['Multiusuarios', 'Cronograma por obra', 'PLS Caixa', 'Fotos com miniatura', 'Relatorios'],
+    active: true,
+  },
+  {
+    id: 'construtora',
+    nome: 'Construtora',
+    descricao: 'Para operacao com varias cidades, gestores e padroes de cronograma.',
+    tipo: 'construtora',
+    valorMensal: 299.90,
+    limiteObras: null,
+    limiteUsuarios: null,
+    recursos: ['Obras ilimitadas', 'Usuarios ilimitados', 'Padroes de cronograma', 'Gestao comercial', 'Suporte prioritario'],
+    active: true,
+  },
 ];
 
 const localObrasUsers = [
@@ -484,6 +536,44 @@ function roleLabel(role) {
   return obrasRoles.find((item) => item.value === role)?.label || 'Operador';
 }
 
+function formatCurrency(value) {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  }).format(Number(value) || 0);
+}
+
+function formatDateTime(value) {
+  if (!value) return '-';
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
+function requestStatusLabel(status) {
+  return {
+    novo: 'Novo',
+    em_analise: 'Em analise',
+    aprovado: 'Aprovado',
+    rejeitado: 'Rejeitado',
+    convertido: 'Convertido',
+  }[status] || 'Novo';
+}
+
+function subscriptionStatusLabel(status) {
+  return {
+    trial: 'Trial',
+    active: 'Ativa',
+    past_due: 'Vencida',
+    blocked: 'Bloqueada',
+    cancelled: 'Cancelada',
+  }[status] || 'Trial';
+}
+
 function Field({ label, name, value, type = 'text', wide = false, required = false, disabled = false }) {
   return (
     <label className={wide ? 'field wide' : 'field'}>
@@ -625,7 +715,7 @@ function getDerivedStageUpdates(previousItems, nextItems) {
 
 function Shell({ screen, setScreen, children, activeWork, selectedCity, cities, onCityChange }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  if (screen === 'login') return children;
+  if (screen === 'login' || screen === 'signup') return children;
 
   return (
     <div className="app-shell">
@@ -707,7 +797,7 @@ function Shell({ screen, setScreen, children, activeWork, selectedCity, cities, 
   );
 }
 
-function LoginScreen({ onLogin, authError, authLoading, dbAvailable }) {
+function LoginScreen({ onLogin, authError, authLoading, dbAvailable, onOpenSignup }) {
   return (
     <main className="login-page">
       <section className="login-visual" aria-label="Beelbem Obras">
@@ -743,6 +833,154 @@ function LoginScreen({ onLogin, authError, authLoading, dbAvailable }) {
             <KeyRound size={18} aria-hidden="true" />
             <span>Esqueci minha senha</span>
           </button>
+          <button className="link-button" type="button" onClick={onOpenSignup}>
+            <Landmark size={18} aria-hidden="true" />
+            <span>Solicitar assinatura do Obras</span>
+          </button>
+        </form>
+      </section>
+    </main>
+  );
+}
+
+function SignupRequestScreen({ dbAvailable, onBack }) {
+  const [plans, setPlans] = useState(localCommercialPlans);
+  const [loading, setLoading] = useState(Boolean(dbAvailable));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    if (!dbAvailable) {
+      setLoading(false);
+      setPlans(localCommercialPlans);
+      return undefined;
+    }
+
+    let mounted = true;
+    fetchCommercialPlans()
+      .then((items) => {
+        if (mounted) setPlans(items.length ? items : localCommercialPlans);
+      })
+      .catch((requestError) => {
+        if (mounted) setError(requestError.message || 'Nao foi possivel carregar os planos.');
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [dbAvailable]);
+
+  async function submit(event) {
+    event.preventDefault();
+    setError('');
+    setMessage('');
+
+    const form = event.currentTarget;
+    const values = {
+      accountType: form.elements.accountType.value,
+      nomeResponsavel: form.elements.nomeResponsavel.value.trim(),
+      empresa: form.elements.empresa.value.trim(),
+      documento: form.elements.documento.value.trim(),
+      email: form.elements.email.value.trim(),
+      telefone: form.elements.telefone.value.trim(),
+      cidade: form.elements.cidade.value.trim(),
+      estado: form.elements.estado.value.trim(),
+      planId: form.elements.planId.value,
+      observacoes: form.elements.observacoes.value.trim(),
+    };
+
+    if (!values.nomeResponsavel || !values.email || !values.telefone || !values.cidade) {
+      setError('Preencha nome, e-mail, telefone e cidade.');
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) {
+      setError('Informe um e-mail valido.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      if (dbAvailable) {
+        await insertSignupRequest(values);
+      }
+      form.reset();
+      setMessage(dbAvailable
+        ? 'Solicitacao enviada. Ela ja aparece no painel de assinaturas para analise.'
+        : 'Solicitacao registrada no modo local. Configure o Supabase para salvar online.');
+    } catch (requestError) {
+      setError(requestError.message || 'Nao foi possivel enviar a solicitacao.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <main className="signup-page">
+      <section className="signup-panel">
+        <PageTitle eyebrow="Assinatura" title="Solicitar acesso ao Beelbem Obras" subtitle="Cadastro unico para empresas e engenheiros interessados no sistema." onBack={onBack} />
+        {error ? (
+          <section className="warning-strip">
+            <AlertTriangle size={22} aria-hidden="true" />
+            <span>{error}</span>
+          </section>
+        ) : null}
+        {message ? (
+          <section className="success-strip">
+            <CheckCircle2 size={22} aria-hidden="true" />
+            <span>{message}</span>
+          </section>
+        ) : null}
+        <section className="plan-grid">
+          {plans.map((plan) => (
+            <article className="plan-card" key={plan.id}>
+              <span>{plan.tipo}</span>
+              <strong>{plan.nome}</strong>
+              <p>{plan.descricao}</p>
+              <b>{formatCurrency(plan.valorMensal)} / mes</b>
+              <small>{plan.limiteObras ? `${plan.limiteObras} obras` : 'Obras ilimitadas'} - {plan.limiteUsuarios ? `${plan.limiteUsuarios} usuarios` : 'Usuarios ilimitados'}</small>
+            </article>
+          ))}
+        </section>
+        <form className="commercial-form" onSubmit={submit}>
+          <div className="form-grid">
+            <label className="field">
+              <span>Tipo de cadastro</span>
+              <select name="accountType" defaultValue="empresa">
+                <option value="empresa">Empresa</option>
+                <option value="engenheiro">Engenheiro</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>Plano desejado</span>
+              <select name="planId" defaultValue={plans[1]?.id || plans[0]?.id || ''} disabled={loading}>
+                {plans.map((plan) => (
+                  <option value={plan.id} key={plan.id}>{plan.nome}</option>
+                ))}
+              </select>
+            </label>
+            <Field label="Nome do responsavel" name="nomeResponsavel" required />
+            <Field label="Empresa ou escritorio" name="empresa" />
+            <Field label="CPF/CNPJ" name="documento" />
+            <Field label="E-mail" name="email" type="email" required />
+            <Field label="Telefone/WhatsApp" name="telefone" required />
+            <Field label="Cidade" name="cidade" required />
+            <Field label="UF" name="estado" value="GO" required />
+            <label className="field wide">
+              <span>Observacoes</span>
+              <textarea name="observacoes" rows={4} placeholder="Informe quantidade de obras, equipe e necessidade principal." />
+            </label>
+          </div>
+          <div className="form-actions">
+            <ActionButton Icon={Save} type="submit" disabled={saving || loading}>
+              {saving ? 'Enviando...' : 'Enviar solicitacao'}
+            </ActionButton>
+            <ActionButton Icon={LogIn} variant="ghost" onClick={onBack} disabled={saving}>Voltar ao login</ActionButton>
+          </div>
         </form>
       </section>
     </main>
@@ -776,6 +1014,7 @@ function Dashboard({ data, setScreen }) {
           ['Nova obra', Plus, 'newWork'],
           ['Ver pendencias', AlertTriangle, 'issues'],
           ['Usuarios', UsersRound, 'users'],
+          ['Assinaturas', Landmark, 'commercial'],
           ['Ver PLS Caixa', FileCheck2, 'pls'],
           ['Relatorios', BarChart3, 'reports'],
         ].map(([label, Icon, route]) => (
@@ -2688,6 +2927,196 @@ function UserModal({ user, currentUser, saving, onClose, onSave }) {
   );
 }
 
+function CommercialSubscriptions({
+  plans,
+  requests,
+  subscriptions,
+  currentUser,
+  isPlatformAdmin: platformAdmin,
+  loading,
+  saving,
+  error,
+  message,
+  onRefresh,
+  onUpdateRequest,
+  setScreen,
+}) {
+  const planById = useMemo(() => new Map(plans.map((plan) => [plan.id, plan])), [plans]);
+  const ownSubscription = subscriptions.find((subscription) => subscription.accountId === currentUser?.accountId);
+  const openRequests = requests.filter((request) => ['novo', 'em_analise'].includes(request.status)).length;
+
+  return (
+    <>
+      <PageTitle eyebrow="Assinaturas" title="Comercial do Obras" subtitle="Planos, solicitacoes e assinatura vinculada a cada conta." onBack={() => setScreen('dashboard')}>
+        <ActionButton Icon={Database} onClick={onRefresh} disabled={loading}>
+          {loading ? 'Atualizando...' : 'Atualizar'}
+        </ActionButton>
+      </PageTitle>
+      {!platformAdmin ? (
+        <section className="warning-strip">
+          <ShieldCheck size={22} aria-hidden="true" />
+          <span>Voce esta vendo apenas a assinatura da sua conta. O painel comercial completo e restrito aos administradores da plataforma.</span>
+        </section>
+      ) : null}
+      {error ? (
+        <section className="warning-strip">
+          <AlertTriangle size={22} aria-hidden="true" />
+          <span>{error}</span>
+        </section>
+      ) : null}
+      {message ? (
+        <section className="success-strip">
+          <CheckCircle2 size={22} aria-hidden="true" />
+          <span>{message}</span>
+        </section>
+      ) : null}
+
+      <section className="commercial-summary">
+        <article>
+          <strong>{plans.length}</strong>
+          <span>Planos</span>
+        </article>
+        <article>
+          <strong>{platformAdmin ? openRequests : '-'}</strong>
+          <span>Solicitacoes abertas</span>
+        </article>
+        <article>
+          <strong>{subscriptions.length}</strong>
+          <span>{platformAdmin ? 'Assinaturas' : 'Sua assinatura'}</span>
+        </article>
+      </section>
+
+      <section className="plan-grid">
+        {plans.map((plan) => (
+          <article className="plan-card" key={plan.id}>
+            <div className="plan-head">
+              <span>{plan.tipo}</span>
+              <StatusPill status={plan.active ? 'Ativo' : 'Inativo'} />
+            </div>
+            <strong>{plan.nome}</strong>
+            <p>{plan.descricao}</p>
+            <b>{formatCurrency(plan.valorMensal)} / mes</b>
+            <small>{plan.limiteObras ? `${plan.limiteObras} obras` : 'Obras ilimitadas'} - {plan.limiteUsuarios ? `${plan.limiteUsuarios} usuarios` : 'Usuarios ilimitados'}</small>
+            <ul>
+              {(plan.recursos || []).slice(0, 5).map((recurso) => <li key={recurso}>{recurso}</li>)}
+            </ul>
+          </article>
+        ))}
+      </section>
+
+      <section className="commercial-section">
+        <div className="section-title-row">
+          <div>
+            <span>Conta atual</span>
+            <h2>Assinatura da conta</h2>
+          </div>
+        </div>
+        {ownSubscription ? (
+          <article className="subscription-card">
+            <div>
+              <strong>{planById.get(ownSubscription.planId)?.nome || ownSubscription.planId || 'Plano nao informado'}</strong>
+              <span>{formatCurrency(ownSubscription.valorMensal)} / mes</span>
+            </div>
+            <StatusPill status={subscriptionStatusLabel(ownSubscription.status)} />
+            <small>Inicio: {formatDateTime(ownSubscription.startedAt)}</small>
+            <small>Trial ate: {formatDateTime(ownSubscription.trialEndsAt)}</small>
+            <small>{ownSubscription.limiteObras ? `${ownSubscription.limiteObras} obras` : 'Obras ilimitadas'} - {ownSubscription.limiteUsuarios ? `${ownSubscription.limiteUsuarios} usuarios` : 'Usuarios ilimitados'}</small>
+            {ownSubscription.notes ? <p>{ownSubscription.notes}</p> : null}
+          </article>
+        ) : (
+          <EmptyNotice Icon={Landmark} title="Sem assinatura vinculada" text="A conta atual ainda nao possui assinatura cadastrada." />
+        )}
+      </section>
+
+      {platformAdmin ? (
+        <section className="commercial-section">
+          <div className="section-title-row">
+            <div>
+              <span>Solicitacoes</span>
+              <h2>Cadastros recebidos</h2>
+            </div>
+          </div>
+          {requests.length ? (
+            <div className="request-grid">
+              {requests.map((request) => {
+                const plan = planById.get(request.planId);
+                return (
+                  <article className="request-card" key={request.id}>
+                    <div className="request-card-head">
+                      <div>
+                        <strong>{request.empresa || request.nomeResponsavel}</strong>
+                        <span>{request.nomeResponsavel}</span>
+                      </div>
+                      <StatusPill status={requestStatusLabel(request.status)} />
+                    </div>
+                    <div className="request-meta">
+                      <span>{request.accountType}</span>
+                      <span>{plan?.nome || 'Plano nao informado'}</span>
+                      <span>{request.cidade}/{request.estado}</span>
+                      <span>{formatDateTime(request.createdAt)}</span>
+                    </div>
+                    <p>{request.email} - {request.telefone}</p>
+                    {request.documento ? <p>Documento: {request.documento}</p> : null}
+                    {request.observacoes ? <p>{request.observacoes}</p> : null}
+                    <div className="button-row">
+                      {[
+                        ['em_analise', 'Em analise'],
+                        ['aprovado', 'Aprovar'],
+                        ['rejeitado', 'Rejeitar'],
+                        ['convertido', 'Convertido'],
+                      ].map(([status, label]) => (
+                        <button
+                          type="button"
+                          key={status}
+                          onClick={() => onUpdateRequest(request, status)}
+                          disabled={saving || request.status === status}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <EmptyNotice Icon={FileText} title="Nenhuma solicitacao" text="Quando alguem preencher o cadastro publico, a solicitacao aparecera aqui." />
+          )}
+        </section>
+      ) : null}
+
+      {platformAdmin ? (
+        <section className="commercial-section">
+          <div className="section-title-row">
+            <div>
+              <span>Contas</span>
+              <h2>Assinaturas cadastradas</h2>
+            </div>
+          </div>
+          {subscriptions.length ? (
+            <div className="subscription-grid">
+              {subscriptions.map((subscription) => (
+                <article className="subscription-card" key={subscription.id}>
+                  <div>
+                    <strong>{planById.get(subscription.planId)?.nome || subscription.planId || 'Plano nao informado'}</strong>
+                    <span>{formatCurrency(subscription.valorMensal)} / mes</span>
+                  </div>
+                  <StatusPill status={subscriptionStatusLabel(subscription.status)} />
+                  <small>Conta: {subscription.accountId}</small>
+                  <small>Periodo ate: {formatDateTime(subscription.currentPeriodEndsAt || subscription.trialEndsAt)}</small>
+                  {subscription.notes ? <p>{subscription.notes}</p> : null}
+                </article>
+              ))}
+            </div>
+          ) : (
+            <EmptyNotice Icon={Landmark} title="Nenhuma assinatura" text="As assinaturas das contas cadastradas aparecerao aqui." />
+          )}
+        </section>
+      ) : null}
+    </>
+  );
+}
+
 function TableList({ title, eyebrow, subtitle, items, onPrimary, setScreen, primaryLabel = 'Atualizar', PrimaryIcon = Pencil }) {
   return (
     <>
@@ -3090,6 +3519,14 @@ function App() {
   const [usersSaving, setUsersSaving] = useState(false);
   const [usersError, setUsersError] = useState('');
   const [usersMessage, setUsersMessage] = useState('');
+  const [platformAdmin, setPlatformAdmin] = useState(!supabaseConfigured);
+  const [commercialPlans, setCommercialPlans] = useState(localCommercialPlans);
+  const [signupRequests, setSignupRequests] = useState([]);
+  const [subscriptions, setSubscriptions] = useState([]);
+  const [commercialLoading, setCommercialLoading] = useState(false);
+  const [commercialSaving, setCommercialSaving] = useState(false);
+  const [commercialError, setCommercialError] = useState('');
+  const [commercialMessage, setCommercialMessage] = useState('');
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileError, setProfileError] = useState('');
   const [profileMessage, setProfileMessage] = useState('');
@@ -3223,6 +3660,7 @@ function App() {
         setSession(null);
         setCurrentObrasUser(null);
         setObrasUsers([]);
+        setPlatformAdmin(!supabaseConfigured);
         setScreen('login');
         return;
       }
@@ -3267,6 +3705,11 @@ function App() {
     if (!supabaseConfigured || !session) return;
     void hydrateRemoteSession();
   }, [session?.user?.id]);
+
+  useEffect(() => {
+    if (screen !== 'commercial') return;
+    void loadCommercialData();
+  }, [screen, session?.user?.id, platformAdmin]);
 
   const cityWorks = useMemo(
     () => data.works.filter((work) => work.cidadeId === selectedCity.id),
@@ -3315,7 +3758,9 @@ function App() {
     setUsersError('');
     try {
       const currentUser = await ensureCurrentObrasUser();
+      const nextPlatformAdmin = await isObrasPlatformAdmin().catch(() => false);
       const users = await fetchObrasUsers();
+      setPlatformAdmin(nextPlatformAdmin);
       setCurrentObrasUser(currentUser || users.find((item) => item.authUserId === session.user.id) || null);
       setObrasUsers(users);
       return currentUser || users.find((item) => item.authUserId === session.user.id) || null;
@@ -4293,6 +4738,67 @@ function App() {
     await saveObrasUser({ ...user, active: !user.active });
   }
 
+  async function loadCommercialData() {
+    setCommercialLoading(true);
+    setCommercialError('');
+    setCommercialMessage('');
+
+    if (!supabaseConfigured || !session) {
+      setCommercialPlans(localCommercialPlans);
+      setSignupRequests([]);
+      setSubscriptions([
+        {
+          id: 'local-subscription',
+          accountId: currentObrasUser?.accountId || 'local-account',
+          planId: 'empresa-campo',
+          status: 'trial',
+          startedAt: new Date().toISOString(),
+          trialEndsAt: '',
+          currentPeriodEndsAt: '',
+          cancelledAt: '',
+          limiteObras: 30,
+          limiteUsuarios: 12,
+          valorMensal: 149.90,
+          notes: 'Assinatura local para demonstracao.',
+        },
+      ]);
+      setCommercialLoading(false);
+      return;
+    }
+
+    try {
+      const [plans, accountSubscriptions] = await Promise.all([
+        fetchCommercialPlans({ includeInactive: platformAdmin }),
+        fetchObrasSubscriptions(),
+      ]);
+      const requests = platformAdmin ? await fetchSignupRequests() : [];
+      setCommercialPlans(plans.length ? plans : localCommercialPlans);
+      setSubscriptions(accountSubscriptions);
+      setSignupRequests(requests);
+    } catch (error) {
+      setCommercialError(error.message || 'Nao foi possivel carregar assinaturas.');
+    } finally {
+      setCommercialLoading(false);
+    }
+  }
+
+  async function updateSignupRequestStatus(request, status) {
+    if (!request?.id || !platformAdmin) return;
+    setCommercialSaving(true);
+    setCommercialError('');
+    setCommercialMessage('');
+
+    try {
+      const saved = await updateSignupRequest(request.id, { status });
+      setSignupRequests((current) => current.map((item) => (item.id === saved.id ? saved : item)));
+      setCommercialMessage(`Solicitacao marcada como ${requestStatusLabel(status)}.`);
+    } catch (error) {
+      setCommercialError(error.message || 'Nao foi possivel atualizar a solicitacao.');
+    } finally {
+      setCommercialSaving(false);
+    }
+  }
+
   async function updateFirst(collection, updater) {
     const target = data[collection]?.[0];
     if (!target) return;
@@ -4313,22 +4819,25 @@ function App() {
   }
 
   function renderScreen() {
-    if (authInitializing) {
+    const publicScreens = ['login', 'signup'];
+
+    if (authInitializing && screen !== 'signup') {
       return (
         <LoginScreen
           onLogin={(event) => event.preventDefault()}
           authError=""
           authLoading
           dbAvailable={supabaseConfigured}
+          onOpenSignup={() => setScreen('signup')}
         />
       );
     }
 
-    if (screen !== 'login' && dataLoading) {
+    if (!publicScreens.includes(screen) && dataLoading) {
       return <EmptyNotice Icon={Database} title="Carregando banco de dados" text="Sincronizando obras, etapas e pendencias." />;
     }
 
-    if (screen !== 'login' && dataError) {
+    if (!publicScreens.includes(screen) && dataError) {
       return (
         <>
           <section className="warning-strip">
@@ -4355,7 +4864,17 @@ function App() {
 
     switch (screen) {
       case 'login':
-        return <LoginScreen onLogin={handleLogin} authError={authError} authLoading={authLoading} dbAvailable={supabaseConfigured} />;
+        return (
+          <LoginScreen
+            onLogin={handleLogin}
+            authError={authError}
+            authLoading={authLoading}
+            dbAvailable={supabaseConfigured}
+            onOpenSignup={() => setScreen('signup')}
+          />
+        );
+      case 'signup':
+        return <SignupRequestScreen dbAvailable={supabaseConfigured} onBack={() => setScreen('login')} />;
       case 'dashboard':
         return <Dashboard data={cityData} setScreen={setScreen} />;
       case 'cities':
@@ -4428,6 +4947,23 @@ function App() {
             onRefresh={loadRemoteUsers}
             onSave={saveObrasUser}
             onToggle={toggleObrasUser}
+            setScreen={setScreen}
+          />
+        );
+      case 'commercial':
+        return (
+          <CommercialSubscriptions
+            plans={commercialPlans}
+            requests={signupRequests}
+            subscriptions={subscriptions}
+            currentUser={currentObrasUser}
+            isPlatformAdmin={platformAdmin}
+            loading={commercialLoading}
+            saving={commercialSaving}
+            error={commercialError}
+            message={commercialMessage}
+            onRefresh={loadCommercialData}
+            onUpdateRequest={updateSignupRequestStatus}
             setScreen={setScreen}
           />
         );
