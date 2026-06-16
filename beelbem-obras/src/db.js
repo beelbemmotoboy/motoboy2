@@ -679,9 +679,11 @@ export async function fetchProjects() {
   return (data || []).map(projectFromDb);
 }
 
-export async function fetchProjectChildren(projectId) {
+export async function fetchProjectChildren(projectId, options = {}) {
+  const requestedCollections = new Set(options.collections || Object.keys(childTables));
+  const signPhotoUrls = options.signPhotoUrls !== false;
   const entries = await Promise.all(
-    Object.entries(childTables).map(async ([key, table]) => {
+    Object.entries(childTables).filter(([key]) => requestedCollections.has(key)).map(async ([key, table]) => {
       let query = supabase.from(table).select('*').eq('project_id', projectId);
       query = ['stages', 'scheduleItems'].includes(key)
         ? query.order('sort_order', { ascending: true })
@@ -691,7 +693,7 @@ export async function fetchProjectChildren(projectId) {
       const { data, error } = await query;
       if (error) throw error;
       let rows = (data || []).map(rowMappers[key].fromDb);
-      if (key === 'photos') rows = await withSignedPhotoUrls(rows, projectId);
+      if (key === 'photos' && signPhotoUrls) rows = await withSignedPhotoUrls(rows, projectId);
       return [key, rows];
     }),
   );

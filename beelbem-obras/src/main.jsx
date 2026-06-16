@@ -156,6 +156,24 @@ const neighborhoodCatalog = {
 };
 
 const projectCollections = ['stages', 'scheduleItems', 'scheduleLogs', 'photos', 'plsItems', 'issues', 'supplies', 'tools', 'checklist'];
+const emptyProjectCollections = Object.fromEntries(projectCollections.map((collection) => [collection, []]));
+const projectScreenRequirements = {
+  stages: { collections: ['scheduleItems', 'scheduleLogs', 'photos', 'issues'], signPhotoUrls: false, normalizeSchedule: false },
+  stageDetail: { collections: ['stages'], signPhotoUrls: false },
+  photos: { collections: ['scheduleItems', 'photos'], signPhotoUrls: true, normalizeSchedule: false },
+  pls: { collections: ['plsItems'], signPhotoUrls: false },
+  schedule: { collections: ['scheduleItems', 'scheduleLogs'], signPhotoUrls: false, normalizeSchedule: true },
+  issues: { collections: ['issues'], signPhotoUrls: false },
+  supplies: { collections: ['supplies'], signPhotoUrls: false },
+  tools: { collections: ['tools'], signPhotoUrls: false },
+  checklist: { collections: ['checklist'], signPhotoUrls: false },
+  reports: { collections: ['photos', 'issues'], signPhotoUrls: false },
+  stageLibrary: { collections: ['stages'], signPhotoUrls: false },
+};
+
+function getProjectScreenRequirement(screen) {
+  return projectScreenRequirements[screen] || { collections: [], signPhotoUrls: false };
+}
 
 const initialData = {
   works: [
@@ -3662,6 +3680,10 @@ function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
   const [dataLoading, setDataLoading] = useState(false);
+  const [projectDetailsLoading, setProjectDetailsLoading] = useState(false);
+  const [projectDataProjectId, setProjectDataProjectId] = useState(supabaseConfigured ? '' : initialData.works[0]?.id || '');
+  const [loadedProjectCollections, setLoadedProjectCollections] = useState(supabaseConfigured ? [] : projectCollections);
+  const [photoUrlsProjectId, setPhotoUrlsProjectId] = useState(supabaseConfigured ? '' : initialData.works[0]?.id || '');
   const [dataError, setDataError] = useState('');
   const [photoDraftStage, setPhotoDraftStage] = useState(null);
   const [photoSaving, setPhotoSaving] = useState(false);
@@ -3844,6 +3866,9 @@ function App() {
         setCurrentObrasUser(null);
         setObrasUsers([]);
         setPlatformAdmin(!supabaseConfigured);
+        setProjectDataProjectId('');
+        setLoadedProjectCollections([]);
+        setPhotoUrlsProjectId('');
         setScreen('login');
         return;
       }
@@ -3912,6 +3937,36 @@ function App() {
   const canEditWorkProfile = !supabaseConfigured || ['owner', 'admin', 'engenheiro'].includes(currentObrasUser?.role);
   const canDeleteWorkProfile = !supabaseConfigured || ['owner', 'admin'].includes(currentObrasUser?.role);
 
+  function hasLoadedProjectRequirement(projectId, requirement) {
+    if (!supabaseConfigured || !session || !requirement.collections.length) return true;
+    if (!projectId || projectDataProjectId !== projectId) return false;
+    const hasCollections = requirement.collections.every((collection) => loadedProjectCollections.includes(collection));
+    if (!hasCollections) return false;
+    return !(requirement.signPhotoUrls && requirement.collections.includes('photos') && photoUrlsProjectId !== projectId);
+  }
+
+  useEffect(() => {
+    const requirement = getProjectScreenRequirement(screen);
+    if (
+      !supabaseConfigured
+      || !session
+      || !selectedWorkId
+      || !requirement.collections.length
+      || projectDetailsLoading
+      || hasLoadedProjectRequirement(selectedWorkId, requirement)
+    ) return;
+
+    void loadProject(selectedWorkId, requirement);
+  }, [
+    screen,
+    selectedWorkId,
+    projectDataProjectId,
+    loadedProjectCollections,
+    photoUrlsProjectId,
+    projectDetailsLoading,
+    session?.user?.id,
+  ]);
+
   async function hydrateRemoteSession() {
     try {
       const activeUser = await loadRemoteUsers();
@@ -3965,9 +4020,12 @@ function App() {
         setData({
           ...initialData,
           works: [],
-          ...Object.fromEntries(projectCollections.map((collection) => [collection, []])),
+          ...emptyProjectCollections,
         });
         setSelectedWorkId('');
+        setProjectDataProjectId('');
+        setLoadedProjectCollections([]);
+        setPhotoUrlsProjectId('');
         setDataLoading(false);
         return;
       }
@@ -3978,14 +4036,13 @@ function App() {
         : cityProject?.id || works[0].id;
       const project = works.find((work) => work.id === projectId);
       const projectCity = cityCatalog.find((city) => city.id === project?.cidadeId);
-      const { projectSummary, ...children } = await loadProjectChildren(projectId, project.status);
-      works = works.map((work) => (
-        work.id === projectId ? { ...work, ...projectSummary } : work
-      ));
-      setData({ ...initialData, ...children, works });
+      setData({ ...initialData, ...emptyProjectCollections, works });
       if (projectCity) setSelectedCity(projectCity);
       setSelectedNeighborhood(null);
       setSelectedWorkId(projectId);
+      setProjectDataProjectId('');
+      setLoadedProjectCollections([]);
+      setPhotoUrlsProjectId('');
       setDataLoading(false);
     } catch (error) {
       setDataError(error.message || 'Nao foi possivel carregar o banco de dados.');
@@ -3993,13 +4050,32 @@ function App() {
     }
   }
 
-  async function loadProject(projectId) {
+  async function loadProject(projectId, requirement = { collections: projectCollections, signPhotoUrls: true }) {
     if (!supabaseConfigured || !session) return;
-    setDataLoading(true);
+    const requestedCollections = [...new Set(requirement.collections || projectCollections)];
+    const sameProject = projectDataProjectId === projectId;
+    const missingCollections = sameProject
+      ? requestedCollections.filter((collection) => (
+          !loadedProjectCollections.includes(collection)
+          || (collection === 'photos' && requirement.signPhotoUrls && photoUrlsProjectId !== projectId)
+        ))
+      : requestedCollections;
+
+    if (!missingCollections.length) return;
+
+    setProjectDetailsLoading(true);
     setDataError('');
     try {
       const currentProject = data.works.find((work) => work.id === projectId);
-      const { projectSummary, ...children } = await loadProjectChildren(projectId, currentProject?.status);
+      const { projectSummary, ...children } = await loadProjectChildren(
+        projectId,
+        currentProject?.status,
+        missingCollections,
+        {
+          signPhotoUrls: requirement.signPhotoUrls,
+          normalizeSchedule: requirement.normalizeSchedule,
+        },
+      );
       setData((current) => ({
         ...current,
         ...children,
@@ -4007,10 +4083,19 @@ function App() {
           work.id === projectId ? { ...work, ...projectSummary } : work
         )),
       }));
-      setDataLoading(false);
+      setProjectDataProjectId(projectId);
+      setLoadedProjectCollections((current) => (
+        sameProject ? [...new Set([...current, ...missingCollections])] : missingCollections
+      ));
+      setPhotoUrlsProjectId((current) => (
+        missingCollections.includes('photos')
+          ? (requirement.signPhotoUrls ? projectId : sameProject ? current : '')
+          : current
+      ));
+      setProjectDetailsLoading(false);
     } catch (error) {
       setDataError(error.message || 'Nao foi possivel carregar a obra.');
-      setDataLoading(false);
+      setProjectDetailsLoading(false);
     }
   }
 
@@ -4023,7 +4108,10 @@ function App() {
 
     const sourceItems = selectedSource === selectedWorkId && data.scheduleItems.length
       ? data.scheduleItems
-      : (await fetchProjectChildren(selectedSource)).scheduleItems;
+      : (await fetchProjectChildren(selectedSource, {
+          collections: ['scheduleItems'],
+          signPhotoUrls: false,
+        })).scheduleItems;
     const copyPlan = buildScheduleCopyPlan(sourceItems);
 
     if (!copyPlan.length) {
@@ -4039,11 +4127,27 @@ function App() {
     }
   }
 
-  async function loadProjectChildren(projectId, currentStatus = 'Nao iniciada') {
-    let children = await fetchProjectChildren(projectId);
+  async function loadProjectChildren(projectId, currentStatus = 'Nao iniciada', collections = projectCollections, options = {}) {
+    const requestedCollections = [...new Set(collections)];
+    const shouldNormalizeSchedule = requestedCollections.includes('scheduleItems') && options.normalizeSchedule !== false;
+    let children = await fetchProjectChildren(projectId, {
+      collections: requestedCollections,
+      signPhotoUrls: options.signPhotoUrls,
+    });
+
+    if (!shouldNormalizeSchedule) {
+      return {
+        ...children,
+        projectSummary: {},
+      };
+    }
+
     if (!children.scheduleItems.length) {
       await ensureProjectSchedule(projectId, defaultScheduleBlueprint);
-      children = await fetchProjectChildren(projectId);
+      children = await fetchProjectChildren(projectId, {
+        collections: requestedCollections,
+        signPhotoUrls: options.signPhotoUrls,
+      });
     }
     const stagesWithoutChildren = children.scheduleItems.filter((item) => (
       !item.parentId
@@ -4064,7 +4168,10 @@ function App() {
         sortOrder: 0,
         visible: stage.visible,
       })));
-      children = await fetchProjectChildren(projectId);
+      children = await fetchProjectChildren(projectId, {
+        collections: requestedCollections,
+        signPhotoUrls: options.signPhotoUrls,
+      });
     }
 
     const initialChildren = children.scheduleItems.filter((item) => item.parentId);
@@ -4101,7 +4208,10 @@ function App() {
         status: stage.status,
         percentual: stage.status === 'Concluida' ? 100 : stage.percentual,
       })));
-      children = await fetchProjectChildren(projectId);
+      children = await fetchProjectChildren(projectId, {
+        collections: requestedCollections,
+        signPhotoUrls: options.signPhotoUrls,
+      });
     }
 
     const derivedItems = deriveScheduleStages(children.scheduleItems);
@@ -4131,13 +4241,18 @@ function App() {
       const nextWork = data.works.find((work) => work.cidadeId === nextCity.id);
       if (nextWork) {
         setSelectedWorkId(nextWork.id);
-        if (supabaseConfigured && session) await loadProject(nextWork.id);
+        setProjectDataProjectId('');
+        setLoadedProjectCollections([]);
+        setPhotoUrlsProjectId('');
       } else {
         setSelectedWorkId('');
         setData((current) => ({
           ...current,
-          ...Object.fromEntries(projectCollections.map((collection) => [collection, []])),
+          ...emptyProjectCollections,
         }));
+        setProjectDataProjectId('');
+        setLoadedProjectCollections([]);
+        setPhotoUrlsProjectId('');
       }
     }
 
@@ -4194,6 +4309,9 @@ function App() {
       setCurrentObrasUser(supabaseConfigured ? null : localObrasUsers[0]);
       setObrasUsers(supabaseConfigured ? [] : localObrasUsers);
       setPlatformAdmin(!supabaseConfigured);
+      setProjectDataProjectId('');
+      setLoadedProjectCollections([]);
+      setPhotoUrlsProjectId('');
       screenHistoryRef.current = [];
       screenRef.current = 'login';
       setScreenState('login');
@@ -4263,9 +4381,17 @@ function App() {
           issues: [],
         });
         await createInitialProjectSchedule(nextWork.id, scheduleSourceProjectId);
-        const { projectSummary, ...children } = await loadProjectChildren(nextWork.id, nextWork.status);
+        const { projectSummary, ...children } = await loadProjectChildren(
+          nextWork.id,
+          nextWork.status,
+          ['scheduleItems'],
+          { signPhotoUrls: false, normalizeSchedule: true },
+        );
         nextWork = { ...nextWork, ...projectSummary };
         setData((current) => ({ ...current, ...children, works: [nextWork, ...current.works] }));
+        setProjectDataProjectId(nextWork.id);
+        setLoadedProjectCollections(Object.keys(children));
+        setPhotoUrlsProjectId('');
       } catch (error) {
         setDataError(error.message || 'Nao foi possivel salvar a obra no banco.');
         return;
@@ -4334,7 +4460,13 @@ function App() {
 
     try {
       if (supabaseConfigured && session) {
-        for (const photo of data.photos) {
+        const photosToDelete = projectDataProjectId === activeWork.id && loadedProjectCollections.includes('photos')
+          ? data.photos
+          : (await fetchProjectChildren(activeWork.id, {
+              collections: ['photos'],
+              signPhotoUrls: false,
+            })).photos;
+        for (const photo of photosToDelete) {
           await deletePhotoRecord(photo);
         }
         await deleteProject(activeWork.id);
@@ -4345,10 +4477,13 @@ function App() {
         setData((current) => ({
           ...current,
           works: remainingWorks,
-          ...(!nextWork ? Object.fromEntries(projectCollections.map((collection) => [collection, []])) : {}),
+          ...(!nextWork ? emptyProjectCollections : {}),
         }));
         setSelectedWorkId(nextWork?.id || '');
       }
+      setProjectDataProjectId('');
+      setLoadedProjectCollections([]);
+      setPhotoUrlsProjectId('');
       setScreen('dashboard');
     } catch (error) {
       setProfileError(error.message || 'Nao foi possivel excluir a obra.');
@@ -5143,6 +5278,25 @@ function App() {
       );
     }
 
+    const screenRequirement = getProjectScreenRequirement(screen);
+    if (activeWork && !hasLoadedProjectRequirement(selectedWorkId, screenRequirement)) {
+      return (
+        <>
+          <PageTitle
+            eyebrow={activeWork.nome}
+            title="Carregando dados da obra"
+            subtitle="Buscando somente as informacoes necessarias para esta tela."
+            onBack={() => setScreen('workPanel')}
+          />
+          <EmptyNotice
+            Icon={Database}
+            title={projectDetailsLoading ? 'Sincronizando modulo' : 'Preparando modulo'}
+            text="O painel principal abre sem esperar fotos, cronograma e demais tabelas."
+          />
+        </>
+      );
+    }
+
     switch (screen) {
       case 'login':
         return (
@@ -5163,7 +5317,15 @@ function App() {
       case 'neighborhoods':
         return <Neighborhoods works={cityWorks} selectedCity={selectedCity} openNeighborhood={(bairro) => { setSelectedNeighborhood(bairro); setScreen('works'); }} setScreen={setScreen} />;
       case 'works':
-        return <Works selectedCity={selectedCity} selectedNeighborhood={selectedNeighborhood} works={cityWorks} openWork={(work) => { setSelectedWorkId(work.id); void loadProject(work.id); setScreen('workPanel'); }} setScreen={setScreen} />;
+        return <Works selectedCity={selectedCity} selectedNeighborhood={selectedNeighborhood} works={cityWorks} openWork={(work) => {
+          setSelectedWorkId(work.id);
+          if (projectDataProjectId !== work.id) {
+            setProjectDataProjectId('');
+            setLoadedProjectCollections([]);
+            setPhotoUrlsProjectId('');
+          }
+          setScreen('workPanel');
+        }} setScreen={setScreen} />;
       case 'newWork':
         return <NewWork createWork={createWork} setScreen={setScreen} selectedCity={selectedCity} works={data.works} onProjectAnalyzed={setAiProjectDraft} />;
       case 'extractedData':
