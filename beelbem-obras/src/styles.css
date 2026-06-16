@@ -892,6 +892,23 @@ button.metric-card {
   margin-top: 14px;
 }
 
+.stage-subitem-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 13px;
+}
+
+.stage-subitem-preview span {
+  border: 1px solid #dbeafe;
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: #1e3a8a;
+  background: #eff6ff;
+  font-size: 12px;
+  font-weight: 850;
+}
+
 .work-meta,
 .stage-meta {
   display: flex;

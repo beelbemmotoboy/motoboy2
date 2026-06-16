@@ -1220,37 +1220,80 @@ function WorkPanel({ obra, data, setScreen }) {
   );
 }
 
-function Stages({ stages, openStage, addPhoto, setScreen }) {
+function Stages({ scheduleItems = [], logs = [], photos = [], issues = [], addPhoto, addIssue, setScreen }) {
+  const visibleItems = scheduleItems.filter((item) => item.visible !== false);
+  const stages = visibleItems
+    .filter((item) => !item.parentId)
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+
+  function childrenFor(stageId) {
+    return visibleItems
+      .filter((item) => item.parentId === stageId)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  }
+
+  function stageStats(stage) {
+    const children = childrenFor(stage.id);
+    const names = new Set([stage.nome, ...children.map((item) => item.nome)]);
+    const ids = new Set([stage.id, ...children.map((item) => item.id)]);
+    const photoCount = photos.filter((photo) => names.has(photo.etapa)).length;
+    const logCount = logs.filter((log) => ids.has(log.scheduleItemId)).length;
+    const openIssueCount = issues.filter((issue) => issue.status !== 'Resolvida' && names.has(issue.etapa)).length;
+    const firstPhotoTarget = children[0]?.nome || stage.nome;
+
+    return {
+      children,
+      firstPhotoTarget,
+      logCount,
+      openIssueCount,
+      photoCount,
+      progress: calculateScheduleStageProgress(children),
+    };
+  }
+
   return (
     <>
-      <PageTitle eyebrow="Etapas da obra" title="Etapas padrao" subtitle="Percentuais, datas e fotos obrigatorias." onBack={() => setScreen('workPanel')}>
-        <ActionButton Icon={Plus} onClick={() => setScreen('stageLibrary')}>Cadastrar etapa</ActionButton>
+      <PageTitle eyebrow="Etapas da obra" title="Resumo do cronograma" subtitle="Etapas principais vindas do cronograma inteligente." onBack={() => setScreen('workPanel')}>
+        <ActionButton Icon={CalendarDays} onClick={() => setScreen('schedule')}>Editar cronograma</ActionButton>
       </PageTitle>
       <section className="stage-list">
-        {stages.map((stage) => (
-          <article className="stage-card" key={stage.id}>
-            <div className="stage-main">
-              <div>
-                <h2>{stage.nome}</h2>
-                <span>{stage.inicio} ate {stage.fim}</span>
+        {stages.map((stage) => {
+          const stats = stageStats(stage);
+          return (
+            <article className="stage-card" key={stage.id}>
+              <div className="stage-main">
+                <div>
+                  <h2>{stage.nome}</h2>
+                  <span>{stats.children.length} subitem{stats.children.length === 1 ? '' : 's'} do cronograma</span>
+                </div>
+                <StatusPill status={stage.status} />
               </div>
-              <StatusPill status={stage.status} />
-            </div>
-            <ProgressBar value={stage.percentual} />
-            <div className="stage-meta">
-              <span>{stage.percentual}% executado</span>
-              <span>{stage.pendencias} pendencias</span>
-              <span>{stage.fotosFaltando} fotos faltando</span>
-            </div>
-            <div className="button-row">
-              <button type="button" onClick={() => openStage(stage)}><Eye size={18} aria-hidden="true" /> Abrir etapa</button>
-              <button type="button" onClick={() => addPhoto(stage.nome)}><Camera size={18} aria-hidden="true" /> Adicionar foto</button>
-              <button type="button" onClick={() => setScreen('checklist')}><ClipboardCheck size={18} aria-hidden="true" /> Conferir checklist</button>
-              <button type="button" onClick={() => setScreen('supplies')}><PackageCheck size={18} aria-hidden="true" /> Ver insumos</button>
-            </div>
-          </article>
-        ))}
-        {!stages.length ? <EmptyNotice Icon={Layers3} title="Nenhuma etapa cadastrada" text="Cadastre etapas para liberar fotos, PLS e cronograma." /> : null}
+              <ScheduleDates item={stage} />
+              <ProgressBar value={stats.progress} />
+              <div className="stage-meta">
+                <span>{stats.progress}% executado</span>
+                <span>{stats.openIssueCount} pendencia{stats.openIssueCount === 1 ? '' : 's'}</span>
+                <span>{stats.photoCount} foto{stats.photoCount === 1 ? '' : 's'}</span>
+                <span>{stats.logCount} registro{stats.logCount === 1 ? '' : 's'} de visita</span>
+              </div>
+              <div className="stage-subitem-preview">
+                {stats.children.slice(0, 4).map((child) => (
+                  <span key={child.id}>{child.nome}</span>
+                ))}
+                {stats.children.length > 4 ? <span>+ {stats.children.length - 4} subitens</span> : null}
+                {!stats.children.length ? <span>Sem subitens cadastrados</span> : null}
+              </div>
+              <div className="button-row">
+                <button type="button" onClick={() => setScreen('schedule')}><Eye size={18} aria-hidden="true" /> Ver no cronograma</button>
+                <button type="button" onClick={() => addPhoto(stats.firstPhotoTarget)}><Camera size={18} aria-hidden="true" /> Adicionar foto</button>
+                <button type="button" onClick={() => addIssue(stage.nome)}><AlertTriangle size={18} aria-hidden="true" /> Pendencia</button>
+                <button type="button" onClick={() => setScreen('checklist')}><ClipboardCheck size={18} aria-hidden="true" /> Checklist</button>
+                <button type="button" onClick={() => setScreen('supplies')}><PackageCheck size={18} aria-hidden="true" /> Materiais</button>
+              </div>
+            </article>
+          );
+        })}
+        {!stages.length ? <EmptyNotice Icon={Layers3} title="Cronograma sem etapas" text="Cadastre as etapas no cronograma inteligente desta obra." /> : null}
       </section>
     </>
   );
@@ -4328,7 +4371,17 @@ function App() {
       case 'workPanel':
         return <WorkPanel obra={activeWork} data={cityData} setScreen={setScreen} />;
       case 'stages':
-        return <Stages stages={data.stages} openStage={(stage) => { setSelectedStageId(stage.id); setScreen('stageDetail'); }} addPhoto={addPhoto} setScreen={setScreen} />;
+        return (
+          <Stages
+            scheduleItems={data.scheduleItems}
+            logs={data.scheduleLogs}
+            photos={data.photos}
+            issues={data.issues}
+            addPhoto={addPhoto}
+            addIssue={addIssue}
+            setScreen={setScreen}
+          />
+        );
       case 'stageDetail':
         return <StageDetail stage={activeStage} updateStage={updateStage} addPhoto={addPhoto} addIssue={addIssue} setScreen={setScreen} />;
       case 'photos':
