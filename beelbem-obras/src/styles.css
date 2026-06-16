@@ -2658,7 +2658,7 @@ body.gantt-resizing * {
 
 .schedule-stage-group {
   overflow: hidden;
-  border: 1px solid #dbe2ea;
+  border: 1px solid #1d4ed8;
   border-radius: 10px;
   background: #fff;
 }
@@ -2672,7 +2672,8 @@ body.gantt-resizing * {
   padding: 14px 16px;
   cursor: pointer;
   list-style: none;
-  background: #f8fafc;
+  color: #fff;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
 }
 
 .schedule-stage-group > summary::-webkit-details-marker {
@@ -2691,7 +2692,7 @@ body.gantt-resizing * {
 }
 
 .schedule-stage-group > summary span {
-  color: #6b7280;
+  color: #dbeafe;
   font-size: 13px;
   font-weight: 800;
 }
@@ -2705,11 +2706,12 @@ body.gantt-resizing * {
 .schedule-summary-progress .progress {
   flex: 1;
   min-width: 120px;
+  background: rgba(255, 255, 255, 0.32);
 }
 
 .schedule-summary-progress > strong {
   min-width: 48px;
-  color: #1d4ed8;
+  color: #fff;
   text-align: right;
 }
 
@@ -2765,10 +2767,10 @@ body.gantt-resizing * {
 .schedule-subitem {
   display: grid;
   gap: 9px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #93c5fd;
   border-radius: 8px;
   padding: 12px;
-  background: #fff;
+  background: #eff6ff;
 }
 
 .schedule-subitem-main {
