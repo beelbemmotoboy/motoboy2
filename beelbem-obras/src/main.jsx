@@ -3655,6 +3655,7 @@ function App() {
   const [screen, setScreenState] = useState('login');
   const screenRef = useRef('login');
   const screenHistoryRef = useRef([]);
+  const screenForwardHistoryRef = useRef([]);
   const [data, setData] = useState(() => (supabaseConfigured ? initialData : loadData()));
   const [session, setSession] = useState(null);
   const [authInitializing, setAuthInitializing] = useState(supabaseConfigured);
@@ -3702,11 +3703,14 @@ function App() {
 
     if (nextScreen === 'login' || currentScreen === 'login') {
       screenHistoryRef.current = [];
+      screenForwardHistoryRef.current = [];
     } else if (screenHistoryRef.current[screenHistoryRef.current.length - 1] === nextScreen) {
       screenHistoryRef.current.pop();
     } else {
       screenHistoryRef.current.push(currentScreen);
     }
+
+    screenForwardHistoryRef.current = [];
 
     screenRef.current = nextScreen;
     setScreenState(nextScreen);
@@ -3715,14 +3719,25 @@ function App() {
   const goBack = useCallback(() => {
     const previousScreen = screenHistoryRef.current.pop();
     if (!previousScreen) return;
+    screenForwardHistoryRef.current.push(screenRef.current);
     screenRef.current = previousScreen;
     setScreenState(previousScreen);
   }, []);
 
+  const goForward = useCallback(() => {
+    const nextScreen = screenForwardHistoryRef.current.pop();
+    if (!nextScreen) return;
+    screenHistoryRef.current.push(screenRef.current);
+    screenRef.current = nextScreen;
+    setScreenState(nextScreen);
+  }, []);
+
   const navigation = useMemo(() => ({
     canGoBack: screenHistoryRef.current.length > 0,
+    canGoForward: screenForwardHistoryRef.current.length > 0,
     goBack,
-  }), [goBack, screen]);
+    goForward,
+  }), [goBack, goForward, screen]);
 
   useEffect(() => {
     if (!supabaseConfigured) {
@@ -3736,30 +3751,31 @@ function App() {
     let tracking = false;
     let startX = 0;
     let startY = 0;
-    let startTime = 0;
 
     function resetGesture() {
       tracking = false;
       startX = 0;
       startY = 0;
-      startTime = 0;
     }
 
     function handleTouchStart(event) {
-      if (event.touches.length !== 1 || !screenHistoryRef.current.length) return;
+      if (
+        event.touches.length !== 1
+        || (!screenHistoryRef.current.length && !screenForwardHistoryRef.current.length)
+      ) return;
 
       const touch = event.touches[0];
       const target = event.target;
-      const edgeLimit = Math.min(56, window.innerWidth * 0.12);
       const isInteractive = target instanceof Element
         && target.closest('input, textarea, select, button, [contenteditable="true"], .modal-backdrop');
+      const isHorizontalSurface = target instanceof Element
+        && target.closest('.gantt-backdrop, .gantt-scroll, .gantt-chart, .photo-viewer-backdrop');
 
-      if (touch.clientX > edgeLimit || isInteractive) return;
+      if (isInteractive || isHorizontalSurface) return;
 
       tracking = true;
       startX = touch.clientX;
       startY = touch.clientY;
-      startTime = Date.now();
     }
 
     function handleTouchMove(event) {
@@ -3768,13 +3784,21 @@ function App() {
       const touch = event.touches[0];
       const deltaX = touch.clientX - startX;
       const deltaY = touch.clientY - startY;
+      const absDeltaX = Math.abs(deltaX);
 
-      if (deltaX < -10 || Math.abs(deltaY) > 90) {
+      if (absDeltaX < 12) return;
+
+      const isBackSwipe = deltaX > 0;
+      const canNavigateDirection = isBackSwipe
+        ? screenHistoryRef.current.length > 0
+        : screenForwardHistoryRef.current.length > 0;
+
+      if (!canNavigateDirection || Math.abs(deltaY) > 90) {
         resetGesture();
         return;
       }
 
-      if (deltaX > 12 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
+      if (absDeltaX > Math.abs(deltaY) * 1.2) {
         event.preventDefault();
       }
     }
@@ -3788,13 +3812,14 @@ function App() {
       const touch = event.changedTouches[0];
       const deltaX = touch.clientX - startX;
       const deltaY = touch.clientY - startY;
-      const elapsed = Date.now() - startTime;
-      const shouldGoBack = deltaX >= 80
-        && Math.abs(deltaX) > Math.abs(deltaY) * 1.4
-        && elapsed <= 700;
+      const isHorizontalSwipe = Math.abs(deltaX) >= 80
+        && Math.abs(deltaX) > Math.abs(deltaY) * 1.4;
+      const shouldGoBack = isHorizontalSwipe && deltaX > 0 && screenHistoryRef.current.length > 0;
+      const shouldGoForward = isHorizontalSwipe && deltaX < 0 && screenForwardHistoryRef.current.length > 0;
 
       resetGesture();
       if (shouldGoBack) goBack();
+      if (shouldGoForward) goForward();
     }
 
     window.addEventListener('touchstart', handleTouchStart, { passive: true });
@@ -3808,7 +3833,7 @@ function App() {
       window.removeEventListener('touchend', handleTouchEnd);
       window.removeEventListener('touchcancel', resetGesture);
     };
-  }, [goBack, screen]);
+  }, [goBack, goForward, screen]);
 
   useEffect(() => {
     if (!supabaseConfigured) return undefined;
