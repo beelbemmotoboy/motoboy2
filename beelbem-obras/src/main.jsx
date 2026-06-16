@@ -27,6 +27,7 @@ import {
   Layers3,
   Library,
   LogIn,
+  LogOut,
   MapPinned,
   Menu,
   Minus,
@@ -715,9 +716,14 @@ function getDerivedStageUpdates(previousItems, nextItems) {
     }));
 }
 
-function Shell({ screen, setScreen, children, activeWork, selectedCity, cities, onCityChange }) {
+function Shell({ screen, setScreen, children, activeWork, selectedCity, cities, onCityChange, currentUser, onLogout }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   if (screen === 'login' || screen === 'signup') return children;
+
+  function logoutAndCloseMenu() {
+    setMobileMenuOpen(false);
+    onLogout();
+  }
 
   return (
     <div className="app-shell">
@@ -737,6 +743,10 @@ function Shell({ screen, setScreen, children, activeWork, selectedCity, cities, 
             </button>
           ))}
         </nav>
+        <button className="sidebar-logout" type="button" onClick={onLogout}>
+          <LogOut size={20} aria-hidden="true" />
+          <span>Sair</span>
+        </button>
       </aside>
 
       <div className="app-frame">
@@ -758,6 +768,10 @@ function Shell({ screen, setScreen, children, activeWork, selectedCity, cities, 
           <button className="topbar-ai" type="button" onClick={() => setScreen('newWork')}>
             <Bot size={19} aria-hidden="true" />
             <span>IA</span>
+          </button>
+          <button className="topbar-logout" type="button" onClick={onLogout} title="Sair do Obras" aria-label="Sair do Obras">
+            <LogOut size={19} aria-hidden="true" />
+            <span>Sair</span>
           </button>
         </header>
 
@@ -781,6 +795,11 @@ function Shell({ screen, setScreen, children, activeWork, selectedCity, cities, 
                 <span>{label}</span>
               </button>
             ))}
+            <button className="drawer-logout" type="button" onClick={logoutAndCloseMenu}>
+              <LogOut size={20} aria-hidden="true" />
+              <span>Sair do Obras</span>
+              {currentUser?.email ? <small>{currentUser.email}</small> : null}
+            </button>
           </div>
         ) : null}
 
@@ -4105,6 +4124,27 @@ function App() {
     }
   }
 
+  async function handleLogout() {
+    setAuthError('');
+    setUsersError('');
+
+    try {
+      if (supabaseConfigured) {
+        await signOut();
+      }
+    } catch (error) {
+      setAuthError(error.message || 'Nao foi possivel sair do Obras.');
+    } finally {
+      setSession(null);
+      setCurrentObrasUser(supabaseConfigured ? null : localObrasUsers[0]);
+      setObrasUsers(supabaseConfigured ? [] : localObrasUsers);
+      setPlatformAdmin(!supabaseConfigured);
+      screenHistoryRef.current = [];
+      screenRef.current = 'login';
+      setScreenState('login');
+    }
+  }
+
   async function ensureCurrentObrasUser(activeSession = session) {
     const claimedUser = await claimObrasUser();
     if (claimedUser) return claimedUser;
@@ -5164,6 +5204,8 @@ function App() {
         selectedCity={selectedCity}
         cities={cityCatalog}
         onCityChange={(cityId) => void handleCityChange(cityId)}
+        currentUser={currentObrasUser}
+        onLogout={() => void handleLogout()}
       >
         {renderScreen()}
         {photoDraftStage ? (

@@ -283,7 +283,8 @@ button {
 }
 
 .sidebar nav button,
-.mobile-drawer button {
+.mobile-drawer button,
+.sidebar-logout {
   min-height: 46px;
   border: 0;
   border-radius: 8px;
@@ -297,8 +298,15 @@ button {
   font-weight: 800;
 }
 
+.sidebar-logout {
+  margin-top: auto;
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.18);
+}
+
 .sidebar nav button.active,
-.sidebar nav button:hover {
+.sidebar nav button:hover,
+.sidebar-logout:hover {
   color: #fff;
   background: rgba(255, 255, 255, 0.12);
 }
@@ -315,7 +323,7 @@ button {
   z-index: 10;
   min-height: 72px;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 14px;
   padding: 12px clamp(16px, 4vw, 34px);
@@ -366,7 +374,8 @@ button {
 
 .menu-button,
 .icon-button,
-.topbar-ai {
+.topbar-ai,
+.topbar-logout {
   width: 44px;
   height: 44px;
   border: 0;
@@ -389,6 +398,17 @@ button {
   padding: 0 12px;
   color: #581c87;
   background: #f3e8ff;
+  font-weight: 900;
+}
+
+.topbar-logout {
+  width: auto;
+  min-width: 74px;
+  display: inline-flex;
+  gap: 6px;
+  padding: 0 12px;
+  color: #991b1b;
+  background: #fee2e2;
   font-weight: 900;
 }
 
@@ -418,6 +438,20 @@ button {
 .mobile-drawer button.active {
   color: #fff;
   background: rgba(255, 255, 255, 0.12);
+}
+
+.drawer-logout {
+  margin-top: 10px;
+  color: #fecaca !important;
+  background: rgba(127, 29, 29, 0.28) !important;
+}
+
+.drawer-logout small {
+  margin-left: auto;
+  color: #fca5a5;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 main {
@@ -3052,6 +3086,19 @@ body.gantt-resizing * {
 }
 
 @media (max-width: 760px) {
+  .topbar {
+    gap: 8px;
+  }
+
+  .topbar-logout {
+    min-width: 44px;
+    padding: 0;
+  }
+
+  .topbar-logout span {
+    display: none;
+  }
+
   .login-page {
     grid-template-columns: 1fr;
   }
