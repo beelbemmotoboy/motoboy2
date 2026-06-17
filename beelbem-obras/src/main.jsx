@@ -56,6 +56,7 @@ import {
   fetchProjectChildren,
   fetchProjects,
   fetchCommercialPlans,
+  fetchObrasAccounts,
   fetchObrasSubscriptions,
   fetchObrasUsers,
   fetchSignupRequests,
@@ -73,14 +74,16 @@ import {
   signOut,
   supabaseConfigured,
   updateChild,
+  updateObrasAccount,
   updateObrasUser,
   updateProject,
   updateSignupRequest,
+  uploadObrasAccountLogo,
   uploadObrasUserAvatar,
   uploadPhotoFile,
 } from './db.js';
 import { analisarProjetoComGemini, geminiProjectConfig } from './analisa_projeto_gemini.js';
-import { getBestPhotoUrl, prepareAvatarUpload, preparePhotoUpload } from './photoFunctions.js';
+import { getBestPhotoUrl, prepareAvatarUpload, prepareLogoUpload, preparePhotoUpload } from './photoFunctions.js';
 import {
   DEFAULT_SCHEDULE_SOURCE,
   buildScheduleCopyPlan,
@@ -121,6 +124,7 @@ const statusClasses = {
   Convertido: 'info',
   Trial: 'info',
   Ativa: 'success',
+  Suspensa: 'warning',
   Bloqueada: 'danger',
   Cancelada: 'neutral',
   Vencida: 'danger',
@@ -329,6 +333,7 @@ const quickRoutes = [
 
 const sidebarRoutes = [
   ...quickRoutes,
+  { id: 'companies', label: 'Empresas', Icon: Landmark },
   { id: 'users', label: 'Usuarios', Icon: UsersRound },
   { id: 'commercial', label: 'Assinaturas', Icon: Landmark },
   { id: 'pls', label: 'PLS Caixa', Icon: FileCheck2 },
@@ -378,6 +383,29 @@ const localCommercialPlans = [
     limiteUsuarios: null,
     recursos: ['Obras ilimitadas', 'Usuarios ilimitados', 'Padroes de cronograma', 'Gestao comercial', 'Suporte prioritario'],
     active: true,
+  },
+];
+
+const localObrasAccounts = [
+  {
+    id: 'local-account',
+    nome: 'Empresa de obras',
+    documento: '',
+    responsavel: 'Eng. Ana Prado',
+    email: 'engenharia@beelbem.com.br',
+    telefone: '',
+    endereco: '',
+    cidadeId: 'rio-verde',
+    cidade: 'Rio Verde',
+    plano: 'empresa-campo',
+    status: 'Ativa',
+    logoStoragePath: '',
+    logoFileName: '',
+    logoMimeType: '',
+    logoFileSize: 0,
+    logoUrl: '',
+    createdAt: '',
+    updatedAt: '',
   },
 ];
 
@@ -1050,6 +1078,7 @@ function Dashboard({ data, setScreen }) {
         {[
           ['Nova obra', Plus, 'newWork'],
           ['Ver pendencias', AlertTriangle, 'issues'],
+          ['Empresas', Landmark, 'companies'],
           ['Usuarios', UsersRound, 'users'],
           ['Assinaturas', Landmark, 'commercial'],
           ['Ver PLS Caixa', FileCheck2, 'pls'],
@@ -3105,6 +3134,250 @@ function UserModal({ user, currentUser, saving, onClose, onSave }) {
   );
 }
 
+const companyStatusOptions = ['Ativa', 'Suspensa', 'Cancelada'];
+
+function Companies({
+  accounts,
+  plans,
+  currentUser,
+  platformAdmin,
+  loading,
+  saving,
+  error,
+  message,
+  onRefresh,
+  onSave,
+  setScreen,
+}) {
+  const [query, setQuery] = useState('');
+  const [editingCompany, setEditingCompany] = useState(null);
+  const normalizedQuery = normalizeSearch(query);
+  const planById = useMemo(() => new Map(plans.map((plan) => [plan.id, plan])), [plans]);
+  const canManageOwnCompany = !supabaseConfigured || ['owner', 'admin'].includes(currentUser?.role);
+  const filteredAccounts = normalizedQuery
+    ? accounts.filter((account) => [
+        account.nome,
+        account.documento,
+        account.responsavel,
+        account.email,
+        account.telefone,
+        account.cidade,
+      ].some((value) => normalizeSearch(value).includes(normalizedQuery)))
+    : accounts;
+
+  function canEditCompany(company) {
+    return !supabaseConfigured
+      || platformAdmin
+      || (canManageOwnCompany && company.id === currentUser?.accountId);
+  }
+
+  async function saveCompany(values) {
+    const saved = await onSave(values);
+    if (saved) setEditingCompany(null);
+  }
+
+  return (
+    <>
+      <PageTitle eyebrow="Empresas" title="Empresas cadastradas" subtitle={platformAdmin ? 'Contas comerciais ativas no sistema Obras.' : 'Dados comerciais da sua conta Obras.'} onBack={() => setScreen('dashboard')}>
+        <ActionButton Icon={Database} onClick={onRefresh} disabled={loading}>
+          {loading ? 'Atualizando...' : 'Atualizar'}
+        </ActionButton>
+      </PageTitle>
+      {!platformAdmin ? (
+        <section className="warning-strip">
+          <ShieldCheck size={22} aria-hidden="true" />
+          <span>Voce esta vendo apenas a empresa vinculada ao seu login. Somente proprietarios e administradores podem alterar esses dados.</span>
+        </section>
+      ) : null}
+      {error ? (
+        <section className="warning-strip">
+          <AlertTriangle size={22} aria-hidden="true" />
+          <span>{error}</span>
+        </section>
+      ) : null}
+      {message ? (
+        <section className="success-strip">
+          <CheckCircle2 size={22} aria-hidden="true" />
+          <span>{message}</span>
+        </section>
+      ) : null}
+      <div className="toolbar">
+        <label className="search-control">
+          <Search size={18} aria-hidden="true" />
+          <input value={query} placeholder="Buscar empresa" aria-label="Buscar empresa" onChange={(event) => setQuery(event.target.value)} />
+        </label>
+        <button type="button" onClick={onRefresh} disabled={loading}>
+          <Database size={18} aria-hidden="true" /> {loading ? 'Atualizando...' : 'Atualizar'}
+        </button>
+      </div>
+      {filteredAccounts.length ? (
+        <section className="company-grid">
+          {filteredAccounts.map((company) => {
+            const plan = planById.get(company.plano);
+            const editable = canEditCompany(company);
+            return (
+              <article className="company-card" key={company.id}>
+                <div className="company-card-head">
+                  <div className="company-logo">
+                    {company.logoUrl ? <img src={company.logoUrl} alt={`Logo de ${company.nome}`} /> : <Landmark size={26} aria-hidden="true" />}
+                  </div>
+                  <StatusPill status={company.status || 'Ativa'} />
+                </div>
+                <strong>{company.nome}</strong>
+                <span>{company.cidade || 'Cidade nao informada'}</span>
+                <div className="company-meta">
+                  {company.documento ? <small>CPF/CNPJ {company.documento}</small> : null}
+                  {company.responsavel ? <small>{company.responsavel}</small> : null}
+                  {company.email ? <small>{company.email}</small> : null}
+                  {company.telefone ? <small>{company.telefone}</small> : null}
+                  <small>{plan?.nome || company.plano || 'Plano nao informado'}</small>
+                  <small>Conta {company.id}</small>
+                </div>
+                {company.endereco ? <p>{company.endereco}</p> : null}
+                <div className="button-row">
+                  <button type="button" onClick={() => setEditingCompany(company)} disabled={!editable || saving}>
+                    <Pencil size={18} aria-hidden="true" /> Editar empresa
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </section>
+      ) : (
+        <EmptyNotice Icon={Landmark} title="Nenhuma empresa encontrada" text="Atualize a tela ou ajuste a busca para localizar a empresa cadastrada." />
+      )}
+      {editingCompany ? (
+        <CompanyModal
+          company={editingCompany}
+          plans={plans}
+          platformAdmin={platformAdmin}
+          saving={saving}
+          onClose={() => {
+            if (!saving) setEditingCompany(null);
+          }}
+          onSave={saveCompany}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function CompanyModal({ company, plans, platformAdmin, saving, onClose, onSave }) {
+  const [logoPreview, setLogoPreview] = useState(company?.logoUrl || '');
+  const defaultCityId = company?.cidadeId || cityCatalog[0].id;
+  const defaultPlan = company?.plano || plans[0]?.id || 'basico';
+  const planOptions = plans.some((plan) => plan.id === defaultPlan)
+    ? plans
+    : [{ id: defaultPlan, nome: defaultPlan, active: true }, ...plans];
+
+  useEffect(() => {
+    return () => {
+      if (logoPreview?.startsWith('blob:')) URL.revokeObjectURL(logoPreview);
+    };
+  }, [logoPreview]);
+
+  function handleLogoChange(event) {
+    const file = event.currentTarget.files?.[0];
+    if (!file) {
+      setLogoPreview(company?.logoUrl || '');
+      return;
+    }
+    if (logoPreview?.startsWith('blob:')) URL.revokeObjectURL(logoPreview);
+    setLogoPreview(URL.createObjectURL(file));
+  }
+
+  function submit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const selectedCity = cityCatalog.find((city) => city.id === form.elements.cidadeId.value) || cityCatalog[0];
+    onSave({
+      id: company.id,
+      nome: form.elements.nome.value.trim(),
+      documento: form.elements.documento.value.trim(),
+      responsavel: form.elements.responsavel.value.trim(),
+      email: form.elements.email.value.trim(),
+      telefone: form.elements.telefone.value.trim(),
+      endereco: form.elements.endereco.value.trim(),
+      cidadeId: selectedCity.id,
+      cidade: selectedCity.nome,
+      plano: platformAdmin ? form.elements.plano.value : company.plano,
+      status: platformAdmin ? form.elements.status.value : company.status,
+      logoFile: form.elements.logoFile?.files?.[0] || null,
+      logoStoragePath: company.logoStoragePath || '',
+      logoFileName: company.logoFileName || '',
+      logoMimeType: company.logoMimeType || '',
+      logoFileSize: company.logoFileSize || 0,
+      logoUrl: company.logoUrl || '',
+      createdAt: company.createdAt || '',
+      updatedAt: company.updatedAt || '',
+    });
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <form className="photo-modal user-modal company-modal" onSubmit={submit}>
+        <div className="modal-head">
+          <div>
+            <span>Empresa do Obras</span>
+            <h2>Editar empresa</h2>
+          </div>
+          <IconButton label="Fechar" Icon={X} onClick={onClose} />
+        </div>
+        <div className="form-grid modal-fields">
+          <label className="field company-logo-field">
+            <span>Logo da empresa</span>
+            <div className="company-logo-preview">
+              {logoPreview ? <img src={logoPreview} alt="Previa do logo da empresa" /> : <Landmark size={36} aria-hidden="true" />}
+            </div>
+            <input type="file" name="logoFile" accept="image/*" onChange={handleLogoChange} />
+            <small>O app reduz a imagem antes de salvar.</small>
+          </label>
+          <Field label="Razao social / nome" name="nome" value={company.nome || ''} required />
+          <Field label="CPF/CNPJ" name="documento" value={company.documento || ''} />
+          <Field label="Responsavel" name="responsavel" value={company.responsavel || ''} />
+          <Field label="E-mail" name="email" value={company.email || ''} type="email" />
+          <Field label="Telefone" name="telefone" value={company.telefone || ''} />
+          <Field label="Endereco" name="endereco" value={company.endereco || ''} wide />
+          <label className="field">
+            <span>Cidade</span>
+            <select name="cidadeId" defaultValue={defaultCityId}>
+              {cityCatalog.map((city) => (
+                <option value={city.id} key={city.id}>{city.nome}</option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>Plano</span>
+            <select name="plano" defaultValue={defaultPlan} disabled={!platformAdmin}>
+              {planOptions.map((plan) => (
+                <option value={plan.id} key={plan.id}>{plan.nome}</option>
+              ))}
+            </select>
+            {!platformAdmin ? <small>Alteracao de plano e restrita ao administrador da plataforma.</small> : null}
+          </label>
+          <label className="field">
+            <span>Status</span>
+            <select name="status" defaultValue={company.status || 'Ativa'} disabled={!platformAdmin}>
+              {companyStatusOptions.map((status) => (
+                <option value={status} key={status}>{status}</option>
+              ))}
+            </select>
+            {!platformAdmin ? <small>Status comercial e restrito ao administrador da plataforma.</small> : null}
+          </label>
+        </div>
+        <section className="detail-note user-note">
+          <strong>Permissao</strong>
+          <p>Proprietarios e administradores editam os dados da propria empresa. Administradores da plataforma podem alterar plano e status.</p>
+        </section>
+        <div className="form-actions">
+          <ActionButton Icon={Save} type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Salvar empresa'}</ActionButton>
+          <ActionButton Icon={XCircle} variant="ghost" onClick={onClose} disabled={saving}>Cancelar</ActionButton>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function CommercialSubscriptions({
   plans,
   requests,
@@ -3126,6 +3399,9 @@ function CommercialSubscriptions({
   return (
     <>
       <PageTitle eyebrow="Assinaturas" title="Comercial do Obras" subtitle="Planos, solicitacoes e assinatura vinculada a cada conta." onBack={() => setScreen('dashboard')}>
+        <ActionButton Icon={Landmark} variant="ghost" onClick={() => setScreen('companies')}>
+          Empresas
+        </ActionButton>
         <ActionButton Icon={Database} onClick={onRefresh} disabled={loading}>
           {loading ? 'Atualizando...' : 'Atualizar'}
         </ActionButton>
@@ -3696,6 +3972,11 @@ function App() {
   const [stageError, setStageError] = useState('');
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [scheduleError, setScheduleError] = useState('');
+  const [obrasAccounts, setObrasAccounts] = useState(localObrasAccounts);
+  const [accountsLoading, setAccountsLoading] = useState(false);
+  const [accountsSaving, setAccountsSaving] = useState(false);
+  const [accountsError, setAccountsError] = useState('');
+  const [accountsMessage, setAccountsMessage] = useState('');
   const [obrasUsers, setObrasUsers] = useState(localObrasUsers);
   const [currentObrasUser, setCurrentObrasUser] = useState(localObrasUsers[0]);
   const [usersLoading, setUsersLoading] = useState(false);
@@ -3865,6 +4146,7 @@ function App() {
         setSession(null);
         setCurrentObrasUser(null);
         setObrasUsers([]);
+        setObrasAccounts([]);
         setPlatformAdmin(!supabaseConfigured);
         setProjectDataProjectId('');
         setLoadedProjectCollections([]);
@@ -3919,6 +4201,11 @@ function App() {
     void loadCommercialData();
   }, [screen, session?.user?.id, platformAdmin]);
 
+  useEffect(() => {
+    if (screen !== 'companies') return;
+    void loadObrasAccounts();
+  }, [screen, session?.user?.id, platformAdmin]);
+
   const cityWorks = useMemo(
     () => data.works.filter((work) => work.cidadeId === selectedCity.id),
     [data.works, selectedCity.id],
@@ -3934,6 +4221,7 @@ function App() {
   );
   const activeStage = data.stages.find((stage) => stage.id === selectedStageId) || data.stages[0];
   const canManageObrasUsers = !supabaseConfigured || ['owner', 'admin'].includes(currentObrasUser?.role);
+  const canManageCompanyAccount = !supabaseConfigured || platformAdmin || ['owner', 'admin'].includes(currentObrasUser?.role);
   const canEditWorkProfile = !supabaseConfigured || ['owner', 'admin', 'engenheiro'].includes(currentObrasUser?.role);
   const canDeleteWorkProfile = !supabaseConfigured || ['owner', 'admin'].includes(currentObrasUser?.role);
 
@@ -3975,10 +4263,12 @@ function App() {
         setSession(null);
         setCurrentObrasUser(null);
         setObrasUsers([]);
+        setObrasAccounts([]);
         setAuthError('Este e-mail nao esta cadastrado no sistema Obras.');
         setScreen('login');
         return;
       }
+      await loadObrasAccounts();
       await loadRemoteData();
     } catch {
       // The specific loading error is already displayed by the failing request.
@@ -4007,6 +4297,27 @@ function App() {
       throw error;
     } finally {
       setUsersLoading(false);
+    }
+  }
+
+  async function loadObrasAccounts() {
+    setAccountsLoading(true);
+    setAccountsError('');
+    setAccountsMessage('');
+
+    if (!supabaseConfigured || !session) {
+      setObrasAccounts(localObrasAccounts);
+      setAccountsLoading(false);
+      return;
+    }
+
+    try {
+      const accounts = await fetchObrasAccounts();
+      setObrasAccounts(accounts);
+    } catch (error) {
+      setAccountsError(error.message || 'Nao foi possivel carregar empresas do Obras.');
+    } finally {
+      setAccountsLoading(false);
     }
   }
 
@@ -4308,6 +4619,7 @@ function App() {
       setSession(null);
       setCurrentObrasUser(supabaseConfigured ? null : localObrasUsers[0]);
       setObrasUsers(supabaseConfigured ? [] : localObrasUsers);
+      setObrasAccounts(supabaseConfigured ? [] : localObrasAccounts);
       setPlatformAdmin(!supabaseConfigured);
       setProjectDataProjectId('');
       setLoadedProjectCollections([]);
@@ -5053,6 +5365,76 @@ function App() {
     }
   }
 
+  async function saveObrasAccount(values) {
+    setAccountsError('');
+    setAccountsMessage('');
+
+    if (!canManageCompanyAccount) {
+      setAccountsError('Apenas proprietarios e administradores podem alterar os dados da empresa.');
+      return false;
+    }
+    if (!platformAdmin && supabaseConfigured && values.id !== currentObrasUser?.accountId) {
+      setAccountsError('Seu perfil so pode alterar a empresa vinculada ao seu login.');
+      return false;
+    }
+    if (!values.nome) {
+      setAccountsError('Informe o nome da empresa.');
+      return false;
+    }
+    if (values.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) {
+      setAccountsError('Informe um e-mail valido.');
+      return false;
+    }
+
+    setAccountsSaving(true);
+    try {
+      let savedCompany;
+      if (supabaseConfigured && session) {
+        savedCompany = await updateObrasAccount(values.id, values);
+        if (values.logoFile) {
+          const logoFile = await prepareLogoUpload(values.logoFile);
+          const logoUpload = await uploadObrasAccountLogo({
+            accountId: savedCompany.id,
+            file: logoFile,
+            previousPath: savedCompany.logoStoragePath,
+          });
+          savedCompany = await updateObrasAccount(savedCompany.id, {
+            ...savedCompany,
+            logoStoragePath: logoUpload.logoStoragePath,
+            logoFileName: logoUpload.logoFileName,
+            logoMimeType: logoUpload.logoMimeType,
+            logoFileSize: logoUpload.logoFileSize,
+          });
+          savedCompany = { ...savedCompany, logoUrl: logoUpload.logoUrl };
+        }
+      } else {
+        let logoUrl = values.logoUrl || '';
+        if (values.logoFile) {
+          if (logoUrl?.startsWith('blob:')) URL.revokeObjectURL(logoUrl);
+          logoUrl = URL.createObjectURL(values.logoFile);
+        }
+        savedCompany = {
+          ...values,
+          logoUrl,
+          status: values.status || 'Ativa',
+        };
+      }
+
+      setObrasAccounts((current) => (
+        current.some((company) => company.id === savedCompany.id)
+          ? current.map((company) => (company.id === savedCompany.id ? savedCompany : company))
+          : [savedCompany, ...current]
+      ));
+      setAccountsMessage('Empresa atualizada.');
+      setAccountsSaving(false);
+      return true;
+    } catch (error) {
+      setAccountsError(error.message || 'Nao foi possivel salvar a empresa.');
+      setAccountsSaving(false);
+      return false;
+    }
+  }
+
   async function saveObrasUser(values) {
     setUsersError('');
     setUsersMessage('');
@@ -5378,6 +5760,22 @@ function App() {
         );
       case 'issues':
         return <Issues issues={data.issues} addIssue={addIssue} resolveIssue={resolveIssue} setScreen={setScreen} />;
+      case 'companies':
+        return (
+          <Companies
+            accounts={obrasAccounts}
+            plans={commercialPlans}
+            currentUser={currentObrasUser}
+            platformAdmin={platformAdmin}
+            loading={accountsLoading}
+            saving={accountsSaving}
+            error={accountsError}
+            message={accountsMessage}
+            onRefresh={loadObrasAccounts}
+            onSave={saveObrasAccount}
+            setScreen={setScreen}
+          />
+        );
       case 'users':
         return (
           <Users

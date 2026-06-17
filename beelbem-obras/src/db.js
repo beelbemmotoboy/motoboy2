@@ -8,6 +8,7 @@ const supabaseUrl = obrasSupabaseUrl || legacySupabaseUrl;
 const supabaseAnonKey = obrasSupabaseAnonKey || legacySupabaseAnonKey;
 const photoBucket = 'obras-photos';
 const userAvatarBucket = 'obras-user-avatars';
+const accountLogoBucket = 'obras-account-logos';
 const photoThumbnailTable = 'obras_photo_thumbnails';
 
 export const supabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
@@ -89,6 +90,48 @@ export function projectToDb(work) {
     pavimentos: work.pavimentos || null,
     responsavel: work.responsavel || null,
     observacoes: work.observacoes || null,
+  };
+}
+
+export function obrasAccountFromDb(row) {
+  return {
+    id: row.id,
+    nome: row.nome || '',
+    documento: row.documento || '',
+    responsavel: row.responsavel || '',
+    email: row.email || '',
+    telefone: row.telefone || '',
+    endereco: row.endereco || '',
+    cidadeId: row.cidade_id || '',
+    cidade: row.cidade || '',
+    plano: row.plano || 'basico',
+    status: row.status || 'Ativa',
+    logoStoragePath: row.logo_storage_path || '',
+    logoFileName: row.logo_file_name || '',
+    logoMimeType: row.logo_mime_type || '',
+    logoFileSize: Number(row.logo_file_size || 0),
+    logoUrl: '',
+    createdAt: row.created_at || '',
+    updatedAt: row.updated_at || '',
+  };
+}
+
+export function obrasAccountPatchToDb(values) {
+  return {
+    ...(values.nome !== undefined ? { nome: String(values.nome || '').trim() } : {}),
+    ...(values.documento !== undefined ? { documento: String(values.documento || '').trim() || null } : {}),
+    ...(values.responsavel !== undefined ? { responsavel: String(values.responsavel || '').trim() || null } : {}),
+    ...(values.email !== undefined ? { email: String(values.email || '').trim().toLowerCase() || null } : {}),
+    ...(values.telefone !== undefined ? { telefone: String(values.telefone || '').trim() || null } : {}),
+    ...(values.endereco !== undefined ? { endereco: String(values.endereco || '').trim() || null } : {}),
+    ...(values.cidadeId !== undefined ? { cidade_id: values.cidadeId } : {}),
+    ...(values.cidade !== undefined ? { cidade: values.cidade } : {}),
+    ...(values.plano !== undefined ? { plano: values.plano || 'basico' } : {}),
+    ...(values.status !== undefined ? { status: values.status || 'Ativa' } : {}),
+    ...(values.logoStoragePath !== undefined ? { logo_storage_path: values.logoStoragePath || null } : {}),
+    ...(values.logoFileName !== undefined ? { logo_file_name: values.logoFileName || null } : {}),
+    ...(values.logoMimeType !== undefined ? { logo_mime_type: values.logoMimeType || null } : {}),
+    ...(values.logoFileSize !== undefined ? { logo_file_size: values.logoFileSize || null } : {}),
   };
 }
 
@@ -545,6 +588,31 @@ export async function fetchObrasUsers() {
   return Promise.all((data || []).map((row) => withSignedObrasUserAvatar(obrasUserFromDb(row))));
 }
 
+export async function fetchObrasAccounts() {
+  const { data, error } = await supabase
+    .from('obras_accounts')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+  return Promise.all((data || []).map((row) => withSignedObrasAccountLogo(obrasAccountFromDb(row))));
+}
+
+export async function updateObrasAccount(accountId, patch) {
+  const dbPatch = obrasAccountPatchToDb(patch);
+  if (!Object.keys(dbPatch).length) return null;
+
+  const { data, error } = await supabase
+    .from('obras_accounts')
+    .update(dbPatch)
+    .eq('id', accountId)
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return withSignedObrasAccountLogo(obrasAccountFromDb(data));
+}
+
 export async function insertObrasUser(accountId, user) {
   if (supabaseConfigured) {
     return syncObrasUserAccess(accountId, user);
@@ -847,6 +915,30 @@ export async function uploadObrasUserAvatar({ accountId, userId, file, previousP
   };
 }
 
+export async function uploadObrasAccountLogo({ accountId, file, previousPath }) {
+  const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const fileName = safeFileName(file.name || `${id}.jpg`);
+  const storagePath = `${accountId}/logo/${id}-${fileName}`;
+  const { error } = await supabase.storage.from(accountLogoBucket).upload(storagePath, file, {
+    cacheControl: '3600',
+    contentType: file.type || 'image/jpeg',
+    upsert: false,
+  });
+
+  if (error) throw error;
+  if (previousPath && previousPath !== storagePath) {
+    await supabase.storage.from(accountLogoBucket).remove([previousPath]);
+  }
+
+  return {
+    logoStoragePath: storagePath,
+    logoFileName: fileName,
+    logoMimeType: file.type || 'image/jpeg',
+    logoFileSize: file.size || 0,
+    logoUrl: await createSignedAccountLogoUrl(storagePath),
+  };
+}
+
 export async function uploadPhotoFile({ userId, projectId, file, thumbnailFile }) {
   const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const upload = await uploadPhotoStorageObject({
@@ -965,6 +1057,18 @@ async function createSignedPhotoUrl(storagePath) {
   return data.signedUrl;
 }
 
+async function withSignedObrasAccountLogo(account) {
+  if (!account?.logoStoragePath) return account;
+  try {
+    return {
+      ...account,
+      logoUrl: await createSignedAccountLogoUrl(account.logoStoragePath),
+    };
+  } catch {
+    return account;
+  }
+}
+
 async function withSignedObrasUserAvatar(user) {
   if (!user?.avatarStoragePath) return user;
   try {
@@ -975,6 +1079,12 @@ async function withSignedObrasUserAvatar(user) {
   } catch {
     return user;
   }
+}
+
+async function createSignedAccountLogoUrl(storagePath) {
+  const { data, error } = await supabase.storage.from(accountLogoBucket).createSignedUrl(storagePath, 60 * 60 * 24);
+  if (error) throw error;
+  return data.signedUrl;
 }
 
 async function createSignedAvatarUrl(storagePath) {

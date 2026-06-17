@@ -19,6 +19,13 @@ const AVATAR_UPLOAD_SETTINGS = {
   suffix: 'perfil',
 };
 
+const LOGO_UPLOAD_SETTINGS = {
+  maxWidth: 900,
+  maxHeight: 900,
+  quality: 0.82,
+  suffix: 'logo',
+};
+
 const outputType = 'image/jpeg';
 
 export async function preparePhotoUpload(file) {
@@ -41,6 +48,11 @@ export async function preparePhotoUpload(file) {
 export async function prepareAvatarUpload(file) {
   const avatar = await resizeImageFile(file, AVATAR_UPLOAD_SETTINGS);
   return avatar.file;
+}
+
+export async function prepareLogoUpload(file) {
+  const logo = await resizeImageFile(file, LOGO_UPLOAD_SETTINGS);
+  return logo.file;
 }
 
 export function getBestPhotoUrl(photo) {

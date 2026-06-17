@@ -1962,6 +1962,12 @@ button.metric-card {
   gap: 14px;
 }
 
+.company-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+
 .user-card {
   min-width: 0;
   border: 1px solid #e5e7eb;
@@ -1972,7 +1978,24 @@ button.metric-card {
   background: #fff;
 }
 
+.company-card {
+  min-width: 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  background: #fff;
+}
+
 .user-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.company-card-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1990,14 +2013,29 @@ button.metric-card {
   background: #dbeafe;
 }
 
+.company-logo {
+  width: 58px;
+  height: 58px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #bfdbfe;
+  display: grid;
+  place-items: center;
+  color: #1e3a8a;
+  background: #eff6ff;
+}
+
 .user-avatar img,
-.user-avatar-preview img {
+.user-avatar-preview img,
+.company-logo img,
+.company-logo-preview img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.user-avatar-field {
+.user-avatar-field,
+.company-logo-field {
   align-content: start;
 }
 
@@ -2013,31 +2051,55 @@ button.metric-card {
   background: #eff6ff;
 }
 
-.user-avatar-field input[type="file"] {
+.company-logo-preview {
+  width: 128px;
+  height: 96px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  color: #1e3a8a;
+  background: #eff6ff;
+}
+
+.user-avatar-field input[type="file"],
+.company-logo-field input[type="file"] {
   min-height: auto;
   padding: 11px;
 }
 
-.user-card strong {
+.user-card strong,
+.company-card strong {
   overflow-wrap: anywhere;
   font-size: 20px;
   line-height: 1.2;
 }
 
-.user-card > span {
+.user-card > span,
+.company-card > span {
   min-width: 0;
   overflow-wrap: anywhere;
   color: #4b5563;
   font-weight: 800;
 }
 
-.user-meta {
+.company-card p {
+  margin: 0;
+  color: #4b5563;
+  font-weight: 750;
+  line-height: 1.4;
+}
+
+.user-meta,
+.company-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 7px;
 }
 
-.user-meta small {
+.user-meta small,
+.company-meta small {
   width: fit-content;
   max-width: 100%;
   border-radius: 999px;
