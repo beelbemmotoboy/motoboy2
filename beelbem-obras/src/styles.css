@@ -2720,7 +2720,7 @@ body.gantt-resizing * {
 
 .schedule-stage-group {
   overflow: hidden;
-  border: 1px solid #1d4ed8;
+  border: 1px solid rgba(29, 78, 216, 0.45);
   border-radius: 10px;
   background: #fff;
 }
@@ -2735,7 +2735,7 @@ body.gantt-resizing * {
   cursor: pointer;
   list-style: none;
   color: #fff;
-  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.82), rgba(29, 78, 216, 0.82));
 }
 
 .schedule-stage-group > summary::-webkit-details-marker {
