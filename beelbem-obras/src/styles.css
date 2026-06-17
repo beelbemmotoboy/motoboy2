@@ -2850,12 +2850,26 @@ body.gantt-resizing * {
 
 .schedule-subitem-main strong {
   overflow-wrap: anywhere;
+  font-weight: 700;
 }
 
 .schedule-subitem-main span {
   color: #6b7280;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 400;
+}
+
+.schedule-subitem .status,
+.schedule-subitem .schedule-quick-dates label span,
+.schedule-subitem .schedule-quick-dates input,
+.schedule-subitem .schedule-quick-dates button,
+.schedule-subitem .schedule-quick-dates small,
+.schedule-subitem .schedule-actions button,
+.schedule-subitem .schedule-log-summary strong,
+.schedule-subitem .schedule-log-summary span,
+.schedule-subitem .schedule-log-summary small,
+.schedule-subitem .schedule-log-summary button {
+  font-weight: 400;
 }
 
 .schedule-quick-dates {
