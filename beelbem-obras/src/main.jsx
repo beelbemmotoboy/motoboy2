@@ -2613,35 +2613,73 @@ function ScheduleQuickDates({ item, saving, onSave }) {
   const [inicioPrevisto, setInicioPrevisto] = useState(item.inicioPrevisto || '');
   const [fimPrevisto, setFimPrevisto] = useState(item.fimPrevisto || '');
   const [message, setMessage] = useState('');
+  const [autoSaving, setAutoSaving] = useState(false);
+  const pendingPatchRef = useRef(null);
+  const savingRef = useRef(false);
 
   useEffect(() => {
     setInicioPrevisto(item.inicioPrevisto || '');
     setFimPrevisto(item.fimPrevisto || '');
-  }, [item.inicioPrevisto, item.fimPrevisto]);
-
-  async function saveDates(event) {
-    event.preventDefault();
     setMessage('');
-    if (inicioPrevisto && fimPrevisto && fimPrevisto < inicioPrevisto) {
+    pendingPatchRef.current = null;
+  }, [item.id, item.inicioPrevisto, item.fimPrevisto]);
+
+  useEffect(() => {
+    if (!saving && pendingPatchRef.current) void flushPending();
+  }, [saving]);
+
+  function queueSave(nextInicioPrevisto, nextFimPrevisto) {
+    if (nextInicioPrevisto && nextFimPrevisto && nextFimPrevisto < nextInicioPrevisto) {
       setMessage('A conclusao deve ser igual ou posterior ao inicio.');
       return;
     }
-    const saved = await onSave(item.id, { inicioPrevisto, fimPrevisto });
-    if (saved) setMessage('Datas salvas.');
+    pendingPatchRef.current = {
+      inicioPrevisto: nextInicioPrevisto,
+      fimPrevisto: nextFimPrevisto,
+    };
+    setMessage('');
+    void flushPending();
+  }
+
+  async function flushPending() {
+    if (saving || savingRef.current || !pendingPatchRef.current) return;
+    const patch = pendingPatchRef.current;
+    pendingPatchRef.current = null;
+    savingRef.current = true;
+    setAutoSaving(true);
+    setMessage('Salvando...');
+    const saved = await onSave(item.id, patch);
+    savingRef.current = false;
+    setAutoSaving(false);
+    if (saved) {
+      setMessage('Salvo automaticamente.');
+    } else if (!pendingPatchRef.current) {
+      setMessage('Nao foi possivel salvar.');
+    }
+    if (pendingPatchRef.current) void flushPending();
+  }
+
+  function changeInicioPrevisto(event) {
+    const nextInicioPrevisto = event.target.value;
+    setInicioPrevisto(nextInicioPrevisto);
+    queueSave(nextInicioPrevisto, fimPrevisto);
+  }
+
+  function changeFimPrevisto(event) {
+    const nextFimPrevisto = event.target.value;
+    setFimPrevisto(nextFimPrevisto);
+    queueSave(inicioPrevisto, nextFimPrevisto);
   }
 
   return (
-    <form className="schedule-quick-dates" onSubmit={saveDates}>
+    <div className="schedule-quick-dates">
       <label>
         <span>Inicio previsto</span>
         <input
           type="date"
           value={inicioPrevisto}
           max={fimPrevisto || undefined}
-          onChange={(event) => {
-            setInicioPrevisto(event.target.value);
-            setMessage('');
-          }}
+          onChange={changeInicioPrevisto}
         />
       </label>
       <label>
@@ -2650,17 +2688,11 @@ function ScheduleQuickDates({ item, saving, onSave }) {
           type="date"
           value={fimPrevisto}
           min={inicioPrevisto || undefined}
-          onChange={(event) => {
-            setFimPrevisto(event.target.value);
-            setMessage('');
-          }}
+          onChange={changeFimPrevisto}
         />
       </label>
-      <button type="submit" disabled={saving}>
-        <Save size={16} /> {saving ? 'Salvando...' : 'Salvar datas'}
-      </button>
-      {message ? <small className={message === 'Datas salvas.' ? 'success' : 'error'}>{message}</small> : null}
-    </form>
+      {message ? <small className={message === 'Salvo automaticamente.' || autoSaving ? 'success' : 'error'}>{message}</small> : null}
+    </div>
   );
 }
 
