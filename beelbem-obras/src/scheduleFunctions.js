@@ -32,6 +32,7 @@ export function buildScheduleCopyPlan(scheduleItems) {
 
 function resetScheduleItem(item, fallbackType, sortOrder) {
   return {
+    sourceId: item.id || '',
     libraryItemId: item.libraryItemId || '',
     nome: item.nome || '',
     itemType: item.itemType || fallbackType,

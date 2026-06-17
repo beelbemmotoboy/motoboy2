@@ -166,7 +166,7 @@ const projectScreenRequirements = {
   stageDetail: { collections: ['stages'], signPhotoUrls: false },
   photos: { collections: ['scheduleItems', 'photos'], signPhotoUrls: true, normalizeSchedule: false },
   pls: { collections: ['plsItems'], signPhotoUrls: false },
-  schedule: { collections: ['scheduleItems', 'scheduleLogs'], signPhotoUrls: false, normalizeSchedule: true },
+  schedule: { collections: ['scheduleItems', 'scheduleLogs', 'checklist'], signPhotoUrls: false, normalizeSchedule: true },
   issues: { collections: ['issues'], signPhotoUrls: false },
   supplies: { collections: ['supplies'], signPhotoUrls: false },
   tools: { collections: ['tools'], signPhotoUrls: false },
@@ -2034,9 +2034,68 @@ function Pls({ plsItems, updatePls, addPhoto, setScreen }) {
   );
 }
 
+const defaultScheduleChecklistItems = [
+  'Conferiu nivel do baldrame',
+  'Conferiu largura',
+  'Conferiu ferragens',
+  'Conferiu cobrimento',
+  'Conferiu arranques dos pilares',
+  'Conferiu impermeabilizacao',
+  'Fotos antes da concretagem',
+  'Fotos apos concretagem',
+  'Liberado para proxima etapa',
+];
+
+function makeChecklistItem(text, index = 0) {
+  return {
+    id: `chk-item-${index + 1}`,
+    texto: String(text || '').trim(),
+    obrigatorio: true,
+  };
+}
+
+function checklistItemsToText(items) {
+  return (Array.isArray(items) ? items : [])
+    .map((item) => String(item?.texto || item || '').trim())
+    .filter(Boolean)
+    .join('\n');
+}
+
+function checklistItemsFromText(text) {
+  return String(text || '')
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\s*(?:[-*]|\[[ xX]\])\s*/, '').trim())
+    .filter(Boolean)
+    .map(makeChecklistItem);
+}
+
+function defaultChecklistForScheduleItem(item) {
+  return {
+    id: '',
+    scheduleItemId: item.id,
+    titulo: 'Checklist tecnico',
+    descricao: 'Checklist tecnico',
+    procedimento: 'Confira cada item antes de liberar o avancamento deste subitem.',
+    itens: defaultScheduleChecklistItems.map(makeChecklistItem),
+    etapa: item.nome,
+    norma: 'Checklist interno',
+    foto: 'Obrigatoria',
+    responsavel: '',
+    data: '',
+    status: 'Nao iniciado',
+  };
+}
+
+function findChecklistForScheduleItem(checklists, item) {
+  return (checklists || []).find((entry) => entry.scheduleItemId === item.id)
+    || (checklists || []).find((entry) => !entry.scheduleItemId && normalizeSearch(entry.etapa) === normalizeSearch(item.nome))
+    || null;
+}
+
 function Schedule({
   items,
   logs,
+  checklist = [],
   saving,
   error,
   onSaveItem,
@@ -2044,6 +2103,7 @@ function Schedule({
   onSetVisibility,
   onSaveLog,
   onDeleteLog,
+  onSaveChecklist,
   addPhoto,
   setScreen,
 }) {
@@ -2053,6 +2113,7 @@ function Schedule({
   const [showRemoved, setShowRemoved] = useState(false);
   const [ganttOpen, setGanttOpen] = useState(false);
   const [removeCandidate, setRemoveCandidate] = useState(null);
+  const [checklistItem, setChecklistItem] = useState(null);
   const visibleItems = items.filter((item) => item.visible !== false);
   const removedItems = items.filter((item) => item.visible === false);
   const removedEntries = removedItems.filter((item) => (
@@ -2134,6 +2195,7 @@ function Schedule({
                 <div className="schedule-subitems">
                   {children.map((item) => {
                     const itemLogs = logsFor(item.id);
+                    const itemChecklist = findChecklistForScheduleItem(checklist, item);
                     return (
                       <article className="schedule-subitem" key={item.id}>
                         <div className="schedule-subitem-main">
@@ -2160,6 +2222,9 @@ function Schedule({
                           <button type="button" onClick={() => setItemModal(item)}><Pencil size={16} /> Editar</button>
                           <button type="button" onClick={() => setLogItem(item)}><ClipboardCheck size={16} /> Diario</button>
                           <button type="button" onClick={() => addPhoto(item.nome)}><Camera size={16} /> Foto</button>
+                          <button type="button" onClick={() => setChecklistItem(item)}>
+                            <ClipboardCheck size={16} /> {itemChecklist ? 'Checklist' : '+ Checklist'}
+                          </button>
                           <button className="danger" type="button" disabled={saving} onClick={() => requestRemove(item)}><Minus size={16} /> Remover</button>
                         </div>
                         {itemLogs.slice(0, 2).map((log) => (
@@ -2235,6 +2300,21 @@ function Schedule({
         />
       ) : null}
 
+      {checklistItem ? (
+        <ScheduleChecklistModal
+          item={checklistItem}
+          checklist={findChecklistForScheduleItem(checklist, checklistItem)}
+          saving={saving}
+          onClose={() => {
+            if (!saving) setChecklistItem(null);
+          }}
+          onSave={async (values) => {
+            const saved = await onSaveChecklist(values);
+            if (saved) setChecklistItem(null);
+          }}
+        />
+      ) : null}
+
       {ganttOpen ? <ScheduleGanttModal items={visibleItems} onClose={() => setGanttOpen(false)} /> : null}
 
       {removeCandidate ? (
@@ -2283,6 +2363,103 @@ function ScheduleRemoveConfirmModal({ item, saving, onClose, onConfirm }) {
           <ActionButton Icon={XCircle} variant="ghost" onClick={onClose} disabled={saving}>Cancelar</ActionButton>
         </div>
       </section>
+    </div>
+  );
+}
+
+function ScheduleChecklistModal({ item, checklist, saving, onClose, onSave }) {
+  const draft = checklist || defaultChecklistForScheduleItem(item);
+  const [itemsText, setItemsText] = useState(() => checklistItemsToText(draft.itens));
+
+  useEffect(() => {
+    setItemsText(checklistItemsToText(draft.itens));
+  }, [draft.id, item.id]);
+
+  function submit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const itens = checklistItemsFromText(itemsText);
+    if (!itens.length) return;
+    const titulo = form.elements.titulo.value.trim() || 'Checklist tecnico';
+    onSave({
+      id: draft.id || '',
+      scheduleItemId: item.id,
+      titulo,
+      descricao: titulo,
+      procedimento: form.elements.procedimento.value.trim(),
+      itens,
+      etapa: item.nome,
+      norma: form.elements.norma.value.trim() || 'Checklist interno',
+      foto: form.elements.foto.value.trim() || 'Obrigatoria',
+      responsavel: form.elements.responsavel.value.trim(),
+      data: form.elements.data.value.trim(),
+      status: form.elements.status.value,
+    });
+  }
+
+  const previewItems = checklistItemsFromText(itemsText);
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <form className="photo-modal checklist-modal" onSubmit={submit}>
+        <div className="modal-head">
+          <div>
+            <span>Cadastro de checklist</span>
+            <h2>{item.nome}</h2>
+          </div>
+          <IconButton label="Fechar" Icon={X} onClick={onClose} />
+        </div>
+        <div className="form-grid modal-fields">
+          <Field label="Titulo" name="titulo" value={draft.titulo || 'Checklist tecnico'} required />
+          <Field label="Norma / referencia" name="norma" value={draft.norma || 'Checklist interno'} />
+          <Field label="Foto" name="foto" value={draft.foto || 'Obrigatoria'} />
+          <Field label="Responsavel" name="responsavel" value={draft.responsavel || ''} />
+          <Field label="Data prevista" name="data" value={draft.data || ''} />
+          <label className="field">
+            <span>Status</span>
+            <select name="status" defaultValue={draft.status || 'Nao iniciado'}>
+              {['Nao iniciado', 'Em andamento', 'Conferido', 'Atencao'].map((status) => (
+                <option value={status} key={status}>{status}</option>
+              ))}
+            </select>
+          </label>
+          <label className="field wide">
+            <span>Descricao de como proceder</span>
+            <textarea
+              name="procedimento"
+              defaultValue={draft.procedimento || 'Confira cada item antes de liberar o avancamento deste subitem.'}
+              rows={4}
+            />
+          </label>
+          <label className="field wide">
+            <span>Itens do checklist</span>
+            <textarea
+              value={itemsText}
+              rows={9}
+              placeholder="Um item por linha"
+              onChange={(event) => setItemsText(event.target.value)}
+            />
+            <small>Digite um item por linha. O checklist sera copiado junto quando outra obra copiar este cronograma.</small>
+          </label>
+        </div>
+        <section className="checklist-preview">
+          <strong>{draft.titulo || 'Checklist tecnico'}</strong>
+          <div>
+            {previewItems.map((checkItem) => (
+              <label key={checkItem.id}>
+                <input type="checkbox" disabled />
+                <span>{checkItem.texto}</span>
+              </label>
+            ))}
+          </div>
+        </section>
+        <div className="form-actions">
+          <ActionButton Icon={Save} type="submit" disabled={saving || !previewItems.length}>
+            {saving ? 'Salvando...' : 'Salvar checklist'}
+          </ActionButton>
+          <ActionButton Icon={XCircle} variant="ghost" onClick={onClose} disabled={saving}>Cancelar</ActionButton>
+        </div>
+      </form>
     </div>
   );
 }
@@ -4449,12 +4626,19 @@ function App() {
       return;
     }
 
-    const sourceItems = selectedSource === selectedWorkId && data.scheduleItems.length
-      ? data.scheduleItems
-      : (await fetchProjectChildren(selectedSource, {
-          collections: ['scheduleItems'],
+    const sourceIsLoaded = selectedSource === selectedWorkId
+      && projectDataProjectId === selectedSource
+      && loadedProjectCollections.includes('scheduleItems')
+      && loadedProjectCollections.includes('checklist')
+      && data.scheduleItems.length;
+    const sourceChildren = sourceIsLoaded
+      ? { scheduleItems: data.scheduleItems, checklist: data.checklist }
+      : await fetchProjectChildren(selectedSource, {
+          collections: ['scheduleItems', 'checklist'],
           signPhotoUrls: false,
-        })).scheduleItems;
+        });
+    const sourceItems = sourceChildren.scheduleItems || [];
+    const sourceChecklists = sourceChildren.checklist || [];
     const copyPlan = buildScheduleCopyPlan(sourceItems);
 
     if (!copyPlan.length) {
@@ -4462,11 +4646,37 @@ function App() {
       return;
     }
 
+    const copiedItemsBySourceId = new Map();
     for (const group of copyPlan) {
       const stage = await insertChild('scheduleItems', projectId, group.stage);
+      if (group.stage.sourceId) copiedItemsBySourceId.set(group.stage.sourceId, stage);
       for (const child of group.children) {
-        await insertChild('scheduleItems', projectId, { ...child, parentId: stage.id });
+        const savedChild = await insertChild('scheduleItems', projectId, { ...child, parentId: stage.id });
+        if (child.sourceId) copiedItemsBySourceId.set(child.sourceId, savedChild);
       }
+    }
+
+    const checklistCopies = sourceChecklists
+      .filter((entry) => entry.scheduleItemId && copiedItemsBySourceId.has(entry.scheduleItemId))
+      .map((entry) => {
+        const copiedItem = copiedItemsBySourceId.get(entry.scheduleItemId);
+        return {
+          scheduleItemId: copiedItem.id,
+          titulo: entry.titulo || entry.descricao || 'Checklist tecnico',
+          descricao: entry.descricao || entry.titulo || 'Checklist tecnico',
+          procedimento: entry.procedimento || '',
+          itens: entry.itens || [],
+          etapa: copiedItem.nome,
+          norma: entry.norma || 'Checklist interno',
+          foto: entry.foto || 'Obrigatoria',
+          responsavel: '',
+          data: '',
+          status: 'Nao iniciado',
+        };
+      });
+
+    for (const checklistCopy of checklistCopies) {
+      await insertChild('checklist', projectId, checklistCopy);
     }
   }
 
@@ -5397,6 +5607,64 @@ function App() {
     }
   }
 
+  async function saveScheduleChecklist(values) {
+    if (!activeWork?.id) {
+      setScheduleError('Selecione uma obra antes de cadastrar checklist.');
+      return null;
+    }
+
+    const normalized = {
+      ...values,
+      titulo: values.titulo || 'Checklist tecnico',
+      descricao: values.descricao || values.titulo || 'Checklist tecnico',
+      procedimento: values.procedimento || '',
+      itens: (values.itens || []).filter((item) => item.texto),
+      etapa: values.etapa || 'Cronograma',
+      norma: values.norma || 'Checklist interno',
+      foto: values.foto || 'Obrigatoria',
+      responsavel: values.responsavel || '',
+      data: values.data || '',
+      status: values.status || 'Nao iniciado',
+    };
+
+    if (!normalized.itens.length) {
+      setScheduleError('Informe pelo menos um item no checklist.');
+      return null;
+    }
+
+    setScheduleSaving(true);
+    setScheduleError('');
+    try {
+      let saved = normalized;
+      if (normalized.id) {
+        if (supabaseConfigured && session) {
+          await updateChild('checklist', normalized.id, normalized);
+        }
+      } else {
+        saved = { ...normalized, id: makeId('checklist') };
+        if (supabaseConfigured && session) {
+          saved = await insertChild('checklist', activeWork.id, normalized);
+        }
+      }
+
+      setData((current) => {
+        const exists = current.checklist.some((entry) => entry.id === saved.id);
+        return {
+          ...current,
+          checklist: exists
+            ? current.checklist.map((entry) => (entry.id === saved.id ? { ...entry, ...saved } : entry))
+            : [saved, ...current.checklist],
+        };
+      });
+      return saved;
+    } catch (error) {
+      setScheduleError(error.message || 'Nao foi possivel salvar o checklist.');
+      return null;
+    } finally {
+      setScheduleSaving(false);
+    }
+  }
+
   async function saveObrasAccount(values) {
     setAccountsError('');
     setAccountsMessage('');
@@ -5779,6 +6047,7 @@ function App() {
           <Schedule
             items={data.scheduleItems}
             logs={data.scheduleLogs}
+            checklist={data.checklist}
             saving={scheduleSaving}
             error={scheduleError}
             onSaveItem={saveScheduleItem}
@@ -5786,6 +6055,7 @@ function App() {
             onSetVisibility={setScheduleItemVisibility}
             onSaveLog={saveScheduleLog}
             onDeleteLog={deleteScheduleLog}
+            onSaveChecklist={saveScheduleChecklist}
             addPhoto={addPhoto}
             setScreen={setScreen}
           />

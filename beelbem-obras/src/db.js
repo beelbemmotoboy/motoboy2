@@ -504,7 +504,11 @@ export const rowMappers = {
   checklist: {
     fromDb: (row) => ({
       id: row.id,
+      scheduleItemId: row.schedule_item_id || '',
+      titulo: row.titulo || row.descricao || 'Checklist tecnico',
       descricao: row.descricao,
+      procedimento: row.procedimento || '',
+      itens: checklistItemsFromDb(row.itens),
       etapa: row.etapa,
       norma: row.norma || '',
       foto: row.foto || '',
@@ -513,7 +517,11 @@ export const rowMappers = {
       status: row.status,
     }),
     toDb: (item) => ({
-      descricao: item.descricao,
+      schedule_item_id: item.scheduleItemId || null,
+      titulo: item.titulo || item.descricao || 'Checklist tecnico',
+      descricao: item.descricao || item.titulo || 'Checklist tecnico',
+      procedimento: item.procedimento || null,
+      itens: checklistItemsToDb(item.itens),
       etapa: item.etapa,
       norma: item.norma || null,
       foto: item.foto || null,
@@ -522,6 +530,16 @@ export const rowMappers = {
       status: item.status || 'Nao iniciado',
     }),
     patchToDb: (patch) => ({
+      ...(patch.scheduleItemId !== undefined ? { schedule_item_id: patch.scheduleItemId || null } : {}),
+      ...(patch.titulo !== undefined ? { titulo: patch.titulo || 'Checklist tecnico' } : {}),
+      ...(patch.descricao !== undefined ? { descricao: patch.descricao || patch.titulo || 'Checklist tecnico' } : {}),
+      ...(patch.procedimento !== undefined ? { procedimento: patch.procedimento || null } : {}),
+      ...(patch.itens !== undefined ? { itens: checklistItemsToDb(patch.itens) } : {}),
+      ...(patch.etapa !== undefined ? { etapa: patch.etapa } : {}),
+      ...(patch.norma !== undefined ? { norma: patch.norma || null } : {}),
+      ...(patch.foto !== undefined ? { foto: patch.foto || null } : {}),
+      ...(patch.responsavel !== undefined ? { responsavel: patch.responsavel || null } : {}),
+      ...(patch.data !== undefined ? { data_label: patch.data || null } : {}),
       ...(patch.status !== undefined ? { status: patch.status } : {}),
     }),
   },
@@ -1104,6 +1122,36 @@ function photoThumbnailFromDb(row) {
     thumbnailWidth: Number(row.width || 0),
     thumbnailHeight: Number(row.height || 0),
   };
+}
+
+function checklistItemsFromDb(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item, index) => {
+      if (typeof item === 'string') {
+        return {
+          id: `item-${index + 1}`,
+          texto: item.trim(),
+          obrigatorio: true,
+        };
+      }
+      return {
+        id: String(item?.id || `item-${index + 1}`),
+        texto: String(item?.texto || item?.text || '').trim(),
+        obrigatorio: item?.obrigatorio !== false,
+      };
+    })
+    .filter((item) => item.texto);
+}
+
+function checklistItemsToDb(items) {
+  return (Array.isArray(items) ? items : [])
+    .map((item, index) => ({
+      id: String(item?.id || `item-${index + 1}`),
+      texto: String(item?.texto || item?.text || '').trim(),
+      obrigatorio: item?.obrigatorio !== false,
+    }))
+    .filter((item) => item.texto);
 }
 
 function safeFileName(fileName) {
