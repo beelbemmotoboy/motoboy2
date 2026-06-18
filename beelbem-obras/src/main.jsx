@@ -4552,6 +4552,7 @@ function App() {
   const [data, setData] = useState(() => (supabaseConfigured ? remoteInitialData : loadData()));
   const [session, setSession] = useState(null);
   const [authInitializing, setAuthInitializing] = useState(supabaseConfigured);
+  const [sessionHydrating, setSessionHydrating] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
   const [dataLoading, setDataLoading] = useState(false);
@@ -4742,10 +4743,13 @@ function App() {
     const unsubscribe = onAuthStateChange((nextSession, event) => {
       if (!mounted) return;
       if (event === 'SIGNED_OUT') {
+        setSessionHydrating(false);
         setSession(null);
         setCurrentObrasUser(null);
         setObrasUsers([]);
         setObrasAccounts([]);
+        setData(remoteInitialData);
+        setSelectedWorkId('');
         setPlatformAdmin(!supabaseConfigured);
         setProjectDataProjectId('');
         setLoadedProjectCollections([]);
@@ -4774,6 +4778,7 @@ function App() {
     getSession()
       .then((existingSession) => {
         if (!mounted || !existingSession) return;
+        setSessionHydrating(true);
         setSession(existingSession);
         screenRef.current = 'dashboard';
         setScreenState('dashboard');
@@ -4855,6 +4860,7 @@ function App() {
   ]);
 
   async function hydrateRemoteSession() {
+    setSessionHydrating(true);
     try {
       const activeUser = await loadRemoteUsers();
       if (!activeUser) {
@@ -4871,6 +4877,8 @@ function App() {
       await loadRemoteData();
     } catch {
       // The specific loading error is already displayed by the failing request.
+    } finally {
+      setSessionHydrating(false);
     }
   }
 
@@ -5217,6 +5225,7 @@ function App() {
       const obrasUser = await ensureCurrentObrasUser(nextSession);
       if (!obrasUser) {
         await signOut();
+        setSessionHydrating(false);
         setSession(null);
         setCurrentObrasUser(null);
         setObrasUsers([]);
@@ -5224,6 +5233,7 @@ function App() {
         return;
       }
       setCurrentObrasUser(obrasUser);
+      setSessionHydrating(true);
       setSession(nextSession);
       setScreen('dashboard');
     } catch (error) {
@@ -5239,6 +5249,7 @@ function App() {
 
     try {
       if (supabaseConfigured) {
+        setSessionHydrating(false);
         await signOut();
       }
     } catch (error) {
@@ -6531,15 +6542,11 @@ function App() {
     const publicScreens = ['login', 'signup'];
 
     if (authInitializing && screen !== 'signup') {
-      return (
-        <LoginScreen
-          onLogin={(event) => event.preventDefault()}
-          authError=""
-          authLoading
-          dbAvailable={supabaseConfigured}
-          onOpenSignup={() => setScreen('signup')}
-        />
-      );
+      return <EmptyNotice Icon={Database} title="Carregando Obras" text="Restaurando sessao e preparando os dados do banco." />;
+    }
+
+    if (!publicScreens.includes(screen) && sessionHydrating) {
+      return <EmptyNotice Icon={Database} title="Carregando Obras" text="Sincronizando usuario, empresa e obras antes de abrir o painel." />;
     }
 
     if (!publicScreens.includes(screen) && dataLoading) {
