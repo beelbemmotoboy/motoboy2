@@ -321,6 +321,8 @@ export const rowMappers = {
       percentual: row.percentual ?? 0,
       sortOrder: row.sort_order ?? 0,
       visible: row.visible !== false,
+      createdAt: row.created_at || '',
+      updatedAt: row.updated_at || '',
     }),
     toDb: (item, index = 0) => ({
       ...(item.libraryItemId ? { library_item_id: item.libraryItemId } : {}),
@@ -362,6 +364,7 @@ export const rowMappers = {
       fotosObservacao: row.fotos_observacao || '',
       createdBy: row.created_by || '',
       createdAt: row.created_at || '',
+      updatedAt: row.updated_at || '',
     }),
     toDb: (item) => ({
       schedule_item_id: item.scheduleItemId,

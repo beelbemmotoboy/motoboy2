@@ -176,6 +176,7 @@ const projectScreenRequirements = {
   tools: { collections: ['tools'], signPhotoUrls: false },
   checklist: { collections: ['checklist'], signPhotoUrls: false },
   reports: { collections: ['scheduleItems', 'scheduleLogs', 'photos', 'issues', 'rdoReports'], signPhotoUrls: false, normalizeSchedule: false },
+  workPanel: { collections: ['scheduleItems', 'scheduleLogs'], signPhotoUrls: false, normalizeSchedule: false },
   stageLibrary: { collections: ['stages'], signPhotoUrls: false },
 };
 
@@ -1497,7 +1498,61 @@ function ExtractedData({ createWork, setScreen, draft, works = [] }) {
   );
 }
 
+function getTimestamp(value) {
+  const time = Date.parse(value || '');
+  return Number.isFinite(time) ? time : 0;
+}
+
+function buildLastScheduleUpdate(data, fallbackLabel = '') {
+  const items = data.scheduleItems || [];
+  const itemsById = new Map(items.map((item) => [item.id, item]));
+  const candidates = [];
+
+  items
+    .filter((item) => item.visible !== false)
+    .forEach((item) => {
+      const timestamp = Math.max(getTimestamp(item.updatedAt), getTimestamp(item.createdAt));
+      if (!timestamp) return;
+      const parent = item.parentId ? itemsById.get(item.parentId) : null;
+      candidates.push({
+        timestamp,
+        stageName: parent?.nome || item.nome,
+        subitemName: parent ? item.nome : '',
+        source: 'Cronograma',
+      });
+    });
+
+  (data.scheduleLogs || []).forEach((log) => {
+    const timestamp = Math.max(getTimestamp(log.updatedAt), getTimestamp(log.createdAt), getTimestamp(log.visitDate));
+    if (!timestamp) return;
+    const item = itemsById.get(log.scheduleItemId);
+    const parent = item?.parentId ? itemsById.get(item.parentId) : null;
+    candidates.push({
+      timestamp,
+      stageName: parent?.nome || item?.nome || 'Cronograma',
+      subitemName: parent ? item.nome : '',
+      source: 'Diario da obra',
+    });
+  });
+
+  if (!candidates.length) {
+    return {
+      stageName: fallbackLabel || 'Sem atualizacao',
+      subitemName: '',
+      source: 'Cronograma',
+      updatedAt: '',
+    };
+  }
+
+  const latest = candidates.sort((a, b) => b.timestamp - a.timestamp)[0];
+  return {
+    ...latest,
+    updatedAt: new Date(latest.timestamp).toISOString(),
+  };
+}
+
 function WorkPanel({ obra, data, setScreen }) {
+  const lastUpdate = buildLastScheduleUpdate(data, obra.proximaEtapa);
   const cards = [
     ['Fotos', Camera, 'photos'],
     ['PLS Caixa', FileCheck2, 'pls'],
@@ -1518,8 +1573,10 @@ function WorkPanel({ obra, data, setScreen }) {
       </PageTitle>
       <section className="work-hero">
         <div>
-          <span>Proxima etapa</span>
-          <strong>{obra.proximaEtapa}</strong>
+          <span>Ultima atualizacao</span>
+          <strong>{lastUpdate.stageName}</strong>
+          {lastUpdate.subitemName ? <small>Subitem: {lastUpdate.subitemName}</small> : null}
+          <small>{lastUpdate.updatedAt ? `${lastUpdate.source} - ${formatDateTime(lastUpdate.updatedAt)}` : 'Sem atualizacao registrada'}</small>
         </div>
         <div>
           <span>Executado</span>
@@ -5715,7 +5772,7 @@ function App() {
       let saved;
       let rawItems;
       if (values.id) {
-        saved = { ...previousItems.find((item) => item.id === values.id), ...normalized };
+        saved = { ...previousItems.find((item) => item.id === values.id), ...normalized, updatedAt: new Date().toISOString() };
         if (supabaseConfigured && session) {
           await updateChild('scheduleItems', values.id, normalized);
         }
@@ -5725,6 +5782,8 @@ function App() {
         const item = {
           ...normalized,
           id: makeId(parentId ? 'subitem' : 'etapa-cronograma'),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
           sortOrder: siblings.length
             ? Math.max(...siblings.map((sibling) => Number(sibling.sortOrder) || 0)) + 1
             : 0,
@@ -5748,6 +5807,8 @@ function App() {
             percentual: 0,
             sortOrder: 0,
             visible: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
           };
           const savedChild = supabaseConfigured && session
             ? await insertChild('scheduleItems', activeWork.id, initialChild)
@@ -5770,7 +5831,7 @@ function App() {
   async function updateScheduleItem(id, patch) {
     if (!id || scheduleSaving) return false;
     const previousItems = data.scheduleItems;
-    const rawItems = previousItems.map((item) => (item.id === id ? { ...item, ...patch } : item));
+    const rawItems = previousItems.map((item) => (item.id === id ? { ...item, ...patch, updatedAt: new Date().toISOString() } : item));
     const nextItems = deriveScheduleStages(rawItems);
 
     setScheduleSaving(true);
@@ -5891,6 +5952,7 @@ function App() {
         saved = {
           ...(data.scheduleLogs.find((log) => log.id === nextLog.id) || {}),
           ...nextLog,
+          updatedAt: new Date().toISOString(),
         };
         if (supabaseConfigured && session) {
           await updateChild('scheduleLogs', nextLog.id, nextLog);
@@ -5898,7 +5960,7 @@ function App() {
       } else {
         saved = supabaseConfigured && session
           ? await insertChild('scheduleLogs', activeWork.id, nextLog)
-          : { ...nextLog, id: makeId('diario'), createdAt: new Date().toISOString() };
+          : { ...nextLog, id: makeId('diario'), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       }
       let savedChecklistResults = null;
       if (hasChecklistResults) {

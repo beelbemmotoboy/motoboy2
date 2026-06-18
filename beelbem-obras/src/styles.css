@@ -1522,6 +1522,13 @@ button.metric-card {
   font-size: 26px;
 }
 
+.work-hero small {
+  display: block;
+  color: #64748b;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
 .work-tabs {
   display: none;
 }
