@@ -71,7 +71,6 @@ import {
   isObrasPlatformAdmin,
   onAuthStateChange,
   replaceScheduleChecklistResults,
-  seedProjectChildren,
   signIn,
   signOut,
   supabaseConfigured,
@@ -297,6 +296,12 @@ const initialData = {
     { id: 'chk-2', descricao: 'Verificar cobrimento da armadura', etapa: 'Fundacao', norma: 'ABNT NBR 6118', foto: 'Obrigatoria', responsavel: 'Carlos Lima', data: '03/06', status: 'Conferido' },
     { id: 'chk-3', descricao: 'Registrar impermeabilizacao', etapa: 'Baldrame', norma: 'ABNT NBR 9574', foto: 'Obrigatoria', responsavel: 'Marcos Reis', data: '13/07', status: 'Em andamento' },
   ],
+};
+
+const remoteInitialData = {
+  ...initialData,
+  works: [],
+  ...emptyProjectCollections,
 };
 
 const standards = [
@@ -4403,7 +4408,7 @@ function App() {
   const screenRef = useRef('login');
   const screenHistoryRef = useRef([]);
   const screenForwardHistoryRef = useRef([]);
-  const [data, setData] = useState(() => (supabaseConfigured ? initialData : loadData()));
+  const [data, setData] = useState(() => (supabaseConfigured ? remoteInitialData : loadData()));
   const [session, setSession] = useState(null);
   const [authInitializing, setAuthInitializing] = useState(supabaseConfigured);
   const [authLoading, setAuthLoading] = useState(false);
@@ -4425,13 +4430,13 @@ function App() {
   const [stageError, setStageError] = useState('');
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [scheduleError, setScheduleError] = useState('');
-  const [obrasAccounts, setObrasAccounts] = useState(localObrasAccounts);
+  const [obrasAccounts, setObrasAccounts] = useState(() => (supabaseConfigured ? [] : localObrasAccounts));
   const [accountsLoading, setAccountsLoading] = useState(false);
   const [accountsSaving, setAccountsSaving] = useState(false);
   const [accountsError, setAccountsError] = useState('');
   const [accountsMessage, setAccountsMessage] = useState('');
-  const [obrasUsers, setObrasUsers] = useState(localObrasUsers);
-  const [currentObrasUser, setCurrentObrasUser] = useState(localObrasUsers[0]);
+  const [obrasUsers, setObrasUsers] = useState(() => (supabaseConfigured ? [] : localObrasUsers));
+  const [currentObrasUser, setCurrentObrasUser] = useState(() => (supabaseConfigured ? null : localObrasUsers[0]));
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersSaving, setUsersSaving] = useState(false);
   const [usersError, setUsersError] = useState('');
@@ -4450,8 +4455,8 @@ function App() {
   const [aiProjectDraft, setAiProjectDraft] = useState(null);
   const [selectedCity, setSelectedCity] = useState(cityCatalog[0]);
   const [selectedNeighborhood, setSelectedNeighborhood] = useState(null);
-  const [selectedWorkId, setSelectedWorkId] = useState(initialData.works[0].id);
-  const [selectedStageId, setSelectedStageId] = useState(initialData.stages[0].id);
+  const [selectedWorkId, setSelectedWorkId] = useState(supabaseConfigured ? '' : initialData.works[0].id);
+  const [selectedStageId, setSelectedStageId] = useState(supabaseConfigured ? '' : initialData.stages[0].id);
 
   const setScreen = useCallback((nextScreen) => {
     const currentScreen = screenRef.current;
@@ -4781,11 +4786,7 @@ function App() {
       let works = await fetchProjects();
 
       if (!works.length) {
-        setData({
-          ...initialData,
-          works: [],
-          ...emptyProjectCollections,
-        });
+        setData(remoteInitialData);
         setSelectedWorkId('');
         setProjectDataProjectId('');
         setLoadedProjectCollections([]);
@@ -4800,7 +4801,7 @@ function App() {
         : cityProject?.id || works[0].id;
       const project = works.find((work) => work.id === projectId);
       const projectCity = cityCatalog.find((city) => city.id === project?.cidadeId);
-      setData({ ...initialData, ...emptyProjectCollections, works });
+      setData({ ...remoteInitialData, works });
       if (projectCity) setSelectedCity(projectCity);
       setSelectedNeighborhood(null);
       setSelectedWorkId(projectId);
@@ -5170,14 +5171,6 @@ function App() {
     if (supabaseConfigured && session) {
       try {
         nextWork = await insertProject(nextWork);
-        await seedProjectChildren(nextWork.id, {
-          ...initialData,
-          scheduleItems: [],
-          scheduleLogs: [],
-          photos: [],
-          plsItems: [],
-          issues: [],
-        });
         await createInitialProjectSchedule(nextWork.id, scheduleSourceProjectId);
         const { projectSummary, ...children } = await loadProjectChildren(
           nextWork.id,
