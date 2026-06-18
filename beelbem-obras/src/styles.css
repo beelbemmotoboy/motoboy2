@@ -2802,7 +2802,7 @@ body.gantt-resizing * {
 .schedule-stage-group > summary {
   min-height: 74px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(220px, 42%);
+  grid-template-columns: auto minmax(0, 1fr) minmax(220px, 42%);
   align-items: center;
   gap: 14px;
   padding: 14px 16px;
@@ -2816,7 +2816,30 @@ body.gantt-resizing * {
   display: none;
 }
 
-.schedule-stage-group > summary > div:first-child {
+.schedule-drag-handle {
+  flex: 0 0 auto;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  color: currentColor;
+  cursor: grab;
+  opacity: 0.78;
+  touch-action: none;
+  user-select: none;
+}
+
+.schedule-stage-group.dragging,
+.schedule-subitem.dragging {
+  opacity: 0.58;
+}
+
+.schedule-stage-group > summary:active .schedule-drag-handle,
+.schedule-subitem-main:active .schedule-drag-handle {
+  cursor: grabbing;
+}
+
+.schedule-summary-title {
   min-width: 0;
   display: grid;
   gap: 4px;
@@ -2901,19 +2924,32 @@ body.gantt-resizing * {
 }
 
 .schedule-subitem {
-  display: grid;
-  gap: 9px;
+  overflow: hidden;
   border: 1px solid #93c5fd;
   border-radius: 8px;
-  padding: 12px;
   background: #eff6ff;
 }
 
 .schedule-subitem-main {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
+  padding: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.schedule-subitem-main::-webkit-details-marker {
+  display: none;
+}
+
+.schedule-subitem-body {
+  display: grid;
+  gap: 9px;
+  border-top: 1px solid rgba(147, 197, 253, 0.7);
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.42);
 }
 
 .schedule-subitem-main > div {
@@ -3357,11 +3393,12 @@ body.gantt-resizing * {
   }
 
   .schedule-stage-group > summary {
-    grid-template-columns: 1fr;
+    grid-template-columns: auto minmax(0, 1fr);
     align-items: start;
   }
 
   .schedule-summary-progress {
+    grid-column: 2;
     justify-content: space-between;
   }
 
@@ -3370,11 +3407,11 @@ body.gantt-resizing * {
   }
 
   .schedule-subitem-main {
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: auto auto minmax(0, 1fr);
   }
 
   .schedule-subitem-main > .status {
-    grid-column: 2;
+    grid-column: 3;
     justify-self: start;
   }
 

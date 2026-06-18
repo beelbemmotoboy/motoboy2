@@ -18,6 +18,7 @@ import {
   FileText,
   Filter,
   FolderKanban,
+  GripVertical,
   Hammer,
   HardHat,
   Home,
@@ -2140,6 +2141,7 @@ function Schedule({
   onDeleteLog,
   onSaveChecklist,
   onDeleteChecklist,
+  onReorderItem,
   addPhoto,
   setScreen,
 }) {
@@ -2150,6 +2152,8 @@ function Schedule({
   const [ganttOpen, setGanttOpen] = useState(false);
   const [removeCandidate, setRemoveCandidate] = useState(null);
   const [checklistItem, setChecklistItem] = useState(null);
+  const [draggedItem, setDraggedItem] = useState(null);
+  const pointerDragRef = useRef(null);
   const visibleItems = items.filter((item) => item.visible !== false);
   const removedItems = items.filter((item) => item.visible === false);
   const removedEntries = removedItems.filter((item) => (
@@ -2183,6 +2187,96 @@ function Schedule({
     if (removed) setRemoveCandidate(null);
   }
 
+  function startDrag(event, item) {
+    if (saving) return;
+    const dragInfo = { id: item.id, parentId: item.parentId || '' };
+    setDraggedItem(dragInfo);
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', item.id);
+  }
+
+  function canDropOn(target) {
+    return draggedItem
+      && draggedItem.id !== target.id
+      && draggedItem.parentId === (target.parentId || '');
+  }
+
+  function allowDrop(event, target) {
+    if (!canDropOn(target)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+  }
+
+  async function dropItem(event, target) {
+    if (!canDropOn(target)) return;
+    event.preventDefault();
+    const sourceId = draggedItem?.id || event.dataTransfer.getData('text/plain');
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const placement = event.clientY > bounds.top + bounds.height / 2 ? 'after' : 'before';
+    setDraggedItem(null);
+    await onReorderItem(sourceId, target.id, placement);
+  }
+
+  function startPointerDrag(event, item) {
+    if (saving) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const dragInfo = { id: item.id, parentId: item.parentId || '' };
+    pointerDragRef.current = dragInfo;
+    setDraggedItem(dragInfo);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+
+  async function finishPointerDrag(event) {
+    const dragInfo = pointerDragRef.current;
+    pointerDragRef.current = null;
+    setDraggedItem(null);
+    if (!dragInfo) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    const dropElement = document
+      .elementFromPoint(event.clientX, event.clientY)
+      ?.closest('[data-schedule-drop-id]');
+    if (!dropElement) return;
+
+    const targetId = dropElement.dataset.scheduleDropId;
+    const targetParentId = dropElement.dataset.scheduleParentId || '';
+    if (!targetId || targetId === dragInfo.id || targetParentId !== dragInfo.parentId) return;
+
+    const bounds = dropElement.getBoundingClientRect();
+    const placement = event.clientY > bounds.top + bounds.height / 2 ? 'after' : 'before';
+    await onReorderItem(dragInfo.id, targetId, placement);
+  }
+
+  function cancelPointerDrag(event) {
+    if (!pointerDragRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    pointerDragRef.current = null;
+    setDraggedItem(null);
+  }
+
+  function renderDragHandle(item, size = 18) {
+    return (
+      <span
+        className="schedule-drag-handle"
+        role="button"
+        tabIndex={-1}
+        aria-label="Arrastar para reordenar"
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+        onPointerDown={(event) => startPointerDrag(event, item)}
+        onPointerUp={finishPointerDrag}
+        onPointerCancel={cancelPointerDrag}
+      >
+        <GripVertical size={size} aria-hidden="true" />
+      </span>
+    );
+  }
+
   return (
     <>
       <PageTitle eyebrow="Cronograma" title="Cronograma inteligente" subtitle="Etapas, subitens e diario de campo especificos desta obra." onBack={() => setScreen('workPanel')}>
@@ -2209,9 +2303,18 @@ function Schedule({
           const children = childrenFor(stage.id);
           const stageProgress = calculateScheduleStageProgress(children);
           return (
-            <details className="schedule-stage-group" key={stage.id}>
-              <summary>
-                <div>
+            <details className={`schedule-stage-group ${draggedItem?.id === stage.id ? 'dragging' : ''}`} key={stage.id}>
+              <summary
+                draggable={!saving}
+                data-schedule-drop-id={stage.id}
+                data-schedule-parent-id=""
+                onDragStart={(event) => startDrag(event, stage)}
+                onDragOver={(event) => allowDrop(event, stage)}
+                onDrop={(event) => dropItem(event, stage)}
+                onDragEnd={() => setDraggedItem(null)}
+              >
+                {renderDragHandle(stage, 20)}
+                <div className="schedule-summary-title">
                   <strong>{stage.nome}</strong>
                   <span>{children.length} subitem{children.length === 1 ? '' : 's'}</span>
                 </div>
@@ -2233,17 +2336,31 @@ function Schedule({
                     const itemLogs = logsFor(item.id);
                     const itemChecklist = findChecklistForScheduleItem(checklist, item);
                     return (
-                      <article className="schedule-subitem" key={item.id}>
-                        <div className="schedule-subitem-main">
+                      <details className={`schedule-subitem ${draggedItem?.id === item.id ? 'dragging' : ''}`} key={item.id}>
+                        <summary
+                          className="schedule-subitem-main"
+                          draggable={!saving}
+                          data-schedule-drop-id={item.id}
+                          data-schedule-parent-id={item.parentId || ''}
+                          onDragStart={(event) => startDrag(event, item)}
+                          onDragOver={(event) => allowDrop(event, item)}
+                          onDrop={(event) => dropItem(event, item)}
+                          onDragEnd={() => setDraggedItem(null)}
+                        >
+                          {renderDragHandle(item, 18)}
                           <button
                             className={`schedule-check ${item.status === 'Concluida' ? 'checked' : ''}`}
                             type="button"
                             aria-label={item.status === 'Concluida' ? 'Reabrir subitem' : 'Concluir subitem'}
-                            onClick={() => onUpdateItem(item.id, {
-                              status: item.status === 'Concluida' ? 'Nao iniciado' : 'Concluida',
-                              percentual: item.status === 'Concluida' ? 0 : 100,
-                              fimReal: item.status === 'Concluida' ? '' : new Date().toISOString().slice(0, 10),
-                            })}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              onUpdateItem(item.id, {
+                                status: item.status === 'Concluida' ? 'Nao iniciado' : 'Concluida',
+                                percentual: item.status === 'Concluida' ? 0 : 100,
+                                fimReal: item.status === 'Concluida' ? '' : new Date().toISOString().slice(0, 10),
+                              });
+                            }}
                           >
                             <CheckCircle2 size={20} />
                           </button>
@@ -2252,29 +2369,31 @@ function Schedule({
                             <span>{itemLogs.length} registros - {scheduleDateLabel(item.inicioPrevisto)} ate {scheduleDateLabel(item.fimPrevisto)}</span>
                           </div>
                           <StatusPill status={item.status} />
+                        </summary>
+                        <div className="schedule-subitem-body">
+                          <ScheduleQuickDates item={item} saving={saving} onSave={onUpdateItem} />
+                          <div className="schedule-actions compact">
+                            <button type="button" onClick={() => setItemModal(item)}><Pencil size={16} /> Editar</button>
+                            <button type="button" onClick={() => setLogItem(item)}><ClipboardCheck size={16} /> Diario</button>
+                            <button type="button" onClick={() => addPhoto(item.nome)}><Camera size={16} /> Foto</button>
+                            <button type="button" onClick={() => setChecklistItem(item)}>
+                              <ClipboardCheck size={16} /> {itemChecklist ? 'Checklist' : '+ Checklist'}
+                            </button>
+                            <button className="danger" type="button" disabled={saving} onClick={() => requestRemove(item)}><Minus size={16} /> Remover</button>
+                          </div>
+                          {itemLogs.slice(0, 2).map((log) => (
+                            <ScheduleLogSummary
+                              log={log}
+                              key={log.id}
+                              saving={saving}
+                              onEdit={() => {
+                                setEditingLog(log);
+                                setLogItem(item);
+                              }}
+                            />
+                          ))}
                         </div>
-                        <ScheduleQuickDates item={item} saving={saving} onSave={onUpdateItem} />
-                        <div className="schedule-actions compact">
-                          <button type="button" onClick={() => setItemModal(item)}><Pencil size={16} /> Editar</button>
-                          <button type="button" onClick={() => setLogItem(item)}><ClipboardCheck size={16} /> Diario</button>
-                          <button type="button" onClick={() => addPhoto(item.nome)}><Camera size={16} /> Foto</button>
-                          <button type="button" onClick={() => setChecklistItem(item)}>
-                            <ClipboardCheck size={16} /> {itemChecklist ? 'Checklist' : '+ Checklist'}
-                          </button>
-                          <button className="danger" type="button" disabled={saving} onClick={() => requestRemove(item)}><Minus size={16} /> Remover</button>
-                        </div>
-                        {itemLogs.slice(0, 2).map((log) => (
-                          <ScheduleLogSummary
-                            log={log}
-                            key={log.id}
-                            saving={saving}
-                            onEdit={() => {
-                              setEditingLog(log);
-                              setLogItem(item);
-                            }}
-                          />
-                        ))}
-                      </article>
+                      </details>
                     );
                   })}
                   {!children.length ? <p className="schedule-empty">Nenhum subitem. Use + Subitem para detalhar esta etapa.</p> : null}
@@ -5388,6 +5507,52 @@ function App() {
     }
   }
 
+  async function reorderScheduleItem(sourceId, targetId, placement = 'before') {
+    if (!sourceId || !targetId || sourceId === targetId || scheduleSaving) return false;
+
+    const previousItems = data.scheduleItems;
+    const source = previousItems.find((item) => item.id === sourceId);
+    const target = previousItems.find((item) => item.id === targetId);
+    if (!source || !target || (source.parentId || '') !== (target.parentId || '')) return false;
+
+    const parentId = source.parentId || '';
+    const siblings = previousItems
+      .filter((item) => (item.parentId || '') === parentId && item.visible !== false)
+      .sort((a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0));
+    const withoutSource = siblings.filter((item) => item.id !== sourceId);
+    const targetIndex = withoutSource.findIndex((item) => item.id === targetId);
+    if (targetIndex < 0) return false;
+
+    const insertAt = placement === 'after' ? targetIndex + 1 : targetIndex;
+    const reordered = [
+      ...withoutSource.slice(0, insertAt),
+      source,
+      ...withoutSource.slice(insertAt),
+    ];
+    const orderById = new Map(reordered.map((item, index) => [item.id, index]));
+    const rawItems = previousItems.map((item) => (
+      orderById.has(item.id) ? { ...item, sortOrder: orderById.get(item.id) } : item
+    ));
+    const nextItems = deriveScheduleStages(rawItems);
+
+    setScheduleSaving(true);
+    setScheduleError('');
+    try {
+      if (supabaseConfigured && session) {
+        await Promise.all(reordered.map((item) => (
+          updateChild('scheduleItems', item.id, { sortOrder: orderById.get(item.id) })
+        )));
+      }
+      await persistScheduleDerivations(previousItems, nextItems);
+      return true;
+    } catch (error) {
+      setScheduleError(error.message || 'Nao foi possivel reordenar o cronograma.');
+      return false;
+    } finally {
+      setScheduleSaving(false);
+    }
+  }
+
   async function setScheduleItemVisibility(id, visible) {
     if (!id || scheduleSaving) return false;
     const previousItems = data.scheduleItems;
@@ -6319,6 +6484,7 @@ function App() {
             onDeleteLog={deleteScheduleLog}
             onSaveChecklist={saveScheduleChecklist}
             onDeleteChecklist={deleteScheduleChecklist}
+            onReorderItem={reorderScheduleItem}
             addPhoto={addPhoto}
             setScreen={setScreen}
           />
