@@ -63,6 +63,7 @@ import {
   fetchSignupRequests,
   getSession,
   ensureProjectSchedule,
+  insertScheduleItemChecklistResults,
   insertChild,
   insertPhotoThumbnail,
   insertObrasUser,
@@ -2132,6 +2133,23 @@ function checklistExecutionSummary(checklist, checkedIds) {
     .join('\n');
 }
 
+function subitemChecklistResults(checklistResults, item, checklist) {
+  return (checklistResults || []).filter((result) => (
+    result.scheduleItemId === item.id
+    && !result.scheduleLogId
+    && (!checklist?.id || result.checklistId === checklist.id)
+  ));
+}
+
+function checkedChecklistIds(results) {
+  return new Set(
+    (results || [])
+      .filter((result) => result.checked)
+      .map((result) => result.checklistItemId)
+      .filter(Boolean),
+  );
+}
+
 function Schedule({
   items,
   logs,
@@ -2146,6 +2164,7 @@ function Schedule({
   onDeleteLog,
   onSaveChecklist,
   onDeleteChecklist,
+  onSaveChecklistCheck,
   onReorderItem,
   addPhoto,
   setScreen,
@@ -2157,6 +2176,7 @@ function Schedule({
   const [ganttOpen, setGanttOpen] = useState(false);
   const [removeCandidate, setRemoveCandidate] = useState(null);
   const [checklistItem, setChecklistItem] = useState(null);
+  const [checklistCheckItem, setChecklistCheckItem] = useState(null);
   const [draggedItem, setDraggedItem] = useState(null);
   const pointerDragRef = useRef(null);
   const visibleItems = items.filter((item) => item.visible !== false);
@@ -2382,7 +2402,10 @@ function Schedule({
                             <button type="button" onClick={() => setLogItem(item)}><ClipboardCheck size={16} /> Diario</button>
                             <button type="button" onClick={() => addPhoto(item.nome)}><Camera size={16} /> Foto</button>
                             <button type="button" onClick={() => setChecklistItem(item)}>
-                              <ClipboardCheck size={16} /> {itemChecklist ? 'Checklist' : '+ Checklist'}
+                              <ClipboardCheck size={16} /> Adicionar checklist
+                            </button>
+                            <button type="button" disabled={!itemChecklist} onClick={() => setChecklistCheckItem(item)}>
+                              <CheckCircle2 size={16} /> Conferir checklist
                             </button>
                             <button className="danger" type="button" disabled={saving} onClick={() => requestRemove(item)}><Minus size={16} /> Remover</button>
                           </div>
@@ -2477,6 +2500,26 @@ function Schedule({
           onDelete={async (targetChecklist) => {
             const deleted = await onDeleteChecklist(targetChecklist);
             if (deleted) setChecklistItem(null);
+          }}
+        />
+      ) : null}
+
+      {checklistCheckItem ? (
+        <ScheduleChecklistCheckModal
+          item={checklistCheckItem}
+          checklist={findChecklistForScheduleItem(checklist, checklistCheckItem)}
+          checklistResults={subitemChecklistResults(
+            checklistResults,
+            checklistCheckItem,
+            findChecklistForScheduleItem(checklist, checklistCheckItem),
+          )}
+          saving={saving}
+          onClose={() => {
+            if (!saving) setChecklistCheckItem(null);
+          }}
+          onSave={async (values) => {
+            const saved = await onSaveChecklistCheck(values);
+            if (saved) setChecklistCheckItem(null);
           }}
         />
       ) : null}
@@ -2627,6 +2670,104 @@ function ScheduleChecklistModal({ item, checklist, saving, onClose, onSave, onDe
               Excluir checklist
             </ActionButton>
           ) : null}
+          <ActionButton Icon={XCircle} variant="ghost" onClick={onClose} disabled={saving}>Cancelar</ActionButton>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function ScheduleChecklistCheckModal({ item, checklist, checklistResults = [], saving, onClose, onSave }) {
+  const savedCheckedIds = useMemo(() => checkedChecklistIds(checklistResults), [checklistResults]);
+  const [checkedItemIds, setCheckedItemIds] = useState(() => new Set(savedCheckedIds));
+
+  useEffect(() => {
+    setCheckedItemIds(new Set(savedCheckedIds));
+  }, [checklist?.id, savedCheckedIds]);
+
+  function toggleItem(checkItemId) {
+    if (savedCheckedIds.has(checkItemId)) return;
+    setCheckedItemIds((current) => {
+      const next = new Set(current);
+      if (next.has(checkItemId)) {
+        next.delete(checkItemId);
+      } else {
+        next.add(checkItemId);
+      }
+      return next;
+    });
+  }
+
+  function submit(event) {
+    event.preventDefault();
+    if (!checklist?.id) return;
+    const resultByItemId = new Map((checklistResults || []).map((result) => [result.checklistItemId, result]));
+    onSave({
+      scheduleItemId: item.id,
+      checklistId: checklist.id,
+      results: (checklist.itens || []).map((checkItem) => {
+        const previous = resultByItemId.get(checkItem.id);
+        const checked = checkedItemIds.has(checkItem.id);
+        return {
+          id: previous?.id || '',
+          scheduleItemId: item.id,
+          scheduleLogId: '',
+          checklistId: checklist.id,
+          checklistItemId: checkItem.id,
+          checked,
+          checkedBy: previous?.checkedBy || '',
+          checkedAt: previous?.checkedAt || '',
+        };
+      }),
+    });
+  }
+
+  const items = checklist?.itens || [];
+  const totalChecked = items.filter((checkItem) => checkedItemIds.has(checkItem.id)).length;
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <form className="photo-modal checklist-modal" onSubmit={submit}>
+        <div className="modal-head">
+          <div>
+            <span>Conferir checklist</span>
+            <h2>{item.nome}</h2>
+          </div>
+          <IconButton label="Fechar" Icon={X} onClick={onClose} />
+        </div>
+        {checklist ? (
+          <>
+            <section className="checklist-check-summary">
+              <strong>{checklist.titulo || 'Checklist tecnico'}</strong>
+              {checklist.procedimento ? <p>{checklist.procedimento}</p> : null}
+              <span>{totalChecked} de {items.length} itens conferidos</span>
+            </section>
+            <section className="checklist-run-list">
+              {items.map((checkItem) => {
+                const saved = savedCheckedIds.has(checkItem.id);
+                return (
+                  <label className={saved ? 'locked' : ''} key={checkItem.id}>
+                    <input
+                      type="checkbox"
+                      checked={checkedItemIds.has(checkItem.id)}
+                      disabled={saving || saved}
+                      onChange={() => toggleItem(checkItem.id)}
+                    />
+                    <span>{checkItem.texto}</span>
+                    {saved ? <small>Ja conferido</small> : null}
+                  </label>
+                );
+              })}
+            </section>
+            <p className="checklist-once-note">Itens ja conferidos ficam bloqueados para evitar marcacao duplicada.</p>
+          </>
+        ) : (
+          <EmptyNotice Icon={ClipboardCheck} title="Checklist nao cadastrado" text="Adicione o checklist deste subitem antes de conferir." />
+        )}
+        <div className="form-actions">
+          <ActionButton Icon={Save} type="submit" disabled={saving || !checklist || !items.length}>
+            {saving ? 'Salvando...' : 'Salvar conferencia'}
+          </ActionButton>
           <ActionButton Icon={XCircle} variant="ghost" onClick={onClose} disabled={saving}>Cancelar</ActionButton>
         </div>
       </form>
@@ -5978,6 +6119,57 @@ function App() {
     }
   }
 
+  async function saveScheduleChecklistCheck(values) {
+    if (!activeWork?.id || !values?.scheduleItemId || !values?.checklistId) {
+      setScheduleError('Selecione um subitem com checklist antes de conferir.');
+      return false;
+    }
+
+    const alreadyCheckedIds = checkedChecklistIds(
+      subitemChecklistResults(data.checklistResults, { id: values.scheduleItemId }, { id: values.checklistId }),
+    );
+    const nowIso = new Date().toISOString();
+    const checkedBy = session?.user?.id || currentObrasUser?.authUserId || currentObrasUser?.id || '';
+    const newCheckedResults = (values.results || [])
+      .filter((result) => result.checked && !alreadyCheckedIds.has(result.checklistItemId))
+      .map((result) => ({
+        ...result,
+        scheduleLogId: '',
+        checked: true,
+        checkedBy,
+        checkedAt: nowIso,
+      }));
+
+    if (!newCheckedResults.length) return true;
+
+    setScheduleSaving(true);
+    setScheduleError('');
+    try {
+      const savedResults = supabaseConfigured && session
+        ? await insertScheduleItemChecklistResults(activeWork.id, newCheckedResults)
+        : newCheckedResults.map((result, index) => ({
+            id: result.id || makeId(`check-result-${index}`),
+            ...result,
+            createdAt: nowIso,
+            updatedAt: nowIso,
+          }));
+
+      setData((current) => ({
+        ...current,
+        checklistResults: [
+          ...savedResults,
+          ...(current.checklistResults || []),
+        ],
+      }));
+      return true;
+    } catch (error) {
+      setScheduleError(error.message || 'Nao foi possivel salvar a conferencia do checklist.');
+      return false;
+    } finally {
+      setScheduleSaving(false);
+    }
+  }
+
   async function deleteScheduleChecklist(checklistItem) {
     if (!checklistItem?.id || scheduleSaving) return false;
 
@@ -6477,6 +6669,7 @@ function App() {
             onDeleteLog={deleteScheduleLog}
             onSaveChecklist={saveScheduleChecklist}
             onDeleteChecklist={deleteScheduleChecklist}
+            onSaveChecklistCheck={saveScheduleChecklistCheck}
             onReorderItem={reorderScheduleItem}
             addPhoto={addPhoto}
             setScreen={setScreen}

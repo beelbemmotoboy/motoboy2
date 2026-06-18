@@ -548,7 +548,7 @@ export const rowMappers = {
     fromDb: (row) => ({
       id: row.id,
       scheduleItemId: row.schedule_item_id,
-      scheduleLogId: row.schedule_log_id,
+      scheduleLogId: row.schedule_log_id || '',
       checklistId: row.checklist_id || '',
       checklistItemId: row.checklist_item_id,
       checked: row.checked === true,
@@ -559,7 +559,7 @@ export const rowMappers = {
     }),
     toDb: (item) => ({
       schedule_item_id: item.scheduleItemId,
-      schedule_log_id: item.scheduleLogId,
+      schedule_log_id: item.scheduleLogId || null,
       checklist_id: item.checklistId || null,
       checklist_item_id: item.checklistItemId,
       checked: item.checked === true,
@@ -955,6 +955,27 @@ export async function replaceScheduleChecklistResults(projectId, scheduleLogId, 
     .map((item) => ({
       project_id: projectId,
       ...mapper.toDb({ ...item, scheduleLogId }),
+    }));
+
+  if (!rows.length) return [];
+
+  const { data, error } = await supabase
+    .from(table)
+    .insert(rows)
+    .select('*');
+
+  if (error) throw error;
+  return (data || []).map(mapper.fromDb);
+}
+
+export async function insertScheduleItemChecklistResults(projectId, results = []) {
+  const table = childTables.checklistResults;
+  const mapper = rowMappers.checklistResults;
+  const rows = (results || [])
+    .filter((item) => item.scheduleItemId && item.checklistItemId && item.checked === true)
+    .map((item) => ({
+      project_id: projectId,
+      ...mapper.toDb({ ...item, scheduleLogId: '' }),
     }));
 
   if (!rows.length) return [];

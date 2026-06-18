@@ -1896,6 +1896,67 @@ button.metric-card {
   margin-top: 2px;
 }
 
+.checklist-check-summary,
+.checklist-run-list {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  padding: 14px;
+  background: #eff6ff;
+}
+
+.checklist-check-summary {
+  margin-bottom: 12px;
+}
+
+.checklist-check-summary strong {
+  color: #0f172a;
+  font-size: 18px;
+}
+
+.checklist-check-summary p {
+  margin: 0;
+  color: #64748b;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.checklist-check-summary span,
+.checklist-once-note {
+  color: #475569;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.checklist-once-note {
+  margin: 10px 0 0;
+}
+
+.checklist-run-list label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  color: #1f2937;
+  font-weight: 800;
+}
+
+.checklist-run-list input {
+  width: 20px;
+  min-height: 20px;
+}
+
+.checklist-run-list small {
+  color: #166534;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.checklist-run-list label.locked {
+  color: #64748b;
+}
+
 .photo-upload-layout {
   display: grid;
   grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
