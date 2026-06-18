@@ -2390,7 +2390,7 @@ function ScheduleChecklistModal({ item, checklist, saving, onClose, onSave }) {
       itens,
       etapa: item.nome,
       norma: form.elements.norma.value.trim() || 'Checklist interno',
-      foto: form.elements.foto.value.trim() || 'Obrigatoria',
+      foto: draft.foto || 'Obrigatoria',
       responsavel: form.elements.responsavel.value.trim(),
       data: form.elements.data.value.trim(),
       status: form.elements.status.value,
@@ -2412,7 +2412,6 @@ function ScheduleChecklistModal({ item, checklist, saving, onClose, onSave }) {
         <div className="form-grid modal-fields">
           <Field label="Titulo" name="titulo" value={draft.titulo || 'Checklist tecnico'} required />
           <Field label="Norma / referencia" name="norma" value={draft.norma || 'Checklist interno'} />
-          <Field label="Foto" name="foto" value={draft.foto || 'Obrigatoria'} />
           <Field label="Responsavel" name="responsavel" value={draft.responsavel || ''} />
           <Field label="Data prevista" name="data" value={draft.data || ''} />
           <label className="field">
