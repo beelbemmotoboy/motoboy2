@@ -74,6 +74,8 @@ import {
   signIn,
   signOut,
   supabaseConfigured,
+  updateCurrentObrasUserProfile,
+  updateCurrentUserPassword,
   updateChild,
   updateObrasAccount,
   updateObrasUser,
@@ -4079,50 +4081,65 @@ function StageModal({ stage, nextOrder, saving, onClose, onSave }) {
   );
 }
 
-function Profile({
-  activeWork,
-  currentUser,
-  saving,
-  error,
-  message,
-  canEdit,
-  canDelete,
-  onSave,
-  onDelete,
-}) {
-  const [cityId, setCityId] = useState(activeWork?.cidadeId || cityCatalog[0].id);
-  const neighborhoods = neighborhoodCatalog[cityId] || [];
-  const role = roleLabel(currentUser?.role);
+function Profile({ currentUser, saving, error, message, onSave }) {
+  const defaultCityId = currentUser?.cidadeId || cityCatalog[0].id;
+  const [cityId, setCityId] = useState(defaultCityId);
+  const [avatarPreview, setAvatarPreview] = useState(currentUser?.avatarUrl || '');
+  const role = currentUser?.role || 'operador';
+  const needsRegistry = ['engenheiro', 'arquiteto'].includes(role);
+  const registryLabel = role === 'arquiteto' ? 'CAU' : 'CREA';
 
   useEffect(() => {
-    setCityId(activeWork?.cidadeId || cityCatalog[0].id);
-  }, [activeWork?.id, activeWork?.cidadeId]);
+    setCityId(currentUser?.cidadeId || cityCatalog[0].id);
+    setAvatarPreview(currentUser?.avatarUrl || '');
+  }, [currentUser?.id, currentUser?.avatarUrl, currentUser?.cidadeId]);
 
-  if (!activeWork) {
-    return <EmptyNotice Icon={Building2} title="Nenhuma obra selecionada" text="Selecione uma obra para ver o perfil." />;
+  useEffect(() => {
+    return () => {
+      if (avatarPreview?.startsWith('blob:')) URL.revokeObjectURL(avatarPreview);
+    };
+  }, [avatarPreview]);
+
+  if (!currentUser) {
+    return <EmptyNotice Icon={UserRound} title="Usuario nao carregado" text="Entre novamente para alterar seu perfil." />;
+  }
+
+  function handleAvatarChange(event) {
+    const file = event.currentTarget.files?.[0];
+    if (!file) {
+      setAvatarPreview(currentUser.avatarUrl || '');
+      return;
+    }
+    if (avatarPreview?.startsWith('blob:')) URL.revokeObjectURL(avatarPreview);
+    setAvatarPreview(URL.createObjectURL(file));
   }
 
   function submit(event) {
     event.preventDefault();
-    if (!canEdit || saving) return;
-    onSave(Object.fromEntries(new FormData(event.currentTarget).entries()));
-  }
-
-  function confirmDelete() {
-    if (!canDelete || saving) return;
-    const confirmed = window.confirm(`Excluir a obra "${activeWork.nome}"? Esta acao remove o cadastro e todos os dados vinculados a ela.`);
-    if (confirmed) onDelete();
+    if (saving) return;
+    const form = event.currentTarget;
+    const selectedCity = cityCatalog.find((city) => city.id === form.elements.cidadeId.value) || cityCatalog[0];
+    onSave({
+      nome: form.elements.nome.value.trim(),
+      telefone: form.elements.telefone.value.trim(),
+      cpf: form.elements.cpf.value.trim(),
+      professionalRegistry: form.elements.professionalRegistry?.value.trim() || '',
+      cidadeId: selectedCity.id,
+      cidade: selectedCity.nome,
+      password: form.elements.password.value,
+      confirmPassword: form.elements.confirmPassword.value,
+      avatarFile: form.elements.avatarFile.files?.[0] || null,
+      avatarUrl: currentUser.avatarUrl || '',
+      avatarStoragePath: currentUser.avatarStoragePath || '',
+      avatarFileName: currentUser.avatarFileName || '',
+      avatarMimeType: currentUser.avatarMimeType || '',
+      avatarFileSize: currentUser.avatarFileSize || 0,
+    });
   }
 
   return (
     <form onSubmit={submit}>
-      <PageTitle eyebrow="Perfil" title="Engenharia de campo" subtitle="Responsavel tecnico e dados da obra." />
-      {!canEdit ? (
-        <section className="warning-strip profile-permission-note">
-          <ShieldCheck size={22} aria-hidden="true" />
-          <span>{role} pode visualizar. Somente proprietarios, administradores e engenheiros podem alterar o cadastro.</span>
-        </section>
-      ) : null}
+      <PageTitle eyebrow="Perfil" title="Meu cadastro" subtitle="Dados do usuario, foto de perfil e senha de acesso." />
       {message ? (
         <section className="success-strip">
           <CheckCircle2 size={22} aria-hidden="true" />
@@ -4130,63 +4147,60 @@ function Profile({
         </section>
       ) : null}
       {error ? <p className="auth-message error">{error}</p> : null}
-      <section className="profile-summary-grid">
+      <section className="profile-summary-grid user-profile-summary">
         <article className="profile-card">
-          <Building2 size={34} aria-hidden="true" />
-          <strong>{activeWork.nome}</strong>
-          <span>{getEffectiveWorkStatus(activeWork)}</span>
-          <p>{activeWork.percentual}% executado - {activeWork.pendencias} pendencias</p>
-          <p>{activeWork.pls || 'PLS pendente'}</p>
+          <div className="user-avatar profile-avatar">
+            {avatarPreview ? <img src={avatarPreview} alt={`Foto de ${currentUser.nome}`} /> : <UserRound size={34} aria-hidden="true" />}
+          </div>
+          <strong>{currentUser.nome || 'Usuario Obras'}</strong>
+          <span>{roleLabel(currentUser.role)}</span>
+          <p>{currentUser.email}</p>
         </article>
         <article className="profile-card">
-          <UserRound size={34} aria-hidden="true" />
-          <strong>{activeWork.responsavel || 'Responsavel nao informado'}</strong>
-          <span>Responsavel tecnico</span>
-          <p>{activeWork.bairro}, {activeWork.cidade}</p>
+          <ShieldCheck size={34} aria-hidden="true" />
+          <strong>Acesso Obras</strong>
+          <span>{currentUser.active ? 'Usuario ativo' : 'Usuario inativo'}</span>
+          <p>{currentUser.loginEnabled ? 'Login habilitado' : 'Login bloqueado'}</p>
         </article>
       </section>
       <section className="form-grid profile-edit-form">
-        <Field label="Nome da obra" name="nome" value={activeWork.nome} required disabled={!canEdit || saving} />
-        <Field label="Cliente" name="cliente" value={activeWork.cliente} required disabled={!canEdit || saving} />
+        <label className="field user-avatar-field">
+          <span>Foto de perfil</span>
+          <div className="user-avatar-preview">
+            {avatarPreview ? <img src={avatarPreview} alt="Previa da foto do usuario" /> : <UserRound size={34} aria-hidden="true" />}
+          </div>
+          <input type="file" name="avatarFile" accept="image/*" onChange={handleAvatarChange} disabled={saving} />
+          <small>Use uma foto de rosto. O app reduz o tamanho antes de salvar.</small>
+        </label>
+        <Field label="Nome" name="nome" value={currentUser.nome || ''} required disabled={saving} />
+        <Field label="E-mail de login" name="email" value={currentUser.email || ''} type="email" disabled />
+        <Field label="Telefone" name="telefone" value={currentUser.telefone || ''} disabled={saving} />
+        <Field label="CPF" name="cpf" value={currentUser.cpf || ''} disabled={saving} />
         <label className="field">
           <span>Cidade</span>
-          <select name="cidadeId" value={cityId} onChange={(event) => setCityId(event.target.value)} disabled={!canEdit || saving}>
+          <select name="cidadeId" value={cityId} onChange={(event) => setCityId(event.target.value)} disabled={saving}>
             {cityCatalog.map((city) => (
               <option value={city.id} key={city.id}>{city.nome}</option>
             ))}
           </select>
         </label>
+        <Field label="Perfil" name="roleLabel" value={roleLabel(currentUser.role)} disabled />
+        {needsRegistry ? <Field label={`Numero ${registryLabel}`} name="professionalRegistry" value={currentUser.professionalRegistry || ''} required disabled={saving} /> : null}
         <label className="field">
-          <span>Bairro</span>
-          <select name="bairroId" key={cityId} defaultValue={cityId === activeWork.cidadeId ? activeWork.bairroId : neighborhoods[0]?.id || ''} disabled={!canEdit || saving}>
-            {neighborhoods.map((bairro) => (
-              <option value={bairro.id} key={bairro.id}>{bairro.nome}</option>
-            ))}
-          </select>
+          <span>Nova senha</span>
+          <input type="password" name="password" autoComplete="new-password" placeholder="Deixe em branco para manter" disabled={saving} />
+          <small>Use para trocar a senha temporaria por uma definitiva.</small>
         </label>
-        <Field label="Endereco" name="endereco" value={activeWork.endereco} wide required disabled={!canEdit || saving} />
-        <Field label="Quadra" name="quadra" value={activeWork.quadra} disabled={!canEdit || saving} />
-        <Field label="Lote" name="lote" value={activeWork.lote} disabled={!canEdit || saving} />
-        <Field label="Area construida" name="areaConstruida" value={activeWork.areaConstruida} disabled={!canEdit || saving} />
-        <Field label="Area do terreno" name="areaTerreno" value={activeWork.areaTerreno} disabled={!canEdit || saving} />
-        <Field label="Numero de pavimentos" name="pavimentos" value={activeWork.pavimentos} disabled={!canEdit || saving} />
-        <Field label="Responsavel tecnico" name="responsavel" value={activeWork.responsavel} disabled={!canEdit || saving} />
-        <TextAreaField label="Observacoes" name="observacoes" value={activeWork.observacoes} disabled={!canEdit || saving} />
+        <label className="field">
+          <span>Confirmar nova senha</span>
+          <input type="password" name="confirmPassword" autoComplete="new-password" placeholder="Repita a nova senha" disabled={saving} />
+        </label>
       </section>
       <div className="form-actions">
-        <ActionButton Icon={Save} type="submit" disabled={!canEdit || saving}>
-          {saving ? 'Salvando...' : 'Salvar alteracoes'}
+        <ActionButton Icon={Save} type="submit" disabled={saving}>
+          {saving ? 'Salvando...' : 'Salvar meu cadastro'}
         </ActionButton>
       </div>
-      <section className="profile-danger-zone">
-        <div>
-          <strong>Excluir obra</strong>
-          <p>Remove esta obra e os dados vinculados. Esta acao e permitida apenas para proprietarios e administradores.</p>
-        </div>
-        <ActionButton Icon={Trash2} variant="danger" onClick={confirmDelete} disabled={!canDelete || saving}>
-          Excluir obra
-        </ActionButton>
-      </section>
     </form>
   );
 }
@@ -5950,6 +5964,89 @@ function App() {
     }
   }
 
+  async function saveCurrentUserProfile(values) {
+    setProfileError('');
+    setProfileMessage('');
+
+    if (!currentObrasUser?.id) {
+      setProfileError('Usuario do Obras nao carregado.');
+      return false;
+    }
+    if (!values.nome) {
+      setProfileError('Informe seu nome.');
+      return false;
+    }
+    if (['engenheiro', 'arquiteto'].includes(currentObrasUser.role) && !values.professionalRegistry) {
+      setProfileError(currentObrasUser.role === 'arquiteto' ? 'Informe o numero do CAU.' : 'Informe o numero do CREA.');
+      return false;
+    }
+    if (values.password || values.confirmPassword) {
+      if (values.password !== values.confirmPassword) {
+        setProfileError('A confirmacao da senha nao confere.');
+        return false;
+      }
+      if (values.password.length < 6) {
+        setProfileError('A nova senha deve ter pelo menos 6 caracteres.');
+        return false;
+      }
+    }
+
+    setProfileSaving(true);
+    try {
+      let nextUser = {
+        ...currentObrasUser,
+        nome: values.nome,
+        telefone: values.telefone,
+        cpf: values.cpf,
+        professionalRegistry: values.professionalRegistry,
+        cidadeId: values.cidadeId,
+        cidade: values.cidade,
+      };
+
+      if (supabaseConfigured && session) {
+        if (!nextUser.accountId) throw new Error('Sua conta Obras ainda nao foi vinculada.');
+        if (values.avatarFile) {
+          const avatarFile = await prepareAvatarUpload(values.avatarFile);
+          const avatarUpload = await uploadObrasUserAvatar({
+            accountId: nextUser.accountId,
+            userId: nextUser.id,
+            file: avatarFile,
+            previousPath: nextUser.avatarStoragePath,
+          });
+          nextUser = {
+            ...nextUser,
+            avatarStoragePath: avatarUpload.avatarStoragePath,
+            avatarFileName: avatarUpload.avatarFileName,
+            avatarMimeType: avatarUpload.avatarMimeType,
+            avatarFileSize: avatarUpload.avatarFileSize,
+            avatarUrl: avatarUpload.avatarUrl,
+          };
+        }
+        nextUser = await updateCurrentObrasUserProfile(nextUser);
+        if (values.password) await updateCurrentUserPassword(values.password);
+      } else if (values.avatarFile) {
+        nextUser = {
+          ...nextUser,
+          avatarUrl: URL.createObjectURL(values.avatarFile),
+        };
+      }
+
+      setCurrentObrasUser(nextUser);
+      setObrasUsers((current) => (
+        current.some((user) => user.id === nextUser.id)
+          ? current.map((user) => (user.id === nextUser.id ? nextUser : user))
+          : [nextUser, ...current]
+      ));
+      setProfileMessage(values.password ? 'Perfil e senha atualizados.' : 'Perfil atualizado.');
+      return true;
+    } catch (error) {
+      setProfileError(error.message || 'Nao foi possivel atualizar seu perfil.');
+      return false;
+    } finally {
+      setProfileSaving(false);
+    }
+  }
+
   async function toggleObrasUser(user) {
     if (currentObrasUser?.id === user.id || (user.authUserId && user.authUserId === session?.user?.id)) {
       setUsersError('Voce nao pode desativar seu proprio acesso.');
@@ -6259,15 +6356,11 @@ function App() {
       case 'profile':
         return (
           <Profile
-            activeWork={activeWork}
             currentUser={currentObrasUser}
             saving={profileSaving}
             error={profileError}
             message={profileMessage}
-            canEdit={canEditWorkProfile}
-            canDelete={canDeleteWorkProfile}
-            onSave={saveWorkProfile}
-            onDelete={deleteActiveWork}
+            onSave={saveCurrentUserProfile}
           />
         );
       default:

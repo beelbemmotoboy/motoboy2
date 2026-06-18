@@ -3167,6 +3167,16 @@ body.gantt-resizing * {
   margin-top: 0;
 }
 
+.user-profile-summary {
+  align-items: stretch;
+}
+
+.profile-avatar {
+  width: 74px;
+  height: 74px;
+  border-radius: 12px;
+}
+
 .profile-permission-note {
   margin-bottom: 18px;
   border-radius: 8px;

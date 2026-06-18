@@ -590,6 +590,11 @@ export async function signOut() {
   if (supabase) await supabase.auth.signOut();
 }
 
+export async function updateCurrentUserPassword(password) {
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) throw error;
+}
+
 export function onAuthStateChange(callback) {
   if (!supabase) return () => {};
   const { data } = supabase.auth.onAuthStateChange((event, session) => callback(session, event));
@@ -692,6 +697,24 @@ export async function updateObrasUser(userId, patch) {
 
   if (error) throw error;
   return withSignedObrasUserAvatar(obrasUserFromDb(data));
+}
+
+export async function updateCurrentObrasUserProfile(patch) {
+  const { data, error } = await supabase.rpc('obras_update_my_profile', {
+    p_nome: patch.nome,
+    p_telefone: patch.telefone || '',
+    p_cpf: patch.cpf || '',
+    p_professional_registry: patch.professionalRegistry || '',
+    p_cidade_id: patch.cidadeId,
+    p_cidade: patch.cidade,
+    p_avatar_storage_path: patch.avatarStoragePath || '',
+    p_avatar_file_name: patch.avatarFileName || '',
+    p_avatar_mime_type: patch.avatarMimeType || '',
+    p_avatar_file_size: patch.avatarFileSize || null,
+  });
+
+  if (error) throw error;
+  return data?.id ? withSignedObrasUserAvatar(obrasUserFromDb(data)) : null;
 }
 
 async function syncObrasUserAccess(accountId, user) {
