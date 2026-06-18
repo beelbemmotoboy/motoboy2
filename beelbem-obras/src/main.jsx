@@ -2079,8 +2079,8 @@ function defaultChecklistForScheduleItem(item) {
     scheduleItemId: item.id,
     titulo: 'Checklist tecnico',
     descricao: 'Checklist tecnico',
-    procedimento: 'Confira cada item antes de liberar o avancamento deste subitem.',
-    itens: defaultScheduleChecklistItems.map(makeChecklistItem),
+    procedimento: '',
+    itens: [],
     etapa: item.nome,
     norma: 'Checklist interno',
     foto: 'Obrigatoria',
@@ -2139,6 +2139,7 @@ function Schedule({
   onSaveLog,
   onDeleteLog,
   onSaveChecklist,
+  onDeleteChecklist,
   addPhoto,
   setScreen,
 }) {
@@ -2349,6 +2350,10 @@ function Schedule({
             const saved = await onSaveChecklist(values);
             if (saved) setChecklistItem(null);
           }}
+          onDelete={async (targetChecklist) => {
+            const deleted = await onDeleteChecklist(targetChecklist);
+            if (deleted) setChecklistItem(null);
+          }}
         />
       ) : null}
 
@@ -2404,8 +2409,9 @@ function ScheduleRemoveConfirmModal({ item, saving, onClose, onConfirm }) {
   );
 }
 
-function ScheduleChecklistModal({ item, checklist, saving, onClose, onSave }) {
+function ScheduleChecklistModal({ item, checklist, saving, onClose, onSave, onDelete }) {
   const draft = checklist || defaultChecklistForScheduleItem(item);
+  const hasSavedChecklist = Boolean(checklist?.id);
   const [itemsText, setItemsText] = useState(() => checklistItemsToText(draft.itens));
 
   useEffect(() => {
@@ -2434,6 +2440,12 @@ function ScheduleChecklistModal({ item, checklist, saving, onClose, onSave }) {
     });
   }
 
+  function confirmDelete() {
+    if (!hasSavedChecklist || saving || !onDelete) return;
+    const confirmed = window.confirm(`Excluir o checklist de "${item.nome}"? Esta acao remove o checklist deste subitem.`);
+    if (confirmed) onDelete(checklist);
+  }
+
   const previewItems = checklistItemsFromText(itemsText);
 
   return (
@@ -2454,7 +2466,7 @@ function ScheduleChecklistModal({ item, checklist, saving, onClose, onSave }) {
             <span>Descricao de como proceder</span>
             <textarea
               name="procedimento"
-              defaultValue={draft.procedimento || 'Confira cada item antes de liberar o avancamento deste subitem.'}
+              defaultValue={draft.procedimento || ''}
               rows={4}
             />
           </label>
@@ -2469,21 +2481,28 @@ function ScheduleChecklistModal({ item, checklist, saving, onClose, onSave }) {
             <small>Digite um item por linha. O checklist sera copiado junto quando outra obra copiar este cronograma.</small>
           </label>
         </div>
-        <section className="checklist-preview">
-          <strong>{draft.titulo || 'Checklist tecnico'}</strong>
-          <div>
-            {previewItems.map((checkItem) => (
-              <label key={checkItem.id}>
-                <input type="checkbox" disabled />
-                <span>{checkItem.texto}</span>
-              </label>
-            ))}
-          </div>
-        </section>
+        {previewItems.length ? (
+          <section className="checklist-preview">
+            <strong>{draft.titulo || 'Checklist tecnico'}</strong>
+            <div>
+              {previewItems.map((checkItem) => (
+                <label key={checkItem.id}>
+                  <input type="checkbox" disabled />
+                  <span>{checkItem.texto}</span>
+                </label>
+              ))}
+            </div>
+          </section>
+        ) : null}
         <div className="form-actions">
           <ActionButton Icon={Save} type="submit" disabled={saving || !previewItems.length}>
             {saving ? 'Salvando...' : 'Salvar checklist'}
           </ActionButton>
+          {hasSavedChecklist ? (
+            <ActionButton Icon={Trash2} variant="danger" onClick={confirmDelete} disabled={saving}>
+              Excluir checklist
+            </ActionButton>
+          ) : null}
           <ActionButton Icon={XCircle} variant="ghost" onClick={onClose} disabled={saving}>Cancelar</ActionButton>
         </div>
       </form>
@@ -5801,6 +5820,29 @@ function App() {
     }
   }
 
+  async function deleteScheduleChecklist(checklistItem) {
+    if (!checklistItem?.id || scheduleSaving) return false;
+
+    setScheduleSaving(true);
+    setScheduleError('');
+    try {
+      if (supabaseConfigured && session) {
+        await deleteChild('checklist', checklistItem.id);
+      }
+      setData((current) => ({
+        ...current,
+        checklist: current.checklist.filter((entry) => entry.id !== checklistItem.id),
+        checklistResults: (current.checklistResults || []).filter((entry) => entry.checklistId !== checklistItem.id),
+      }));
+      return true;
+    } catch (error) {
+      setScheduleError(error.message || 'Nao foi possivel excluir o checklist.');
+      return false;
+    } finally {
+      setScheduleSaving(false);
+    }
+  }
+
   async function saveObrasAccount(values) {
     setAccountsError('');
     setAccountsMessage('');
@@ -6276,6 +6318,7 @@ function App() {
             onSaveLog={saveScheduleLog}
             onDeleteLog={deleteScheduleLog}
             onSaveChecklist={saveScheduleChecklist}
+            onDeleteChecklist={deleteScheduleChecklist}
             addPhoto={addPhoto}
             setScreen={setScreen}
           />
