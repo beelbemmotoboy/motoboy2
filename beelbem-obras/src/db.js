@@ -40,6 +40,7 @@ const childTables = {
   supplies: 'obras_supplies',
   tools: 'obras_tools',
   checklist: 'obras_checklist',
+  checklistResults: 'obras_schedule_checklist_results',
 };
 
 export function projectFromDb(row) {
@@ -543,6 +544,34 @@ export const rowMappers = {
       ...(patch.status !== undefined ? { status: patch.status } : {}),
     }),
   },
+  checklistResults: {
+    fromDb: (row) => ({
+      id: row.id,
+      scheduleItemId: row.schedule_item_id,
+      scheduleLogId: row.schedule_log_id,
+      checklistId: row.checklist_id || '',
+      checklistItemId: row.checklist_item_id,
+      checked: row.checked === true,
+      checkedBy: row.checked_by || '',
+      checkedAt: row.checked_at || '',
+      createdAt: row.created_at || '',
+      updatedAt: row.updated_at || '',
+    }),
+    toDb: (item) => ({
+      schedule_item_id: item.scheduleItemId,
+      schedule_log_id: item.scheduleLogId,
+      checklist_id: item.checklistId || null,
+      checklist_item_id: item.checklistItemId,
+      checked: item.checked === true,
+      ...(item.checkedBy ? { checked_by: item.checkedBy } : {}),
+      checked_at: item.checked ? (item.checkedAt || new Date().toISOString()) : null,
+    }),
+    patchToDb: (patch) => ({
+      ...(patch.checked !== undefined ? { checked: patch.checked === true } : {}),
+      ...(patch.checkedBy !== undefined ? { checked_by: patch.checkedBy || null } : {}),
+      ...(patch.checkedAt !== undefined ? { checked_at: patch.checkedAt || null } : {}),
+    }),
+  },
 };
 
 export async function getSession() {
@@ -885,6 +914,35 @@ export async function deleteChild(collection, id) {
   const table = childTables[collection];
   const { error } = await supabase.from(table).delete().eq('id', id);
   if (error) throw error;
+}
+
+export async function replaceScheduleChecklistResults(projectId, scheduleLogId, results = []) {
+  const table = childTables.checklistResults;
+  const mapper = rowMappers.checklistResults;
+  const { error: deleteError } = await supabase
+    .from(table)
+    .delete()
+    .eq('project_id', projectId)
+    .eq('schedule_log_id', scheduleLogId);
+
+  if (deleteError) throw deleteError;
+
+  const rows = (results || [])
+    .filter((item) => item.scheduleItemId && item.checklistItemId)
+    .map((item) => ({
+      project_id: projectId,
+      ...mapper.toDb({ ...item, scheduleLogId }),
+    }));
+
+  if (!rows.length) return [];
+
+  const { data, error } = await supabase
+    .from(table)
+    .insert(rows)
+    .select('*');
+
+  if (error) throw error;
+  return (data || []).map(mapper.fromDb);
 }
 
 export async function deletePhotoRecord(photo) {

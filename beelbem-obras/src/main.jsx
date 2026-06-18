@@ -69,6 +69,7 @@ import {
   insertSignupRequest,
   isObrasPlatformAdmin,
   onAuthStateChange,
+  replaceScheduleChecklistResults,
   seedProjectChildren,
   signIn,
   signOut,
@@ -159,14 +160,14 @@ const neighborhoodCatalog = {
   ],
 };
 
-const projectCollections = ['stages', 'scheduleItems', 'scheduleLogs', 'photos', 'plsItems', 'issues', 'supplies', 'tools', 'checklist'];
+const projectCollections = ['stages', 'scheduleItems', 'scheduleLogs', 'photos', 'plsItems', 'issues', 'supplies', 'tools', 'checklist', 'checklistResults'];
 const emptyProjectCollections = Object.fromEntries(projectCollections.map((collection) => [collection, []]));
 const projectScreenRequirements = {
   stages: { collections: ['scheduleItems', 'scheduleLogs', 'photos', 'issues'], signPhotoUrls: false, normalizeSchedule: false },
   stageDetail: { collections: ['stages'], signPhotoUrls: false },
   photos: { collections: ['scheduleItems', 'photos'], signPhotoUrls: true, normalizeSchedule: false },
   pls: { collections: ['plsItems'], signPhotoUrls: false },
-  schedule: { collections: ['scheduleItems', 'scheduleLogs', 'checklist'], signPhotoUrls: false, normalizeSchedule: true },
+  schedule: { collections: ['scheduleItems', 'scheduleLogs', 'checklist', 'checklistResults'], signPhotoUrls: false, normalizeSchedule: true },
   issues: { collections: ['issues'], signPhotoUrls: false },
   supplies: { collections: ['supplies'], signPhotoUrls: false },
   tools: { collections: ['tools'], signPhotoUrls: false },
@@ -262,6 +263,7 @@ const initialData = {
   ],
   scheduleItems: buildLocalScheduleItems(),
   scheduleLogs: [],
+  checklistResults: [],
   photos: [
     { id: 'foto-1', etapa: 'Fundacao', tipo: 'Durante', data: '03/06/2026', usuario: 'Carlos Lima', observacao: 'Armadura conferida', cor: 'blue' },
     { id: 'foto-2', etapa: 'Muro de arrimo', tipo: 'Problema', data: '03/06/2026', usuario: 'Ana Prado', observacao: 'Dreno pendente', cor: 'red' },
@@ -2092,10 +2094,41 @@ function findChecklistForScheduleItem(checklists, item) {
     || null;
 }
 
+function checklistExecutionInitialIds(checklist, results, log) {
+  const checkedIds = new Set(
+    (results || [])
+      .filter((result) => result.checked)
+      .map((result) => result.checklistItemId)
+      .filter(Boolean),
+  );
+  if (checkedIds.size || !log?.checklist || !checklist?.itens?.length) return checkedIds;
+
+  const legacyCheckedText = new Set(
+    String(log.checklist || '')
+      .split(/\r?\n/)
+      .map((line) => normalizeSearch(line))
+      .filter(Boolean),
+  );
+
+  checklist.itens.forEach((item) => {
+    if (legacyCheckedText.has(normalizeSearch(item.texto))) checkedIds.add(item.id);
+  });
+  return checkedIds;
+}
+
+function checklistExecutionSummary(checklist, checkedIds) {
+  if (!checklist?.itens?.length || !checkedIds?.size) return '';
+  return checklist.itens
+    .filter((item) => checkedIds.has(item.id))
+    .map((item) => item.texto)
+    .join('\n');
+}
+
 function Schedule({
   items,
   logs,
   checklist = [],
+  checklistResults = [],
   saving,
   error,
   onSaveItem,
@@ -2279,6 +2312,8 @@ function Schedule({
         <ScheduleLogModal
           item={logItem}
           log={editingLog}
+          checklist={findChecklistForScheduleItem(checklist, logItem)}
+          checklistResults={editingLog ? checklistResults.filter((result) => result.scheduleLogId === editingLog.id) : []}
           saving={saving}
           onClose={() => {
             setLogItem(null);
@@ -2391,9 +2426,9 @@ function ScheduleChecklistModal({ item, checklist, saving, onClose, onSave }) {
       etapa: item.nome,
       norma: form.elements.norma.value.trim() || 'Checklist interno',
       foto: draft.foto || 'Obrigatoria',
-      responsavel: form.elements.responsavel.value.trim(),
+      responsavel: draft.responsavel || '',
       data: form.elements.data.value.trim(),
-      status: form.elements.status.value,
+      status: draft.status || 'Nao iniciado',
     });
   }
 
@@ -2412,16 +2447,7 @@ function ScheduleChecklistModal({ item, checklist, saving, onClose, onSave }) {
         <div className="form-grid modal-fields">
           <Field label="Titulo" name="titulo" value={draft.titulo || 'Checklist tecnico'} required />
           <Field label="Norma / referencia" name="norma" value={draft.norma || 'Checklist interno'} />
-          <Field label="Responsavel" name="responsavel" value={draft.responsavel || ''} />
           <Field label="Data prevista" name="data" value={draft.data || ''} />
-          <label className="field">
-            <span>Status</span>
-            <select name="status" defaultValue={draft.status || 'Nao iniciado'}>
-              {['Nao iniciado', 'Em andamento', 'Conferido', 'Atencao'].map((status) => (
-                <option value={status} key={status}>{status}</option>
-              ))}
-            </select>
-          </label>
           <label className="field wide">
             <span>Descricao de como proceder</span>
             <textarea
@@ -2953,14 +2979,46 @@ function ScheduleItemModal({ item, saving, onClose, onSave }) {
   );
 }
 
-function ScheduleLogModal({ item, log, saving, onClose, onSave, onDelete }) {
+function ScheduleLogModal({ item, log, checklist, checklistResults = [], saving, onClose, onSave, onDelete }) {
   const editing = Boolean(log?.id);
+  const [checkedItemIds, setCheckedItemIds] = useState(() => (
+    checklistExecutionInitialIds(checklist, checklistResults, log)
+  ));
+
+  useEffect(() => {
+    setCheckedItemIds(checklistExecutionInitialIds(checklist, checklistResults, log));
+  }, [checklist?.id, log?.id, checklistResults.length]);
+
+  function toggleChecklistItem(itemId) {
+    setCheckedItemIds((current) => {
+      const next = new Set(current);
+      if (next.has(itemId)) {
+        next.delete(itemId);
+      } else {
+        next.add(itemId);
+      }
+      return next;
+    });
+  }
 
   function submit(event) {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.currentTarget).entries());
     const submitter = event.nativeEvent.submitter;
-    onSave({ ...values, id: log?.id || '', scheduleItemId: item.id }, submitter?.dataset?.action === 'photo');
+    const checklistResultDrafts = (checklist?.itens || []).map((checkItem) => ({
+      scheduleItemId: item.id,
+      scheduleLogId: log?.id || '',
+      checklistId: checklist.id,
+      checklistItemId: checkItem.id,
+      checked: checkedItemIds.has(checkItem.id),
+    }));
+    onSave({
+      ...values,
+      id: log?.id || '',
+      scheduleItemId: item.id,
+      checklist: checklistExecutionSummary(checklist, checkedItemIds),
+      checklistResults: checklistResultDrafts,
+    }, submitter?.dataset?.action === 'photo');
   }
 
   function confirmDelete() {
@@ -2980,7 +3038,12 @@ function ScheduleLogModal({ item, log, saving, onClose, onSave, onDelete }) {
         </div>
         <div className="form-grid modal-fields">
           <Field label="Data da visita" name="visitDate" type="date" value={log?.visitDate || new Date().toISOString().slice(0, 10)} required />
-          <TextAreaField label="Checklist executado" name="checklist" value={log?.checklist || ''} />
+          <ScheduleLogChecklist
+            checklist={checklist}
+            checkedItemIds={checkedItemIds}
+            onToggle={toggleChecklistItem}
+            disabled={saving}
+          />
           <TextAreaField label="Observacoes" name="observacoes" value={log?.observacoes || ''} />
           <TextAreaField label="Pedido de material" name="pedidoMaterial" value={log?.pedidoMaterial || ''} />
           <TextAreaField label="Ferramentas necessarias ou usadas" name="ferramentas" value={log?.ferramentas || ''} />
@@ -2995,6 +3058,36 @@ function ScheduleLogModal({ item, log, saving, onClose, onSave, onDelete }) {
         </div>
       </form>
     </div>
+  );
+}
+
+function ScheduleLogChecklist({ checklist, checkedItemIds, onToggle, disabled }) {
+  const items = checklist?.itens || [];
+
+  return (
+    <section className="field wide schedule-log-checklist">
+      <span>Checklist executado</span>
+      {items.length ? (
+        <>
+          {checklist?.procedimento ? <p>{checklist.procedimento}</p> : null}
+          <div>
+            {items.map((item) => (
+              <label key={item.id}>
+                <input
+                  type="checkbox"
+                  checked={checkedItemIds.has(item.id)}
+                  disabled={disabled}
+                  onChange={() => onToggle(item.id)}
+                />
+                <span>{item.texto}</span>
+              </label>
+            ))}
+          </div>
+        </>
+      ) : (
+        <p>Nenhum checklist cadastrado para este subitem.</p>
+      )}
+    </section>
   );
 }
 
@@ -5303,9 +5396,12 @@ function App() {
       return null;
     }
 
+    const hasChecklistResults = Array.isArray(values.checklistResults);
+    const checklistResultDrafts = hasChecklistResults ? values.checklistResults : [];
+    const { checklistResults: _checklistResults, ...logValues } = values;
     const nextLog = {
-      ...values,
-      visitDate: values.visitDate || new Date().toISOString().slice(0, 10),
+      ...logValues,
+      visitDate: logValues.visitDate || new Date().toISOString().slice(0, 10),
     };
     setScheduleSaving(true);
     setScheduleError('');
@@ -5324,11 +5420,37 @@ function App() {
           ? await insertChild('scheduleLogs', activeWork.id, nextLog)
           : { ...nextLog, id: makeId('diario'), createdAt: new Date().toISOString() };
       }
+      let savedChecklistResults = null;
+      if (hasChecklistResults) {
+        const nowIso = new Date().toISOString();
+        const checkedBy = session?.user?.id || currentObrasUser?.authUserId || currentObrasUser?.id || '';
+        const nextChecklistResults = checklistResultDrafts.map((result) => ({
+          ...result,
+          scheduleLogId: saved.id,
+          scheduleItemId: nextLog.scheduleItemId,
+          checkedBy,
+          checkedAt: result.checked ? nowIso : '',
+        }));
+        savedChecklistResults = supabaseConfigured && session
+          ? await replaceScheduleChecklistResults(activeWork.id, saved.id, nextChecklistResults)
+          : nextChecklistResults.map((result, index) => ({
+              id: result.id || makeId(`check-result-${index}`),
+              ...result,
+              createdAt: nowIso,
+              updatedAt: nowIso,
+            }));
+      }
       setData((current) => ({
         ...current,
         scheduleLogs: nextLog.id
           ? current.scheduleLogs.map((log) => (log.id === saved.id ? saved : log))
           : [saved, ...current.scheduleLogs],
+        checklistResults: savedChecklistResults
+          ? [
+              ...savedChecklistResults,
+              ...(current.checklistResults || []).filter((result) => result.scheduleLogId !== saved.id),
+            ]
+          : current.checklistResults,
       }));
       return saved;
     } catch (error) {
@@ -5351,6 +5473,7 @@ function App() {
       setData((current) => ({
         ...current,
         scheduleLogs: current.scheduleLogs.filter((log) => log.id !== logId),
+        checklistResults: (current.checklistResults || []).filter((result) => result.scheduleLogId !== logId),
       }));
       return true;
     } catch (error) {
@@ -6047,6 +6170,7 @@ function App() {
             items={data.scheduleItems}
             logs={data.scheduleLogs}
             checklist={data.checklist}
+            checklistResults={data.checklistResults || []}
             saving={scheduleSaving}
             error={scheduleError}
             onSaveItem={saveScheduleItem}
