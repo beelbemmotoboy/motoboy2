@@ -41,6 +41,7 @@ const childTables = {
   tools: 'obras_tools',
   checklist: 'obras_checklist',
   checklistResults: 'obras_schedule_checklist_results',
+  rdoReports: 'obras_rdo_reports',
 };
 
 export function projectFromDb(row) {
@@ -572,6 +573,51 @@ export const rowMappers = {
       ...(patch.checkedAt !== undefined ? { checked_at: patch.checkedAt || null } : {}),
     }),
   },
+  rdoReports: {
+    fromDb: (row) => ({
+      id: row.id,
+      reportDate: row.report_date || '',
+      titulo: row.titulo || 'Relatorio diario de obra',
+      clima: row.clima || '',
+      equipe: row.equipe || '',
+      resumo: row.resumo || '',
+      servicosExecutados: row.servicos_executados || '',
+      materiais: row.materiais || '',
+      ferramentas: row.ferramentas || '',
+      ocorrencias: row.ocorrencias || '',
+      fotosCount: Number(row.fotos_count || 0),
+      payload: row.payload || {},
+      createdBy: row.created_by || '',
+      createdAt: row.created_at || '',
+      updatedAt: row.updated_at || '',
+    }),
+    toDb: (item) => ({
+      report_date: item.reportDate,
+      titulo: item.titulo || 'Relatorio diario de obra',
+      clima: item.clima || null,
+      equipe: item.equipe || null,
+      resumo: item.resumo || null,
+      servicos_executados: item.servicosExecutados || null,
+      materiais: item.materiais || null,
+      ferramentas: item.ferramentas || null,
+      ocorrencias: item.ocorrencias || null,
+      fotos_count: item.fotosCount ?? 0,
+      payload: item.payload || {},
+    }),
+    patchToDb: (patch) => ({
+      ...(patch.reportDate !== undefined ? { report_date: patch.reportDate } : {}),
+      ...(patch.titulo !== undefined ? { titulo: patch.titulo || 'Relatorio diario de obra' } : {}),
+      ...(patch.clima !== undefined ? { clima: patch.clima || null } : {}),
+      ...(patch.equipe !== undefined ? { equipe: patch.equipe || null } : {}),
+      ...(patch.resumo !== undefined ? { resumo: patch.resumo || null } : {}),
+      ...(patch.servicosExecutados !== undefined ? { servicos_executados: patch.servicosExecutados || null } : {}),
+      ...(patch.materiais !== undefined ? { materiais: patch.materiais || null } : {}),
+      ...(patch.ferramentas !== undefined ? { ferramentas: patch.ferramentas || null } : {}),
+      ...(patch.ocorrencias !== undefined ? { ocorrencias: patch.ocorrencias || null } : {}),
+      ...(patch.fotosCount !== undefined ? { fotos_count: patch.fotosCount ?? 0 } : {}),
+      ...(patch.payload !== undefined ? { payload: patch.payload || {} } : {}),
+    }),
+  },
 };
 
 export async function getSession() {
@@ -827,7 +873,9 @@ export async function fetchProjectChildren(projectId, options = {}) {
         ? query.order('sort_order', { ascending: true })
         : key === 'scheduleLogs'
           ? query.order('visit_date', { ascending: false })
-          : query.order('created_at', { ascending: false });
+          : key === 'rdoReports'
+            ? query.order('report_date', { ascending: false })
+            : query.order('created_at', { ascending: false });
       const { data, error } = await query;
       if (error) throw error;
       let rows = (data || []).map(rowMappers[key].fromDb);

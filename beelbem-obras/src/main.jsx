@@ -163,7 +163,7 @@ const neighborhoodCatalog = {
   ],
 };
 
-const projectCollections = ['stages', 'scheduleItems', 'scheduleLogs', 'photos', 'plsItems', 'issues', 'supplies', 'tools', 'checklist', 'checklistResults'];
+const projectCollections = ['stages', 'scheduleItems', 'scheduleLogs', 'photos', 'plsItems', 'issues', 'supplies', 'tools', 'checklist', 'checklistResults', 'rdoReports'];
 const emptyProjectCollections = Object.fromEntries(projectCollections.map((collection) => [collection, []]));
 const projectScreenRequirements = {
   stages: { collections: ['scheduleItems', 'scheduleLogs', 'photos', 'issues'], signPhotoUrls: false, normalizeSchedule: false },
@@ -175,7 +175,7 @@ const projectScreenRequirements = {
   supplies: { collections: ['supplies'], signPhotoUrls: false },
   tools: { collections: ['tools'], signPhotoUrls: false },
   checklist: { collections: ['checklist'], signPhotoUrls: false },
-  reports: { collections: ['photos', 'issues'], signPhotoUrls: false },
+  reports: { collections: ['scheduleItems', 'scheduleLogs', 'photos', 'issues', 'rdoReports'], signPhotoUrls: false, normalizeSchedule: false },
   stageLibrary: { collections: ['stages'], signPhotoUrls: false },
 };
 
@@ -267,6 +267,7 @@ const initialData = {
   scheduleItems: buildLocalScheduleItems(),
   scheduleLogs: [],
   checklistResults: [],
+  rdoReports: [],
   photos: [
     { id: 'foto-1', etapa: 'Fundacao', tipo: 'Durante', data: '03/06/2026', usuario: 'Carlos Lima', observacao: 'Armadura conferida', cor: 'blue' },
     { id: 'foto-2', etapa: 'Muro de arrimo', tipo: 'Problema', data: '03/06/2026', usuario: 'Ana Prado', observacao: 'Dreno pendente', cor: 'red' },
@@ -324,15 +325,6 @@ const standards = [
   checklist: index % 3 === 0 ? 'Pendente' : 'Conferido',
   status: index % 4 === 0 ? 'Atencao' : 'Conferido',
 }));
-
-const reports = [
-  'Relatorio completo da obra',
-  'Relatorio de fotos por etapa',
-  'Relatorio PLS Caixa',
-  'Relatorio de pendencias',
-  'Relatorio de checklist tecnico',
-  'Relatorio de insumos',
-];
 
 const quickRoutes = [
   { id: 'dashboard', label: 'Inicio', Icon: Home },
@@ -613,6 +605,25 @@ function formatDateTime(value) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value));
+}
+
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function formatDateBr(value) {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (match) return `${match[3]}/${match[2]}/${match[1]}`;
+  return value || '';
+}
+
+function normalizeDateKey(value) {
+  const text = String(value || '').trim();
+  let match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (match) return text;
+  match = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (match) return `${match[3]}-${match[2]}-${match[1]}`;
+  return text;
 }
 
 function requestStatusLabel(status) {
@@ -4206,26 +4217,149 @@ function Standards({ setScreen }) {
   );
 }
 
-function Reports({ data, setScreen }) {
+function uniqueTextLines(values) {
+  return [...new Set(
+    (values || [])
+      .flatMap((value) => String(value || '').split(/\r?\n/))
+      .map((line) => line.trim())
+      .filter(Boolean),
+  )].join('\n');
+}
+
+function scheduleItemLabel(itemsById, itemId) {
+  const item = itemsById.get(itemId);
+  if (!item) return 'Cronograma';
+  const parent = item.parentId ? itemsById.get(item.parentId) : null;
+  return parent ? `${parent.nome} / ${item.nome}` : item.nome;
+}
+
+function buildRdoDraft({ data, activeWork, reportDate, savedReport }) {
+  const itemsById = new Map((data.scheduleItems || []).map((item) => [item.id, item]));
+  const logs = (data.scheduleLogs || []).filter((log) => normalizeDateKey(log.visitDate) === reportDate);
+  const photos = (data.photos || []).filter((photo) => normalizeDateKey(photo.data) === reportDate);
+  const openIssues = (data.issues || []).filter((issue) => normalizeSearch(issue.status) !== 'resolvida');
+  const serviceLines = logs.map((log) => {
+    const label = scheduleItemLabel(itemsById, log.scheduleItemId);
+    const description = log.observacoes || log.checklist || 'Registro diario da obra';
+    return `${label}: ${description}`;
+  });
+  const occurrenceLines = [
+    ...logs.map((log) => log.fotosObservacao ? `${scheduleItemLabel(itemsById, log.scheduleItemId)}: ${log.fotosObservacao}` : ''),
+    ...openIssues.map((issue) => `${issue.etapa}: ${issue.descricao} (${issue.status})`),
+  ];
+  const generated = {
+    reportDate,
+    titulo: `RDO - ${activeWork?.nome || 'Obra'} - ${formatDateBr(reportDate)}`,
+    clima: '',
+    equipe: uniqueTextLines(logs.map((log) => log.maoObra)),
+    resumo: logs.length
+      ? `${logs.length} registro(s) de diario encontrados para ${formatDateBr(reportDate)}.`
+      : `Sem registros de diario para ${formatDateBr(reportDate)}.`,
+    servicosExecutados: uniqueTextLines(serviceLines),
+    materiais: uniqueTextLines(logs.map((log) => log.pedidoMaterial)),
+    ferramentas: uniqueTextLines(logs.map((log) => log.ferramentas)),
+    ocorrencias: uniqueTextLines(occurrenceLines),
+    fotosCount: photos.length,
+    payload: {
+      generatedAt: new Date().toISOString(),
+      obra: activeWork || null,
+      reportDate,
+      logs: logs.map((log) => ({
+        ...log,
+        itemLabel: scheduleItemLabel(itemsById, log.scheduleItemId),
+      })),
+      photos,
+      openIssues,
+    },
+  };
+
+  return savedReport ? { ...generated, ...savedReport, payload: savedReport.payload || generated.payload } : generated;
+}
+
+function Reports({ data, activeWork, saving, error, message, setScreen, onSaveRdo }) {
+  const [reportDate, setReportDate] = useState(todayIso());
+  const savedReports = (data.rdoReports || []).slice().sort((a, b) => String(b.reportDate).localeCompare(String(a.reportDate)));
+  const savedReport = savedReports.find((report) => normalizeDateKey(report.reportDate) === reportDate);
+  const draft = useMemo(
+    () => buildRdoDraft({ data, activeWork, reportDate, savedReport }),
+    [data, activeWork, reportDate, savedReport?.id],
+  );
+
+  function submit(event) {
+    event.preventDefault();
+    const values = Object.fromEntries(new FormData(event.currentTarget).entries());
+    onSaveRdo({
+      id: savedReport?.id || '',
+      reportDate,
+      titulo: values.titulo,
+      clima: values.clima,
+      equipe: values.equipe,
+      resumo: values.resumo,
+      servicosExecutados: values.servicosExecutados,
+      materiais: values.materiais,
+      ferramentas: values.ferramentas,
+      ocorrencias: values.ocorrencias,
+      fotosCount: draft.fotosCount,
+      payload: {
+        ...draft.payload,
+        campos: values,
+      },
+    });
+  }
+
   return (
     <>
-      <PageTitle eyebrow="Relatorios" title="Documentos da obra" subtitle="PDF, visualizacao e compartilhamento." onBack={() => setScreen('workPanel')} />
-      <section className="report-summary">
-        <strong>Resumo atual</strong>
-        <span>{data.works.length} obras - {data.photos.length} fotos - {data.issues.filter((item) => item.status !== 'Resolvida').length} pendencias abertas</span>
+      <PageTitle eyebrow="RDO" title="Relatorio diario de obra" subtitle="Gere e grave um RDO por obra e data." onBack={() => setScreen('workPanel')}>
+        <ActionButton Icon={FileText} variant="secondary" onClick={() => window.print()}>Imprimir RDO</ActionButton>
+      </PageTitle>
+      <section className="report-summary rdo-summary">
+        <strong>{activeWork?.nome || 'Obra selecionada'}</strong>
+        <span>{activeWork?.cliente || 'Cliente'} - {activeWork?.endereco || 'Endereco nao informado'}</span>
+        <span>{savedReport ? `RDO salvo em ${formatDateTime(savedReport.updatedAt || savedReport.createdAt)}` : 'RDO ainda nao salvo para esta data'}</span>
       </section>
-      <section className="report-grid">
-        {reports.map((report) => (
-          <article className="report-card" key={report}>
-            <FileText size={32} aria-hidden="true" />
-            <strong>{report}</strong>
-            <div className="button-row">
-              <button type="button" onClick={() => window.print()}><FileText size={18} aria-hidden="true" /> Gerar PDF</button>
-              <button type="button" onClick={() => setScreen('workPanel')}><Eye size={18} aria-hidden="true" /> Visualizar</button>
-              <button type="button" onClick={() => navigator.clipboard?.writeText(window.location.href)}><Share2 size={18} aria-hidden="true" /> Compartilhar</button>
-            </div>
-          </article>
-        ))}
+      {error ? <p className="auth-message error">{error}</p> : null}
+      {message ? <p className="auth-message success">{message}</p> : null}
+      <section className="rdo-layout">
+        <form className="rdo-form" key={`${activeWork?.id || 'obra'}-${reportDate}-${savedReport?.id || 'novo'}`} onSubmit={submit}>
+          <div className="form-grid">
+            <label className="field">
+              <span>Data do RDO</span>
+              <input type="date" value={reportDate} onChange={(event) => setReportDate(event.target.value)} required />
+            </label>
+            <Field label="Titulo" name="titulo" value={draft.titulo} required />
+            <Field label="Clima" name="clima" value={draft.clima} />
+            <Field label="Fotos do dia" name="fotosCountDisplay" value={`${draft.fotosCount} foto(s)`} disabled />
+            <TextAreaField label="Equipe / mao de obra" name="equipe" value={draft.equipe} />
+            <TextAreaField label="Resumo do dia" name="resumo" value={draft.resumo} />
+            <TextAreaField label="Servicos executados" name="servicosExecutados" value={draft.servicosExecutados} />
+            <TextAreaField label="Materiais" name="materiais" value={draft.materiais} />
+            <TextAreaField label="Ferramentas / equipamentos" name="ferramentas" value={draft.ferramentas} />
+            <TextAreaField label="Ocorrencias / pendencias" name="ocorrencias" value={draft.ocorrencias} />
+          </div>
+          <div className="form-actions">
+            <ActionButton Icon={Save} type="submit" disabled={saving}>
+              {saving ? 'Salvando...' : savedReport ? 'Atualizar RDO' : 'Salvar RDO'}
+            </ActionButton>
+            <ActionButton Icon={Share2} variant="secondary" onClick={() => navigator.clipboard?.writeText(window.location.href)}>
+              Compartilhar link
+            </ActionButton>
+          </div>
+        </form>
+        <aside className="rdo-history">
+          <strong>RDOs salvos</strong>
+          {savedReports.length ? savedReports.map((report) => (
+            <button
+              type="button"
+              className={normalizeDateKey(report.reportDate) === reportDate ? 'active' : ''}
+              key={report.id}
+              onClick={() => setReportDate(normalizeDateKey(report.reportDate))}
+            >
+              <FileText size={18} aria-hidden="true" />
+              <span>{formatDateBr(report.reportDate)}</span>
+              <small>{report.titulo}</small>
+            </button>
+          )) : <p>Nenhum RDO salvo para esta obra.</p>}
+        </aside>
       </section>
     </>
   );
@@ -4572,6 +4706,9 @@ function App() {
   const [stageError, setStageError] = useState('');
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [scheduleError, setScheduleError] = useState('');
+  const [rdoSaving, setRdoSaving] = useState(false);
+  const [rdoError, setRdoError] = useState('');
+  const [rdoMessage, setRdoMessage] = useState('');
   const [obrasAccounts, setObrasAccounts] = useState(() => (supabaseConfigured ? [] : localObrasAccounts));
   const [accountsLoading, setAccountsLoading] = useState(false);
   const [accountsSaving, setAccountsSaving] = useState(false);
@@ -6130,6 +6267,58 @@ function App() {
     }
   }
 
+  async function saveRdoReport(values) {
+    if (!activeWork?.id || !values?.reportDate) {
+      setRdoError('Selecione uma obra e uma data para salvar o RDO.');
+      return null;
+    }
+
+    const normalized = {
+      ...values,
+      titulo: values.titulo || `RDO - ${activeWork.nome} - ${formatDateBr(values.reportDate)}`,
+      fotosCount: Number(values.fotosCount || 0),
+      payload: values.payload || {},
+    };
+
+    setRdoSaving(true);
+    setRdoError('');
+    setRdoMessage('');
+    try {
+      let saved;
+      if (normalized.id) {
+        saved = {
+          ...(data.rdoReports || []).find((report) => report.id === normalized.id),
+          ...normalized,
+          updatedAt: new Date().toISOString(),
+        };
+        if (supabaseConfigured && session) {
+          await updateChild('rdoReports', normalized.id, normalized);
+        }
+      } else {
+        saved = supabaseConfigured && session
+          ? await insertChild('rdoReports', activeWork.id, normalized)
+          : { ...normalized, id: makeId('rdo'), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      }
+
+      setData((current) => {
+        const exists = (current.rdoReports || []).some((report) => report.id === saved.id);
+        return {
+          ...current,
+          rdoReports: exists
+            ? current.rdoReports.map((report) => (report.id === saved.id ? saved : report))
+            : [saved, ...(current.rdoReports || [])],
+        };
+      });
+      setRdoMessage('RDO salvo.');
+      return saved;
+    } catch (error) {
+      setRdoError(error.message || 'Nao foi possivel salvar o RDO.');
+      return null;
+    } finally {
+      setRdoSaving(false);
+    }
+  }
+
   async function saveScheduleChecklistCheck(values) {
     if (!activeWork?.id || !values?.scheduleItemId || !values?.checklistId) {
       setScheduleError('Selecione um subitem com checklist antes de conferir.');
@@ -6742,7 +6931,17 @@ function App() {
       case 'standards':
         return <Standards setScreen={setScreen} />;
       case 'reports':
-        return <Reports data={cityData} setScreen={setScreen} />;
+        return (
+          <Reports
+            data={data}
+            activeWork={activeWork}
+            saving={rdoSaving}
+            error={rdoError}
+            message={rdoMessage}
+            setScreen={setScreen}
+            onSaveRdo={saveRdoReport}
+          />
+        );
       case 'stageLibrary':
         return (
           <StageLibrary
