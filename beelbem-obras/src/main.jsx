@@ -4654,17 +4654,17 @@ function Profile({ currentUser, saving, error, message, onSave }) {
       ) : null}
       {error ? <p className="auth-message error">{error}</p> : null}
       <section className="profile-summary-grid user-profile-summary">
-        <article className="profile-card">
+        <article className="profile-card profile-user-card">
           <div className="user-avatar profile-avatar">
             {avatarPreview ? <img src={avatarPreview} alt={`Foto de ${currentUser.nome}`} /> : <UserRound size={34} aria-hidden="true" />}
           </div>
-          <strong>{currentUser.nome || 'Usuario Obras'}</strong>
+          <strong className="profile-user-name">{currentUser.nome || 'Usuario Obras'}</strong>
           <span>{roleLabel(currentUser.role)}</span>
           <p>{currentUser.email}</p>
         </article>
-        <article className="profile-card">
+        <article className="profile-card profile-access-card">
           <ShieldCheck size={34} aria-hidden="true" />
-          <strong>Acesso Obras</strong>
+          <span>Acesso Obras</span>
           <span>{currentUser.active ? 'Usuario ativo' : 'Usuario inativo'}</span>
           <p>{currentUser.loginEnabled ? 'Login habilitado' : 'Login bloqueado'}</p>
         </article>
@@ -4672,11 +4672,15 @@ function Profile({ currentUser, saving, error, message, onSave }) {
       <section className="form-grid profile-edit-form">
         <label className="field user-avatar-field">
           <span>Foto de perfil</span>
-          <div className="user-avatar-preview">
-            {avatarPreview ? <img src={avatarPreview} alt="Previa da foto do usuario" /> : <UserRound size={34} aria-hidden="true" />}
+          <div className="user-avatar-upload">
+            <div className="user-avatar-preview">
+              {avatarPreview ? <img src={avatarPreview} alt="Previa da foto do usuario" /> : <UserRound size={34} aria-hidden="true" />}
+            </div>
+            <div>
+              <input type="file" name="avatarFile" accept="image/*" onChange={handleAvatarChange} disabled={saving} />
+              <small>Use uma foto de rosto. O app reduz o tamanho antes de salvar.</small>
+            </div>
           </div>
-          <input type="file" name="avatarFile" accept="image/*" onChange={handleAvatarChange} disabled={saving} />
-          <small>Use uma foto de rosto. O app reduz o tamanho antes de salvar.</small>
         </label>
         <Field label="Nome" name="nome" value={currentUser.nome || ''} required disabled={saving} />
         <Field label="E-mail de login" name="email" value={currentUser.email || ''} type="email" disabled />

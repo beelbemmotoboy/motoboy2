@@ -2266,6 +2266,13 @@ button.metric-card {
   align-content: start;
 }
 
+.user-avatar-upload {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+}
+
 .user-avatar-preview {
   width: 96px;
   height: 96px;
@@ -3354,10 +3361,68 @@ body.gantt-resizing * {
 
 .profile-edit-form {
   margin-top: 0;
+  grid-template-columns: repeat(2, minmax(240px, 1fr));
+  align-items: start;
+}
+
+.profile-edit-form .field {
+  font-weight: 600;
+}
+
+.profile-edit-form .field input,
+.profile-edit-form .field select {
+  font-weight: 500;
+}
+
+.profile-edit-form .field small {
+  font-weight: 400;
+}
+
+.profile-edit-form .user-avatar-field {
+  grid-column: 1 / -1;
 }
 
 .user-profile-summary {
   align-items: stretch;
+}
+
+.user-profile-summary .profile-card {
+  min-height: 0;
+  align-content: start;
+  gap: 8px;
+  padding: 18px;
+}
+
+.user-profile-summary .profile-card strong,
+.user-profile-summary .profile-card span {
+  font-weight: 500;
+}
+
+.user-profile-summary .profile-card p {
+  margin: 0;
+  color: #334155;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.profile-user-card {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+}
+
+.profile-user-card .profile-avatar {
+  grid-row: span 3;
+}
+
+.profile-user-name {
+  color: #111827;
+  font-size: 20px !important;
+  font-weight: 900 !important;
+  line-height: 1.2;
+}
+
+.profile-access-card {
+  color: #475569;
 }
 
 .profile-avatar {
