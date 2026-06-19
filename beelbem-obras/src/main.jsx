@@ -822,8 +822,12 @@ function Shell({ screen, setScreen, children, activeWork, selectedCity, cities, 
 
       <div className="app-frame">
         <header className="topbar">
-          <button className="menu-button" type="button" aria-label="Abrir menu" onClick={() => setMobileMenuOpen(true)}>
-            <Menu size={24} aria-hidden="true" />
+          <button className="menu-button user-menu-button" type="button" aria-label="Abrir menu" onClick={() => setMobileMenuOpen(true)}>
+            {currentUser?.avatarUrl ? (
+              <img src={currentUser.avatarUrl} alt="" aria-hidden="true" />
+            ) : (
+              <UserRound size={24} aria-hidden="true" />
+            )}
           </button>
           <div className="topbar-title">
             <div className="topbar-identity">
