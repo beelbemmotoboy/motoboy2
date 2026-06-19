@@ -789,6 +789,7 @@ function getDerivedStageUpdates(previousItems, nextItems) {
 function Shell({ screen, setScreen, children, activeWork, selectedCity, cities, onCityChange, currentUser, onLogout }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   if (screen === 'login' || screen === 'signup') return children;
+  const currentUserName = currentUser?.nome || currentUser?.email?.split('@')[0] || 'Usuario Obras';
 
   function logoutAndCloseMenu() {
     setMobileMenuOpen(false);
@@ -825,7 +826,10 @@ function Shell({ screen, setScreen, children, activeWork, selectedCity, cities, 
             <Menu size={24} aria-hidden="true" />
           </button>
           <div className="topbar-title">
-            <strong>Beelbem Obras</strong>
+            <div className="topbar-identity">
+              <strong>{currentUserName}</strong>
+              {activeWork?.nome ? <span className="topbar-work">{activeWork.nome}</span> : null}
+            </div>
             <label className="topbar-city">
               <MapPinned size={15} aria-hidden="true" />
               <select value={selectedCity?.id || ''} aria-label="Selecionar cidade" onChange={(event) => onCityChange(event.target.value)}>
@@ -834,7 +838,6 @@ function Shell({ screen, setScreen, children, activeWork, selectedCity, cities, 
                 ))}
               </select>
             </label>
-            {activeWork?.nome ? <span className="topbar-work">{activeWork.nome}</span> : null}
           </div>
           <button className="topbar-logout" type="button" onClick={onLogout} title="Sair do Obras" aria-label="Sair do Obras">
             <LogOut size={19} aria-hidden="true" />
@@ -1584,7 +1587,7 @@ function WorkPanel({ obra, data, setScreen }) {
           <ProgressBar value={obra.percentual} />
         </div>
       </section>
-      <section className="module-grid">
+      <section className="module-grid work-panel-grid">
         {cards.map(([label, Icon, route]) => (
           <button className="module-card" type="button" key={label} onClick={() => setScreen(route)}>
             <Icon size={30} aria-hidden="true" />

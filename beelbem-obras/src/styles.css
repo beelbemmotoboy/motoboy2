@@ -350,12 +350,20 @@ button {
 
 .topbar-title {
   min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.topbar-identity {
+  min-width: 0;
 }
 
 .topbar-city {
   width: fit-content;
   max-width: 100%;
-  margin-top: 2px;
+  justify-self: end;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -666,6 +674,12 @@ button.metric-card {
 .module-card small {
   color: #6b7280;
   font-weight: 800;
+}
+
+.work-panel-grid .module-card {
+  min-height: 124px;
+  align-content: space-between;
+  padding: 15px;
 }
 
 .city-card span,
@@ -1497,7 +1511,7 @@ button.metric-card {
 
 .work-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
   gap: 14px;
 }
 
@@ -3435,6 +3449,23 @@ body.gantt-resizing * {
     gap: 8px;
   }
 
+  .topbar-title {
+    gap: 8px;
+  }
+
+  .topbar strong {
+    font-size: 15px;
+  }
+
+  .topbar-city select {
+    max-width: 108px;
+  }
+
+  .topbar-work {
+    max-width: 100%;
+    font-size: 11px;
+  }
+
   .topbar-logout {
     min-width: 44px;
     padding: 0;
@@ -3508,6 +3539,31 @@ body.gantt-resizing * {
 
   .metric-grid {
     grid-template-columns: repeat(auto-fill, 164px);
+  }
+
+  .work-hero {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .work-hero > div {
+    padding: 14px;
+  }
+
+  .work-hero strong {
+    font-size: 20px;
+  }
+
+  .work-panel-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .work-panel-grid .module-card {
+    min-height: 110px;
+    padding: 13px;
+  }
+
+  .work-panel-grid .module-card span {
+    font-size: 16px;
   }
 
   .issue-card,
