@@ -2976,8 +2976,9 @@ function Schedule({
         {stages.map((stage) => {
           const children = childrenFor(stage.id);
           const stageProgress = calculateScheduleStageProgress(children);
+          const stageState = ganttStageState(stage);
           return (
-            <details className={`schedule-stage-group ${draggedItem?.id === stage.id ? 'dragging' : ''}`} key={stage.id}>
+            <details className={`schedule-stage-group schedule-stage-${stageState} ${draggedItem?.id === stage.id ? 'dragging' : ''}`} key={stage.id}>
               <summary
                 draggable={!saving}
                 data-schedule-drop-id={stage.id}
