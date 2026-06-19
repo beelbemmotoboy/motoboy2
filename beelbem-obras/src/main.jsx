@@ -2260,6 +2260,8 @@ function Schedule({
     .sort((a, b) => a.sortOrder - b.sortOrder);
   const scheduleDurationDays = calculateScheduleDurationDays(visibleItems);
   const scheduleDurationLabel = scheduleDurationDays === 1 ? 'dia de obra' : 'dias de obra';
+  const scheduleRemainingDays = calculateScheduleRemainingDays(visibleItems);
+  const scheduleRemainingLabel = scheduleRemainingDays === 1 ? 'dia restante' : 'dias restantes';
 
   function childrenFor(parentId) {
     return visibleItems
@@ -2381,7 +2383,7 @@ function Schedule({
         <ActionButton Icon={Plus} onClick={() => setItemModal({ itemType: 'stage' })}>Adicionar etapa</ActionButton>
       </PageTitle>
       <section className="schedule-toolbar">
-        <span><strong>{stages.length}</strong> etapas ativas</span>
+        <span><strong>{scheduleRemainingDays}</strong> {scheduleRemainingLabel}</span>
         <span><strong>{scheduleDurationDays}</strong> {scheduleDurationLabel}</span>
         <span><strong>{logs.length}</strong> registros de visita</span>
         <button className="schedule-gantt-link" type="button" onClick={() => setGanttOpen(true)}>
@@ -3179,6 +3181,18 @@ function calculateScheduleDurationDays(items) {
   const start = new Date(Math.min(...dates.map((date) => date.getTime())));
   const end = new Date(Math.max(...dates.map((date) => date.getTime())));
   return Math.max(1, daysBetween(start, end) + 1);
+}
+
+function calculateScheduleRemainingDays(items) {
+  const deadlines = items
+    .map((item) => parseScheduleDate(item.fimPrevisto || item.inicioPrevisto))
+    .filter(Boolean);
+
+  if (!deadlines.length) return 0;
+  const deadline = new Date(Math.max(...deadlines.map((date) => date.getTime())));
+  const todayDate = parseScheduleDate(todayIso());
+  if (!todayDate) return 0;
+  return Math.max(0, daysBetween(todayDate, deadline) + 1);
 }
 
 function ScheduleQuickDates({ item, saving, onSave }) {
