@@ -1558,9 +1558,9 @@ function WorkPanel({ obra, data, setScreen }) {
   const lastUpdate = buildLastScheduleUpdate(data, obra.proximaEtapa);
   const cards = [
     ['Fotos', Camera, 'photos'],
-    ['PLS Caixa', FileCheck2, 'pls'],
     ['Cronograma', CalendarDays, 'schedule'],
     ['Etapas', Layers3, 'stages'],
+    ['PLS Caixa', FileCheck2, 'pls'],
     ['Insumos', PackageCheck, 'supplies'],
     ['Ferramentas', Wrench, 'tools'],
     ['Checklist tecnico', ClipboardCheck, 'checklist'],
