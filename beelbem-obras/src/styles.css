@@ -880,6 +880,37 @@ button.metric-card {
   margin-bottom: 18px;
 }
 
+.notifications-filter-panel {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 14px;
+  background: #fff;
+}
+
+.notifications-filter-panel label {
+  display: grid;
+  gap: 6px;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.notifications-filter-panel input,
+.notifications-filter-panel select {
+  min-height: 42px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 0 12px;
+  color: #0f172a;
+  background: #fff;
+  font: inherit;
+  font-weight: 500;
+}
+
 .notifications-summary span {
   min-height: 44px;
   border: 1px solid #dbeafe;
@@ -890,11 +921,12 @@ button.metric-card {
   padding: 0 14px;
   color: #1e3a8a;
   background: #eff6ff;
-  font-weight: 900;
+  font-weight: 600;
 }
 
 .notifications-summary strong {
   font-size: 20px;
+  font-weight: 600;
 }
 
 .push-permission-card {
@@ -917,11 +949,12 @@ button.metric-card {
 .push-permission-card strong {
   color: #0f172a;
   font-size: 16px;
+  font-weight: 600;
 }
 
 .push-permission-card span {
   color: #64748b;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .push-permission-card button {
@@ -1016,20 +1049,21 @@ button.metric-card {
   gap: 10px;
 }
 
-.notification-card header strong {
+.notification-card header .notification-title {
   color: #0f172a;
   font-size: 17px;
+  font-weight: 600;
 }
 
 .notification-card header span {
   color: #64748b;
-  font-weight: 900;
+  font-weight: 600;
 }
 
 .notification-card p {
   margin: 5px 0 0;
   color: #334155;
-  font-weight: 600;
+  font-weight: 400;
   line-height: 1.35;
 }
 
@@ -1045,7 +1079,7 @@ button.metric-card {
   padding: 4px 9px;
   color: #475569;
   background: #f1f5f9;
-  font-weight: 800;
+  font-weight: 500;
 }
 
 .work-list,

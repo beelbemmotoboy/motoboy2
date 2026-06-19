@@ -1681,8 +1681,7 @@ function getScheduleActivityContext(scheduleItemId, itemsById) {
   };
 }
 
-function buildTodayActivities({ data, users = [], currentUser = null, activeWork = null }) {
-  const todayKey = todayIso();
+function buildTodayActivities({ data, users = [], currentUser = null, activeWork = null, dateKey = todayIso() }) {
   const fallbackUser = currentUser?.nome || currentUser?.email || 'Usuario nao informado';
   const itemsById = new Map((data.scheduleItems || []).map((item) => [item.id, item]));
   const checklistById = new Map((data.checklist || []).map((entry) => [entry.id, entry]));
@@ -1704,10 +1703,11 @@ function buildTodayActivities({ data, users = [], currentUser = null, activeWork
     tone = 'info',
     stageName = '',
     subitemName = '',
+    sourceType = 'info',
   }) {
     const dates = dateValues.filter(Boolean);
-    if (!dates.some((value) => activityDateKey(value) === todayKey)) return;
-    const timeSource = dates.find((value) => activityDateKey(value) === todayKey) || dates[0];
+    if (!dates.some((value) => activityDateKey(value) === dateKey)) return;
+    const timeSource = dates.find((value) => activityDateKey(value) === dateKey) || dates[0];
     const timestamp = Math.max(0, ...dates.map((value) => activityTimestamp(value)));
 
     activities.push({
@@ -1721,6 +1721,7 @@ function buildTodayActivities({ data, users = [], currentUser = null, activeWork
       tone,
       stageName,
       subitemName,
+      sourceType,
     });
   }
 
@@ -1734,6 +1735,7 @@ function buildTodayActivities({ data, users = [], currentUser = null, activeWork
       user: log.usuario || log.createdBy || log.updatedBy,
       Icon: ClipboardCheck,
       tone: 'primary',
+      sourceType: 'daily_log',
       ...context,
     });
   });
@@ -1748,6 +1750,7 @@ function buildTodayActivities({ data, users = [], currentUser = null, activeWork
       Icon: Camera,
       tone: 'photo',
       stageName: photo.etapa || 'Fotos',
+      sourceType: 'photo_added',
     });
   });
 
@@ -1761,6 +1764,7 @@ function buildTodayActivities({ data, users = [], currentUser = null, activeWork
       Icon: AlertTriangle,
       tone: 'danger',
       stageName: issue.etapa || 'Pendencias',
+      sourceType: 'issue_added',
     });
   });
 
@@ -1774,6 +1778,7 @@ function buildTodayActivities({ data, users = [], currentUser = null, activeWork
       Icon: FileCheck2,
       tone: 'info',
       stageName: item.etapa || 'PLS Caixa',
+      sourceType: 'pls_updated',
     });
   });
 
@@ -1790,6 +1795,7 @@ function buildTodayActivities({ data, users = [], currentUser = null, activeWork
       user: result.checkedBy || result.usuario || result.createdBy || result.updatedBy,
       Icon: CheckCircle2,
       tone: 'success',
+      sourceType: 'checklist_checked',
       ...context,
     });
   });
@@ -1806,6 +1812,7 @@ function buildTodayActivities({ data, users = [], currentUser = null, activeWork
         user: item.usuario || item.createdBy || item.updatedBy,
         Icon: CalendarDays,
         tone: 'schedule',
+        sourceType: 'subitem_updated',
         ...context,
       });
     });
@@ -1820,38 +1827,43 @@ function buildTodayActivities({ data, users = [], currentUser = null, activeWork
       Icon: FileText,
       tone: 'report',
       stageName: activeWork?.nome || 'RDO',
+      sourceType: 'rdo_saved',
     });
   });
 
   return activities.sort((a, b) => b.timestamp - a.timestamp);
 }
 
-function buildStoredNotificationActivities({ notifications = [], users = [], currentUser = null }) {
-  const todayKey = todayIso();
+function buildStoredNotificationActivities({ notifications = [], users = [], currentUser = null, dateKey = todayIso() }) {
   const fallbackUser = currentUser?.nome || currentUser?.email || 'Usuario nao informado';
   return (notifications || [])
-    .filter((notification) => activityDateKey(notification.createdAt) === todayKey)
+    .filter((notification) => activityDateKey(notification.createdAt) === dateKey)
     .map((notification) => ({
       id: `notification-${notification.id}`,
       title: notification.title || 'Atividade no Obras',
       description: notification.body || '',
       time: activityTimeLabel(notification.createdAt),
       timestamp: activityTimestamp(notification.createdAt),
-      user: activityUserName(notification.actorUserId, users, fallbackUser),
+      user: activityUserName(notification.actorUserId, users, notification.payload?.actorName || fallbackUser),
       Icon: {
         photo_added: Camera,
         new_work: Building2,
         daily_log: ClipboardCheck,
         subitem_updated: CalendarDays,
+        issue_added: AlertTriangle,
+        checklist_checked: CheckCircle2,
       }[notification.type] || Bell,
       tone: {
         photo_added: 'photo',
         new_work: 'success',
         daily_log: 'primary',
         subitem_updated: 'schedule',
+        issue_added: 'danger',
+        checklist_checked: 'success',
       }[notification.type] || 'info',
       stageName: notification.payload?.stageName || notification.payload?.workName || '',
       subitemName: notification.payload?.subitemName || '',
+      sourceType: notification.type || 'info',
     }))
     .sort((a, b) => b.timestamp - a.timestamp);
 }
@@ -1868,15 +1880,44 @@ function Notifications({
   onEnablePush,
   setScreen,
 }) {
+  const [activityDate, setActivityDate] = useState(todayIso());
+  const [userFilter, setUserFilter] = useState('all');
   const fallbackActivities = useMemo(
-    () => buildTodayActivities({ data, users, currentUser, activeWork }),
-    [data, users, currentUser, activeWork],
+    () => buildTodayActivities({ data, users, currentUser, activeWork, dateKey: activityDate }),
+    [data, users, currentUser, activeWork, activityDate],
   );
   const storedActivities = useMemo(
-    () => buildStoredNotificationActivities({ notifications, users, currentUser }),
-    [notifications, users, currentUser],
+    () => buildStoredNotificationActivities({ notifications, users, currentUser, dateKey: activityDate }),
+    [notifications, users, currentUser, activityDate],
   );
-  const activities = storedActivities.length ? storedActivities : fallbackActivities;
+  const storedSourceTypes = useMemo(
+    () => new Set(storedActivities.map((activity) => activity.sourceType).filter(Boolean)),
+    [storedActivities],
+  );
+  const allActivities = useMemo(() => {
+    const derivedActivities = fallbackActivities.filter((activity) => !storedSourceTypes.has(activity.sourceType));
+    return [...storedActivities, ...derivedActivities].sort((a, b) => b.timestamp - a.timestamp);
+  }, [fallbackActivities, storedActivities, storedSourceTypes]);
+  const userOptions = useMemo(() => {
+    const names = new Set();
+    users.forEach((user) => {
+      const label = user.nome || user.email;
+      if (label) names.add(label);
+    });
+    allActivities.forEach((activity) => {
+      if (activity.user) names.add(activity.user);
+    });
+    return [...names].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [users, allActivities]);
+  useEffect(() => {
+    if (userFilter !== 'all' && !userOptions.includes(userFilter)) {
+      setUserFilter('all');
+    }
+  }, [userFilter, userOptions]);
+
+  const activities = userFilter === 'all'
+    ? allActivities
+    : allActivities.filter((activity) => activity.user === userFilter);
   const activityUsers = new Set(activities.map((activity) => activity.user).filter(Boolean));
   const canEnablePush = pushSupport !== 'unsupported' && pushSupport !== 'granted';
   const pushStatusText = {
@@ -1890,17 +1931,37 @@ function Notifications({
     <>
       <PageTitle
         eyebrow="Notificacoes"
-        title="Atividades de hoje"
-        subtitle={`${formatDateBr(todayIso())} - ${activeWork?.nome || selectedCity?.nome || 'Obras'}`}
+        title="Atividades da obra"
+        subtitle={`${formatDateBr(activityDate)} - ${activeWork?.nome || selectedCity?.nome || 'Obras'}`}
         onBack={() => setScreen(activeWork ? 'workPanel' : 'dashboard')}
       >
         <StatusPill status={`${activities.length} registro${activities.length === 1 ? '' : 's'}`} />
       </PageTitle>
 
+      <section className="notifications-filter-panel" aria-label="Filtros das atividades">
+        <label>
+          <span>Data</span>
+          <input
+            type="date"
+            value={activityDate}
+            onChange={(event) => setActivityDate(event.target.value || todayIso())}
+          />
+        </label>
+        <label>
+          <span>Usuario</span>
+          <select value={userFilter} onChange={(event) => setUserFilter(event.target.value)}>
+            <option value="all">Todos os usuarios</option>
+            {userOptions.map((userName) => (
+              <option value={userName} key={userName}>{userName}</option>
+            ))}
+          </select>
+        </label>
+      </section>
+
       <section className="notifications-summary">
-        <span><strong>{activities.length}</strong> atividades</span>
-        <span><strong>{activityUsers.size}</strong> usuarios</span>
-        <span><strong>{activeWork?.nome || selectedCity?.nome || 'Todas'}</strong> contexto</span>
+        <span>{activities.length} atividades</span>
+        <span>{activityUsers.size} usuarios</span>
+        <span>{activeWork?.nome || selectedCity?.nome || 'Todas'}</span>
       </section>
 
       <section className="push-permission-card">
@@ -1924,7 +1985,7 @@ function Notifications({
               </div>
               <div>
                 <header>
-                  <strong>{title}</strong>
+                  <span className="notification-title">{title}</span>
                   <span>{time}</span>
                 </header>
                 <p>{description}</p>
@@ -1940,8 +2001,8 @@ function Notifications({
       ) : (
         <EmptyNotice
           Icon={Bell}
-          title="Nenhuma atividade hoje"
-          text="Quando um usuario registrar diario, foto, checklist, PLS, pendencia ou RDO nesta obra, a atividade aparecera aqui."
+          title="Nenhuma atividade encontrada"
+          text="Ajuste a data ou o usuario para consultar registros de diario, fotos, checklist, pendencias e subitens alterados."
         />
       )}
     </>
@@ -5702,7 +5763,7 @@ function App() {
     }
 
     let active = true;
-    void fetchObrasNotifications({ limit: 100 })
+    void fetchObrasNotifications({ limit: 500 })
       .then((notifications) => {
         if (active) setObrasNotifications(notifications);
       })
@@ -6961,6 +7022,18 @@ function App() {
       issues: [next, ...current.issues],
       works: current.works.map((work) => (work.id === activeWork.id ? { ...work, pendencias: work.pendencias + pendenciaDelta } : work)),
     }));
+    void notifyCompany({
+      projectId: activeWork.id,
+      type: 'issue_added',
+      title: 'Pendencia adicionada',
+      body: `${currentObrasUser?.nome || 'Usuario Obras'} adicionou uma pendencia em ${etapa} - ${activeWork.nome}.`,
+      payload: {
+        workName: activeWork.nome,
+        stageName: etapa,
+        issueId: next.id,
+        status: next.status,
+      },
+    });
     setIssueSaving(false);
     setIssueDraftStage(null);
     setScreen('issues');
@@ -7159,6 +7232,23 @@ function App() {
           ...(current.checklistResults || []),
         ],
       }));
+      const itemsById = new Map((data.scheduleItems || []).map((item) => [item.id, item]));
+      const context = getScheduleActivityContext(values.scheduleItemId, itemsById);
+      const checklist = (data.checklist || []).find((entry) => entry.id === values.checklistId);
+      void notifyCompany({
+        projectId: activeWork.id,
+        type: 'checklist_checked',
+        title: 'Checklist conferido',
+        body: `${currentObrasUser?.nome || 'Usuario Obras'} conferiu ${savedResults.length} item${savedResults.length === 1 ? '' : 's'} do checklist em ${context.subitemName || context.stageName} - ${activeWork.nome}.`,
+        payload: {
+          workName: activeWork.nome,
+          checklistId: values.checklistId,
+          checklistTitle: checklist?.titulo || 'Checklist',
+          checkedCount: savedResults.length,
+          scheduleItemId: values.scheduleItemId,
+          ...context,
+        },
+      });
       return true;
     } catch (error) {
       setScheduleError(error.message || 'Nao foi possivel salvar a conferencia do checklist.');
