@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import {
   AlertTriangle,
   BarChart3,
+  Bell,
   Bot,
   Building2,
   CalendarDays,
@@ -176,6 +177,7 @@ const projectScreenRequirements = {
   supplies: { collections: ['supplies'], signPhotoUrls: false },
   tools: { collections: ['tools'], signPhotoUrls: false },
   checklist: { collections: ['scheduleItems', 'scheduleLogs', 'checklist', 'checklistResults'], signPhotoUrls: false, normalizeSchedule: false },
+  notifications: { collections: ['scheduleItems', 'scheduleLogs', 'photos', 'plsItems', 'issues', 'checklist', 'checklistResults', 'rdoReports'], signPhotoUrls: false, normalizeSchedule: false },
   reports: { collections: ['scheduleItems', 'scheduleLogs', 'photos', 'issues', 'rdoReports'], signPhotoUrls: false, normalizeSchedule: false },
   workPanel: { collections: ['scheduleItems', 'scheduleLogs'], signPhotoUrls: false, normalizeSchedule: false },
   stageLibrary: { collections: ['stages'], signPhotoUrls: false },
@@ -628,6 +630,58 @@ function normalizeDateKey(value) {
   return text;
 }
 
+function activityDateKey(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  let match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  match = text.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (match) return `${match[3]}-${match[2]}-${match[1]}`;
+
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) return '';
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function activityTimeLabel(value) {
+  const text = String(value || '').trim();
+  if (!text || /^\d{4}-\d{2}-\d{2}$/.test(text) || /^\d{2}\/\d{2}\/\d{4}$/.test(text)) {
+    return 'Sem horario';
+  }
+
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) return 'Sem horario';
+  return new Intl.DateTimeFormat('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
+function activityTimestamp(...values) {
+  for (const value of values) {
+    const time = Date.parse(value || '');
+    if (Number.isFinite(time)) return time;
+  }
+
+  const key = values.map(activityDateKey).find(Boolean);
+  return key ? Date.parse(`${key}T00:00:00`) : 0;
+}
+
+function activityUserName(value, users = [], fallback = 'Usuario nao informado') {
+  const text = String(value || '').trim();
+  if (!text) return fallback;
+
+  const match = users.find((user) => (
+    user.id === text
+    || user.authUserId === text
+    || normalizeSearch(user.email) === normalizeSearch(text)
+    || normalizeSearch(user.nome) === normalizeSearch(text)
+  ));
+  return match?.nome || text || fallback;
+}
+
 function requestStatusLabel(status) {
   return {
     novo: 'Novo',
@@ -844,9 +898,9 @@ function Shell({ screen, setScreen, children, activeWork, selectedCity, cities, 
               </select>
             </label>
           </div>
-          <button className="topbar-logout" type="button" onClick={onLogout} title="Sair do Obras" aria-label="Sair do Obras">
-            <LogOut size={19} aria-hidden="true" />
-            <span>Sair</span>
+          <button className="topbar-notifications" type="button" onClick={() => setScreen('notifications')} title="Atividades de hoje" aria-label="Abrir atividades de hoje">
+            <Bell size={19} aria-hidden="true" />
+            <span>Atividades</span>
           </button>
         </header>
 
@@ -1608,6 +1662,217 @@ function WorkPanel({ obra, data, setScreen }) {
           </button>
         ))}
       </nav>
+    </>
+  );
+}
+
+function getScheduleActivityContext(scheduleItemId, itemsById) {
+  const item = itemsById.get(scheduleItemId);
+  const parent = item?.parentId ? itemsById.get(item.parentId) : null;
+  return {
+    stageName: parent?.nome || item?.nome || 'Cronograma',
+    subitemName: parent ? item.nome : '',
+  };
+}
+
+function buildTodayActivities({ data, users = [], currentUser = null, activeWork = null }) {
+  const todayKey = todayIso();
+  const fallbackUser = currentUser?.nome || currentUser?.email || 'Usuario nao informado';
+  const itemsById = new Map((data.scheduleItems || []).map((item) => [item.id, item]));
+  const checklistById = new Map((data.checklist || []).map((entry) => [entry.id, entry]));
+  const checklistItemsById = new Map();
+  (data.checklist || []).forEach((checklist) => {
+    (checklist.itens || []).forEach((item) => {
+      checklistItemsById.set(item.id, item);
+    });
+  });
+  const activities = [];
+
+  function addActivity({
+    id,
+    title,
+    description = '',
+    dateValues = [],
+    user = '',
+    Icon = Bell,
+    tone = 'info',
+    stageName = '',
+    subitemName = '',
+  }) {
+    const dates = dateValues.filter(Boolean);
+    if (!dates.some((value) => activityDateKey(value) === todayKey)) return;
+    const timeSource = dates.find((value) => activityDateKey(value) === todayKey) || dates[0];
+    const timestamp = Math.max(0, ...dates.map((value) => activityTimestamp(value)));
+
+    activities.push({
+      id,
+      title,
+      description,
+      time: activityTimeLabel(timeSource),
+      timestamp,
+      user: activityUserName(user, users, fallbackUser),
+      Icon,
+      tone,
+      stageName,
+      subitemName,
+    });
+  }
+
+  (data.scheduleLogs || []).forEach((log) => {
+    const context = getScheduleActivityContext(log.scheduleItemId, itemsById);
+    addActivity({
+      id: `log-${log.id}`,
+      title: 'Diario da obra',
+      description: log.observacoes || log.maoObra || log.pedidoMaterial || 'Registro diario atualizado.',
+      dateValues: [log.updatedAt, log.createdAt, log.visitDate],
+      user: log.usuario || log.createdBy || log.updatedBy,
+      Icon: ClipboardCheck,
+      tone: 'primary',
+      ...context,
+    });
+  });
+
+  (data.photos || []).forEach((photo) => {
+    addActivity({
+      id: `photo-${photo.id}`,
+      title: 'Foto adicionada',
+      description: photo.observacao || photo.fileName || photo.nome || 'Registro fotografico da obra.',
+      dateValues: [photo.updatedAt, photo.createdAt, photo.data],
+      user: photo.usuario || photo.createdBy || photo.updatedBy,
+      Icon: Camera,
+      tone: 'photo',
+      stageName: photo.etapa || 'Fotos',
+    });
+  });
+
+  (data.issues || []).forEach((issue) => {
+    addActivity({
+      id: `issue-${issue.id}`,
+      title: 'Pendencia registrada',
+      description: issue.descricao || issue.norma || 'Pendencia da obra.',
+      dateValues: [issue.updatedAt, issue.createdAt, issue.data],
+      user: issue.usuario || issue.createdBy || issue.updatedBy || issue.responsavel,
+      Icon: AlertTriangle,
+      tone: 'danger',
+      stageName: issue.etapa || 'Pendencias',
+    });
+  });
+
+  (data.plsItems || []).forEach((item) => {
+    addActivity({
+      id: `pls-${item.id}`,
+      title: 'PLS Caixa atualizado',
+      description: item.observacao || item.status || 'Registro de vistoria PLS.',
+      dateValues: [item.updatedAt, item.createdAt, item.vistoria],
+      user: item.usuario || item.createdBy || item.updatedBy,
+      Icon: FileCheck2,
+      tone: 'info',
+      stageName: item.etapa || 'PLS Caixa',
+    });
+  });
+
+  (data.checklistResults || []).forEach((result) => {
+    if (!result.checked) return;
+    const checklist = checklistById.get(result.checklistId);
+    const checklistItem = checklistItemsById.get(result.checklistItemId);
+    const context = getScheduleActivityContext(result.scheduleItemId, itemsById);
+    addActivity({
+      id: `check-result-${result.id || `${result.checklistItemId}-${result.checkedAt}`}`,
+      title: 'Checklist conferido',
+      description: checklistItem?.texto || checklist?.titulo || 'Item de checklist marcado.',
+      dateValues: [result.checkedAt, result.updatedAt, result.createdAt],
+      user: result.checkedBy || result.usuario || result.createdBy || result.updatedBy,
+      Icon: CheckCircle2,
+      tone: 'success',
+      ...context,
+    });
+  });
+
+  (data.scheduleItems || [])
+    .filter((item) => item.visible !== false)
+    .forEach((item) => {
+      const context = getScheduleActivityContext(item.id, itemsById);
+      addActivity({
+        id: `schedule-${item.id}`,
+        title: item.parentId ? 'Subitem do cronograma atualizado' : 'Etapa do cronograma atualizada',
+        description: item.status || 'Cronograma atualizado.',
+        dateValues: [item.updatedAt, item.createdAt],
+        user: item.usuario || item.createdBy || item.updatedBy,
+        Icon: CalendarDays,
+        tone: 'schedule',
+        ...context,
+      });
+    });
+
+  (data.rdoReports || []).forEach((report) => {
+    addActivity({
+      id: `rdo-${report.id}`,
+      title: 'RDO salvo',
+      description: report.titulo || activeWork?.nome || 'Relatorio diario de obra.',
+      dateValues: [report.updatedAt, report.createdAt, report.generatedAt, report.reportDate],
+      user: report.usuario || report.createdBy || report.updatedBy,
+      Icon: FileText,
+      tone: 'report',
+      stageName: activeWork?.nome || 'RDO',
+    });
+  });
+
+  return activities.sort((a, b) => b.timestamp - a.timestamp);
+}
+
+function Notifications({ data, activeWork, users, currentUser, selectedCity, setScreen }) {
+  const activities = useMemo(
+    () => buildTodayActivities({ data, users, currentUser, activeWork }),
+    [data, users, currentUser, activeWork],
+  );
+  const activityUsers = new Set(activities.map((activity) => activity.user).filter(Boolean));
+
+  return (
+    <>
+      <PageTitle
+        eyebrow="Notificacoes"
+        title="Atividades de hoje"
+        subtitle={`${formatDateBr(todayIso())} - ${activeWork?.nome || selectedCity?.nome || 'Obras'}`}
+        onBack={() => setScreen(activeWork ? 'workPanel' : 'dashboard')}
+      >
+        <StatusPill status={`${activities.length} registro${activities.length === 1 ? '' : 's'}`} />
+      </PageTitle>
+
+      <section className="notifications-summary">
+        <span><strong>{activities.length}</strong> atividades</span>
+        <span><strong>{activityUsers.size}</strong> usuarios</span>
+        <span><strong>{activeWork?.nome || selectedCity?.nome || 'Todas'}</strong> contexto</span>
+      </section>
+
+      {activities.length ? (
+        <section className="notification-list" aria-label="Atividades realizadas hoje">
+          {activities.map(({ id, title, description, time, user, Icon, tone, stageName, subitemName }) => (
+            <article className={`notification-card ${tone}`} key={id}>
+              <div className="notification-icon">
+                <Icon size={22} aria-hidden="true" />
+              </div>
+              <div>
+                <header>
+                  <strong>{title}</strong>
+                  <span>{time}</span>
+                </header>
+                <p>{description}</p>
+                <div className="notification-meta">
+                  <small>{user}</small>
+                  {stageName ? <small>{stageName}</small> : null}
+                  {subitemName ? <small>{subitemName}</small> : null}
+                </div>
+              </div>
+            </article>
+          ))}
+        </section>
+      ) : (
+        <EmptyNotice
+          Icon={Bell}
+          title="Nenhuma atividade hoje"
+          text="Quando um usuario registrar diario, foto, checklist, PLS, pendencia ou RDO nesta obra, a atividade aparecera aqui."
+        />
+      )}
     </>
   );
 }
@@ -7126,7 +7391,7 @@ function App() {
       );
     }
 
-    const projectScreens = ['workPanel', 'stages', 'stageDetail', 'photos', 'pls', 'schedule', 'issues', 'supplies', 'tools', 'checklist', 'standards', 'stageLibrary', 'workProfile'];
+    const projectScreens = ['workPanel', 'stages', 'stageDetail', 'photos', 'pls', 'schedule', 'issues', 'supplies', 'tools', 'checklist', 'notifications', 'standards', 'stageLibrary', 'workProfile'];
     if (!activeWork && projectScreens.includes(screen)) {
       return (
         <>
@@ -7305,6 +7570,17 @@ function App() {
             checklist={data.checklist}
             checklistResults={data.checklistResults || []}
             scheduleLogs={data.scheduleLogs}
+            setScreen={setScreen}
+          />
+        );
+      case 'notifications':
+        return (
+          <Notifications
+            data={data}
+            activeWork={activeWork}
+            users={obrasUsers}
+            currentUser={currentObrasUser}
+            selectedCity={selectedCity}
             setScreen={setScreen}
           />
         );
