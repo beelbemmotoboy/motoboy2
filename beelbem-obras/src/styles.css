@@ -367,7 +367,7 @@ button {
   display: flex;
   align-items: center;
   gap: 5px;
-  color: #6b7280;
+  color: #111827;
 }
 
 .topbar-city select {
@@ -378,8 +378,8 @@ button {
   color: inherit;
   background-color: transparent;
   font: inherit;
-  font-size: 12px;
-  font-weight: 800;
+  font-size: 16px;
+  font-weight: 900;
   cursor: pointer;
 }
 
