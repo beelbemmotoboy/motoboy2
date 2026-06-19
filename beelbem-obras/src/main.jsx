@@ -1571,7 +1571,7 @@ function WorkPanel({ obra, data, setScreen }) {
     ['Normas aplicaveis', ShieldCheck, 'standards'],
     ['Pendencias', AlertTriangle, 'issues'],
     ['Relatorios', BarChart3, 'reports'],
-    ['Dados da obra', FileText, 'profile'],
+    ['Dados da obra', FileText, 'workProfile'],
   ];
   return (
     <>
@@ -4726,6 +4726,108 @@ function resolveLocation(values) {
   return { city, neighborhood };
 }
 
+function WorkProfile({ activeWork, saving, error, message, canEdit, canDelete, onSave, onDelete, setScreen }) {
+  const initialCityId = activeWork?.cidadeId || cityCatalog.find((city) => normalizeSearch(city.nome) === normalizeSearch(activeWork?.cidade))?.id || cityCatalog[0].id;
+  const [cityId, setCityId] = useState(initialCityId);
+
+  useEffect(() => {
+    setCityId(activeWork?.cidadeId || cityCatalog.find((city) => normalizeSearch(city.nome) === normalizeSearch(activeWork?.cidade))?.id || cityCatalog[0].id);
+  }, [activeWork?.id, activeWork?.cidadeId, activeWork?.cidade]);
+
+  if (!activeWork) {
+    return <EmptyNotice Icon={Building2} title="Obra nao selecionada" text="Selecione uma obra para editar os dados cadastrais." />;
+  }
+
+  const neighborhoods = neighborhoodCatalog[cityId] || [];
+  const currentNeighborhood = neighborhoods.find((neighborhood) => neighborhood.id === activeWork.bairroId)
+    || neighborhoods.find((neighborhood) => normalizeSearch(neighborhood.nome) === normalizeSearch(activeWork.bairro));
+  const neighborhoodId = currentNeighborhood?.id
+    || neighborhoods[0]?.id
+    || '';
+
+  function submit(event) {
+    event.preventDefault();
+    if (!canEdit || saving) return;
+    onSave(Object.fromEntries(new FormData(event.currentTarget).entries()));
+  }
+
+  function confirmDelete() {
+    const confirmed = window.confirm('Excluir esta obra? Esta acao remove a obra e seus registros vinculados.');
+    if (confirmed) onDelete();
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <PageTitle eyebrow="Dados da obra" title={activeWork.nome} subtitle="Cadastro, localizacao e informacoes tecnicas da obra." onBack={() => setScreen('workPanel')}>
+        <StatusPill status={getEffectiveWorkStatus(activeWork)} />
+      </PageTitle>
+      {message ? (
+        <section className="success-strip">
+          <CheckCircle2 size={22} aria-hidden="true" />
+          <span>{message}</span>
+        </section>
+      ) : null}
+      {error ? <p className="auth-message error">{error}</p> : null}
+      {!canEdit ? (
+        <section className="warning-strip">
+          <AlertTriangle size={22} aria-hidden="true" />
+          <span>Somente proprietarios, administradores e engenheiros podem alterar os dados da obra.</span>
+        </section>
+      ) : null}
+
+      <section className="profile-summary-grid">
+        <article className="profile-card">
+          <Building2 size={34} aria-hidden="true" />
+          <strong>{activeWork.nome}</strong>
+          <span>{activeWork.cliente || 'Cliente nao informado'}</span>
+          <p>{activeWork.endereco || 'Endereco nao informado'}</p>
+        </article>
+        <article className="profile-card">
+          <MapPinned size={34} aria-hidden="true" />
+          <strong>{activeWork.cidade || 'Cidade nao informada'}</strong>
+          <span>{activeWork.bairro || 'Bairro nao informado'}</span>
+          <p>{activeWork.quadra || activeWork.lote ? `Quadra ${activeWork.quadra || '-'} / Lote ${activeWork.lote || '-'}` : 'Quadra e lote nao informados'}</p>
+        </article>
+      </section>
+
+      <section className="form-grid profile-edit-form">
+        <Field label="Nome da obra" name="nome" value={activeWork.nome || ''} required disabled={!canEdit || saving} />
+        <Field label="Cliente" name="cliente" value={activeWork.cliente || ''} required disabled={!canEdit || saving} />
+        <label className="field">
+          <span>Cidade</span>
+          <select name="cidadeId" value={cityId} onChange={(event) => setCityId(event.target.value)} disabled={!canEdit || saving}>
+            {cityCatalog.map((city) => (
+              <option value={city.id} key={city.id}>{city.nome}</option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Bairro</span>
+          <select name="bairroId" key={cityId} defaultValue={neighborhoodId} disabled={!canEdit || saving}>
+            {neighborhoods.map((neighborhood) => (
+              <option value={neighborhood.id} key={neighborhood.id}>{neighborhood.nome}</option>
+            ))}
+          </select>
+        </label>
+        <Field label="Endereco" name="endereco" value={activeWork.endereco || ''} wide required disabled={!canEdit || saving} />
+        <Field label="Quadra" name="quadra" value={activeWork.quadra || ''} disabled={!canEdit || saving} />
+        <Field label="Lote" name="lote" value={activeWork.lote || ''} disabled={!canEdit || saving} />
+        <Field label="Area construida" name="areaConstruida" value={activeWork.areaConstruida || ''} disabled={!canEdit || saving} />
+        <Field label="Area do terreno" name="areaTerreno" value={activeWork.areaTerreno || ''} disabled={!canEdit || saving} />
+        <Field label="Numero de pavimentos" name="pavimentos" value={activeWork.pavimentos || ''} disabled={!canEdit || saving} />
+        <Field label="Responsavel tecnico" name="responsavel" value={activeWork.responsavel || ''} disabled={!canEdit || saving} />
+        <TextAreaField label="Observacoes" name="observacoes" value={activeWork.observacoes || ''} disabled={!canEdit || saving} />
+      </section>
+
+      <div className="form-actions">
+        <ActionButton Icon={Save} type="submit" disabled={!canEdit || saving}>{saving ? 'Salvando...' : 'Salvar dados da obra'}</ActionButton>
+        {canDelete ? <ActionButton Icon={Trash2} variant="danger" onClick={confirmDelete} disabled={saving}>Excluir obra</ActionButton> : null}
+        <ActionButton Icon={XCircle} variant="ghost" onClick={() => setScreen('workPanel')} disabled={saving}>Voltar</ActionButton>
+      </div>
+    </form>
+  );
+}
+
 function buildAiProjectDraft(result, selectedCity) {
   const values = result.valores || {};
   const requestedCity = normalizeSearch(values.cidade);
@@ -4827,6 +4929,9 @@ function App() {
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileError, setProfileError] = useState('');
   const [profileMessage, setProfileMessage] = useState('');
+  const [workProfileSaving, setWorkProfileSaving] = useState(false);
+  const [workProfileError, setWorkProfileError] = useState('');
+  const [workProfileMessage, setWorkProfileMessage] = useState('');
   const [aiProjectDraft, setAiProjectDraft] = useState(null);
   const [selectedCity, setSelectedCity] = useState(cityCatalog[0]);
   const [selectedNeighborhood, setSelectedNeighborhood] = useState(null);
@@ -5585,9 +5690,9 @@ function App() {
   async function saveWorkProfile(values) {
     if (!activeWork || !canEditWorkProfile) return;
 
-    setProfileSaving(true);
-    setProfileError('');
-    setProfileMessage('');
+    setWorkProfileSaving(true);
+    setWorkProfileError('');
+    setWorkProfileMessage('');
 
     const { city, neighborhood } = resolveLocation(values);
     const patch = {
@@ -5619,20 +5724,20 @@ function App() {
       }));
       setSelectedCity(city);
       setSelectedNeighborhood(neighborhood);
-      setProfileMessage('Cadastro da obra atualizado.');
+      setWorkProfileMessage('Cadastro da obra atualizado.');
     } catch (error) {
-      setProfileError(error.message || 'Nao foi possivel atualizar o cadastro da obra.');
+      setWorkProfileError(error.message || 'Nao foi possivel atualizar o cadastro da obra.');
     } finally {
-      setProfileSaving(false);
+      setWorkProfileSaving(false);
     }
   }
 
   async function deleteActiveWork() {
     if (!activeWork || !canDeleteWorkProfile) return;
 
-    setProfileSaving(true);
-    setProfileError('');
-    setProfileMessage('');
+    setWorkProfileSaving(true);
+    setWorkProfileError('');
+    setWorkProfileMessage('');
 
     try {
       if (supabaseConfigured && session) {
@@ -5662,9 +5767,9 @@ function App() {
       setPhotoUrlsProjectId('');
       setScreen('dashboard');
     } catch (error) {
-      setProfileError(error.message || 'Nao foi possivel excluir a obra.');
+      setWorkProfileError(error.message || 'Nao foi possivel excluir a obra.');
     } finally {
-      setProfileSaving(false);
+      setWorkProfileSaving(false);
     }
   }
 
@@ -6855,7 +6960,7 @@ function App() {
       );
     }
 
-    const projectScreens = ['workPanel', 'stages', 'stageDetail', 'photos', 'pls', 'schedule', 'issues', 'supplies', 'tools', 'checklist', 'standards', 'stageLibrary', 'profile'];
+    const projectScreens = ['workPanel', 'stages', 'stageDetail', 'photos', 'pls', 'schedule', 'issues', 'supplies', 'tools', 'checklist', 'standards', 'stageLibrary', 'workProfile'];
     if (!activeWork && projectScreens.includes(screen)) {
       return (
         <>
@@ -7041,6 +7146,20 @@ function App() {
             message={rdoMessage}
             setScreen={setScreen}
             onSaveRdo={saveRdoReport}
+          />
+        );
+      case 'workProfile':
+        return (
+          <WorkProfile
+            activeWork={activeWork}
+            saving={workProfileSaving}
+            error={workProfileError}
+            message={workProfileMessage}
+            canEdit={canEditWorkProfile}
+            canDelete={canDeleteWorkProfile}
+            onSave={saveWorkProfile}
+            onDelete={deleteActiveWork}
+            setScreen={setScreen}
           />
         );
       case 'stageLibrary':
