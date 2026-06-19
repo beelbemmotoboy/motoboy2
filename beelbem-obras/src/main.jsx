@@ -685,7 +685,7 @@ function activityUserName(value, users = [], fallback = 'Usuario nao informado')
     || normalizeSearch(user.email) === normalizeSearch(text)
     || normalizeSearch(user.nome) === normalizeSearch(text)
   ));
-  return match?.nome || text || fallback;
+  return match?.nome || fallback;
 }
 
 function requestStatusLabel(status) {
