@@ -2256,20 +2256,45 @@ button.metric-card {
 }
 
 .checklist-stage-group {
-  border: 1px solid #dbeafe;
-  border-radius: 8px;
+  border: 1px solid #bfdbfe;
+  border-left: 5px solid #2563eb;
+  border-radius: 10px;
   overflow: hidden;
   background: #fff;
 }
 
-.checklist-stage-group > header {
+.checklist-stage-group > summary {
+  list-style: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  border-bottom: 3px solid #2563eb;
   padding: 16px;
-  color: #fff;
-  background: rgba(37, 99, 235, 0.9);
+  color: #0f172a;
+  background: #fff;
+  cursor: pointer;
+}
+
+.checklist-stage-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.checklist-stage-group > summary::after {
+  content: '+';
+  min-width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: #2563eb;
+  background: #eff6ff;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.checklist-stage-group[open] > summary::after {
+  content: '-';
 }
 
 .checklist-stage-group h2 {
@@ -2277,13 +2302,17 @@ button.metric-card {
   font-size: 21px;
 }
 
-.checklist-stage-group header span {
-  color: #dbeafe;
-  font-weight: 800;
+.checklist-stage-group summary span {
+  color: #2563eb;
+  font-weight: 600;
 }
 
 .checklist-stage-group > div {
   padding: 16px;
+}
+
+.checklist-stage-group:not([open]) > div {
+  display: none;
 }
 
 .checklist-subitem-card {

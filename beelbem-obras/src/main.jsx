@@ -2731,11 +2731,11 @@ function ChecklistOverview({ scheduleItems = [], checklist = [], checklistResult
       {stageGroups.length ? (
         <section className="checklist-overview">
           {stageGroups.map((group) => (
-            <section className="checklist-stage-group" key={group.stage.id}>
-              <header>
+            <details className="checklist-stage-group" key={group.stage.id}>
+              <summary>
                 <h2>{group.stage.nome}</h2>
                 <span>{group.subitems.length} subitem{group.subitems.length === 1 ? '' : 's'} com checklist</span>
-              </header>
+              </summary>
               <div>
                 {group.subitems.map(({ item, checklist: itemChecklist, checkedDetails, totalItems: itemTotal, checkedItems }) => {
                   const percent = itemTotal ? Math.round((checkedItems / itemTotal) * 100) : 0;
@@ -2770,7 +2770,7 @@ function ChecklistOverview({ scheduleItems = [], checklist = [], checklistResult
                   );
                 })}
               </div>
-            </section>
+            </details>
           ))}
         </section>
       ) : (
