@@ -2466,14 +2466,6 @@ function checklistExecutionInitialIds(checklist, results, log) {
   return checkedIds;
 }
 
-function checklistExecutionSummary(checklist, checkedIds) {
-  if (!checklist?.itens?.length || !checkedIds?.size) return '';
-  return checklist.itens
-    .filter((item) => checkedIds.has(item.id))
-    .map((item) => item.texto)
-    .join('\n');
-}
-
 function subitemChecklistResults(checklistResults, item, checklist) {
   return (checklistResults || []).filter((result) => (
     result.scheduleItemId === item.id
@@ -2972,8 +2964,6 @@ function Schedule({
         <ScheduleLogModal
           item={logItem}
           log={editingLog}
-          checklist={findChecklistForScheduleItem(checklist, logItem)}
-          checklistResults={editingLog ? checklistResults.filter((result) => result.scheduleLogId === editingLog.id) : []}
           saving={saving}
           onClose={() => {
             setLogItem(null);
@@ -3798,46 +3788,18 @@ function ScheduleItemModal({ item, saving, onClose, onSave }) {
   );
 }
 
-function ScheduleLogModal({ item, log, checklist, checklistResults = [], saving, onClose, onSave, onDelete }) {
+function ScheduleLogModal({ item, log, saving, onClose, onSave, onDelete }) {
   const editing = Boolean(log?.id);
   const formKey = log?.id || `new-${item.id}`;
-  const [checkedItemIds, setCheckedItemIds] = useState(() => (
-    checklistExecutionInitialIds(checklist, checklistResults, log)
-  ));
-
-  useEffect(() => {
-    setCheckedItemIds(checklistExecutionInitialIds(checklist, checklistResults, log));
-  }, [checklist?.id, log?.id, checklistResults.length]);
-
-  function toggleChecklistItem(itemId) {
-    setCheckedItemIds((current) => {
-      const next = new Set(current);
-      if (next.has(itemId)) {
-        next.delete(itemId);
-      } else {
-        next.add(itemId);
-      }
-      return next;
-    });
-  }
 
   function submit(event) {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.currentTarget).entries());
     const submitter = event.nativeEvent.submitter;
-    const checklistResultDrafts = (checklist?.itens || []).map((checkItem) => ({
-      scheduleItemId: item.id,
-      scheduleLogId: log?.id || '',
-      checklistId: checklist.id,
-      checklistItemId: checkItem.id,
-      checked: checkedItemIds.has(checkItem.id),
-    }));
     onSave({
       ...values,
       id: log?.id || '',
       scheduleItemId: item.id,
-      checklist: checklistExecutionSummary(checklist, checkedItemIds),
-      checklistResults: checklistResultDrafts,
     }, submitter?.dataset?.action === 'photo');
   }
 
@@ -3858,12 +3820,6 @@ function ScheduleLogModal({ item, log, checklist, checklistResults = [], saving,
         </div>
         <div className="form-grid modal-fields">
           <Field label="Data da visita" name="visitDate" type="date" value={log?.visitDate || new Date().toISOString().slice(0, 10)} required />
-          <ScheduleLogChecklist
-            checklist={checklist}
-            checkedItemIds={checkedItemIds}
-            onToggle={toggleChecklistItem}
-            disabled={saving}
-          />
           <TextAreaField label="Observacoes" name="observacoes" value={log?.observacoes || ''} />
           <TextAreaField label="Pedido de material" name="pedidoMaterial" value={log?.pedidoMaterial || ''} />
           <TextAreaField label="Ferramentas necessarias ou usadas" name="ferramentas" value={log?.ferramentas || ''} />
@@ -3878,36 +3834,6 @@ function ScheduleLogModal({ item, log, checklist, checklistResults = [], saving,
         </div>
       </form>
     </div>
-  );
-}
-
-function ScheduleLogChecklist({ checklist, checkedItemIds, onToggle, disabled }) {
-  const items = checklist?.itens || [];
-
-  return (
-    <section className="field wide schedule-log-checklist">
-      <span>Checklist executado</span>
-      {items.length ? (
-        <>
-          {checklist?.procedimento ? <p>{checklist.procedimento}</p> : null}
-          <div>
-            {items.map((item) => (
-              <label key={item.id}>
-                <input
-                  type="checkbox"
-                  checked={checkedItemIds.has(item.id)}
-                  disabled={disabled}
-                  onChange={() => onToggle(item.id)}
-                />
-                <span>{item.texto}</span>
-              </label>
-            ))}
-          </div>
-        </>
-      ) : (
-        <p>Nenhum checklist cadastrado para este subitem.</p>
-      )}
-    </section>
   );
 }
 
