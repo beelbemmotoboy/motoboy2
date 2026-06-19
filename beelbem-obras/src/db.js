@@ -10,6 +10,8 @@ const photoBucket = 'obras-photos';
 const userAvatarBucket = 'obras-user-avatars';
 const accountLogoBucket = 'obras-account-logos';
 const photoThumbnailTable = 'obras_photo_thumbnails';
+const notificationsTable = 'obras_notifications';
+const pushSubscriptionsTable = 'obras_push_subscriptions';
 
 export const supabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 export const usingLegacySupabaseConfig = Boolean(
@@ -178,6 +180,20 @@ export function obrasUserToDb(user, accountId) {
     ...(user.avatarFileName !== undefined ? { avatar_file_name: user.avatarFileName || null } : {}),
     ...(user.avatarMimeType !== undefined ? { avatar_mime_type: user.avatarMimeType || null } : {}),
     ...(user.avatarFileSize !== undefined ? { avatar_file_size: user.avatarFileSize || null } : {}),
+  };
+}
+
+export function obrasNotificationFromDb(row) {
+  return {
+    id: row.id,
+    accountId: row.account_id || '',
+    projectId: row.project_id || '',
+    actorUserId: row.actor_user_id || '',
+    type: row.type || '',
+    title: row.title || '',
+    body: row.body || '',
+    payload: row.payload || {},
+    createdAt: row.created_at || '',
   };
 }
 
@@ -687,6 +703,88 @@ export async function fetchObrasUsers() {
 
   if (error) throw error;
   return Promise.all((data || []).map((row) => withSignedObrasUserAvatar(obrasUserFromDb(row))));
+}
+
+export async function fetchObrasNotifications({ limit = 80 } = {}) {
+  const { data, error } = await supabase
+    .from(notificationsTable)
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) throw error;
+  return (data || []).map(obrasNotificationFromDb);
+}
+
+export function subscribeObrasNotifications(accountId, callback) {
+  if (!supabase || !accountId) return () => {};
+
+  const channel = supabase
+    .channel(`obras-notifications-${accountId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: notificationsTable,
+        filter: `account_id=eq.${accountId}`,
+      },
+      (payload) => callback(obrasNotificationFromDb(payload.new)),
+    )
+    .subscribe();
+
+  return () => {
+    void supabase.removeChannel(channel);
+  };
+}
+
+export async function insertObrasNotification({ projectId = '', type, title, body, payload = {} }) {
+  const { data, error } = await supabase
+    .from(notificationsTable)
+    .insert({
+      project_id: projectId || null,
+      type,
+      title,
+      body,
+      payload,
+    })
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return obrasNotificationFromDb(data);
+}
+
+export async function upsertObrasPushSubscription(subscription) {
+  const { endpoint, keys, userAgent } = subscription || {};
+  if (!endpoint || !keys?.p256dh || !keys?.auth) {
+    throw new Error('Assinatura push invalida.');
+  }
+
+  const { data, error } = await supabase
+    .from(pushSubscriptionsTable)
+    .upsert({
+      endpoint,
+      p256dh: keys.p256dh,
+      auth: keys.auth,
+      user_agent: userAgent || null,
+      active: true,
+    }, { onConflict: 'endpoint' })
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+export async function sendObrasPushNotification(notificationId) {
+  if (!notificationId) return null;
+  const { data, error } = await supabase.functions.invoke('send-obras-push', {
+    body: { notificationId },
+  });
+
+  if (error) throw error;
+  return data;
 }
 
 export async function fetchObrasAccounts() {

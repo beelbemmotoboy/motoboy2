@@ -897,6 +897,47 @@ button.metric-card {
   font-size: 20px;
 }
 
+.push-permission-card {
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: -4px 0 18px;
+  padding: 14px;
+  background: #fff;
+}
+
+.push-permission-card div {
+  display: grid;
+  gap: 3px;
+}
+
+.push-permission-card strong {
+  color: #0f172a;
+  font-size: 16px;
+}
+
+.push-permission-card span {
+  color: #64748b;
+  font-weight: 800;
+}
+
+.push-permission-card button {
+  min-height: 40px;
+  border: 0;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 13px;
+  color: #fff;
+  background: #2563eb;
+  font-weight: 900;
+}
+
 .notification-list {
   display: grid;
   gap: 12px;
@@ -3954,6 +3995,15 @@ body.gantt-resizing * {
   .schedule-toolbar .schedule-gantt-link {
     width: 100%;
     margin-left: 0;
+  }
+
+  .push-permission-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .push-permission-card button {
+    width: 100%;
   }
 
   .gantt-backdrop {

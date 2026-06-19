@@ -60,6 +60,7 @@ import {
   fetchProjects,
   fetchCommercialPlans,
   fetchObrasAccounts,
+  fetchObrasNotifications,
   fetchObrasSubscriptions,
   fetchObrasUsers,
   fetchSignupRequests,
@@ -68,6 +69,7 @@ import {
   insertScheduleItemChecklistResults,
   insertChild,
   insertPhotoThumbnail,
+  insertObrasNotification,
   insertObrasUser,
   insertProject,
   insertSignupRequest,
@@ -76,7 +78,9 @@ import {
   replaceScheduleChecklistResults,
   signIn,
   signOut,
+  subscribeObrasNotifications,
   supabaseConfigured,
+  sendObrasPushNotification,
   updateCurrentObrasUserProfile,
   updateCurrentUserPassword,
   updateChild,
@@ -84,12 +88,14 @@ import {
   updateObrasUser,
   updateProject,
   updateSignupRequest,
+  upsertObrasPushSubscription,
   uploadObrasAccountLogo,
   uploadObrasUserAvatar,
   uploadPhotoFile,
 } from './db.js';
 import { analisarProjetoComGemini, geminiProjectConfig } from './analisa_projeto_gemini.js';
 import { getBestPhotoUrl, prepareAvatarUpload, prepareLogoUpload, preparePhotoUpload } from './photoFunctions.js';
+import { enableObrasPushNotifications, getPushSupportStatus, showObrasBrowserNotification } from './pushNotifications.js';
 import {
   DEFAULT_SCHEDULE_SOURCE,
   buildScheduleCopyPlan,
@@ -1820,12 +1826,65 @@ function buildTodayActivities({ data, users = [], currentUser = null, activeWork
   return activities.sort((a, b) => b.timestamp - a.timestamp);
 }
 
-function Notifications({ data, activeWork, users, currentUser, selectedCity, setScreen }) {
-  const activities = useMemo(
+function buildStoredNotificationActivities({ notifications = [], users = [], currentUser = null }) {
+  const todayKey = todayIso();
+  const fallbackUser = currentUser?.nome || currentUser?.email || 'Usuario nao informado';
+  return (notifications || [])
+    .filter((notification) => activityDateKey(notification.createdAt) === todayKey)
+    .map((notification) => ({
+      id: `notification-${notification.id}`,
+      title: notification.title || 'Atividade no Obras',
+      description: notification.body || '',
+      time: activityTimeLabel(notification.createdAt),
+      timestamp: activityTimestamp(notification.createdAt),
+      user: activityUserName(notification.actorUserId, users, fallbackUser),
+      Icon: {
+        photo_added: Camera,
+        new_work: Building2,
+        daily_log: ClipboardCheck,
+        subitem_updated: CalendarDays,
+      }[notification.type] || Bell,
+      tone: {
+        photo_added: 'photo',
+        new_work: 'success',
+        daily_log: 'primary',
+        subitem_updated: 'schedule',
+      }[notification.type] || 'info',
+      stageName: notification.payload?.stageName || notification.payload?.workName || '',
+      subitemName: notification.payload?.subitemName || '',
+    }))
+    .sort((a, b) => b.timestamp - a.timestamp);
+}
+
+function Notifications({
+  data,
+  activeWork,
+  users,
+  currentUser,
+  selectedCity,
+  notifications = [],
+  pushSupport,
+  pushMessage,
+  onEnablePush,
+  setScreen,
+}) {
+  const fallbackActivities = useMemo(
     () => buildTodayActivities({ data, users, currentUser, activeWork }),
     [data, users, currentUser, activeWork],
   );
+  const storedActivities = useMemo(
+    () => buildStoredNotificationActivities({ notifications, users, currentUser }),
+    [notifications, users, currentUser],
+  );
+  const activities = storedActivities.length ? storedActivities : fallbackActivities;
   const activityUsers = new Set(activities.map((activity) => activity.user).filter(Boolean));
+  const canEnablePush = pushSupport !== 'unsupported' && pushSupport !== 'granted';
+  const pushStatusText = {
+    granted: 'Push ativo neste navegador',
+    denied: 'Permissao de push bloqueada no navegador',
+    default: 'Push ainda nao ativado neste navegador',
+    unsupported: 'Este navegador nao suporta push',
+  }[pushSupport] || 'Status do push desconhecido';
 
   return (
     <>
@@ -1842,6 +1901,18 @@ function Notifications({ data, activeWork, users, currentUser, selectedCity, set
         <span><strong>{activities.length}</strong> atividades</span>
         <span><strong>{activityUsers.size}</strong> usuarios</span>
         <span><strong>{activeWork?.nome || selectedCity?.nome || 'Todas'}</strong> contexto</span>
+      </section>
+
+      <section className="push-permission-card">
+        <div>
+          <strong>Notificacoes push</strong>
+          <span>{pushMessage || pushStatusText}</span>
+        </div>
+        {canEnablePush ? (
+          <button type="button" onClick={onEnablePush}>
+            <Bell size={18} aria-hidden="true" /> Ativar push
+          </button>
+        ) : null}
       </section>
 
       {activities.length ? (
@@ -5265,6 +5336,11 @@ function App() {
   const [rdoError, setRdoError] = useState('');
   const [rdoMessage, setRdoMessage] = useState('');
   const [obrasAccounts, setObrasAccounts] = useState(() => (supabaseConfigured ? [] : localObrasAccounts));
+  const [obrasNotifications, setObrasNotifications] = useState([]);
+  const [pushSupport, setPushSupport] = useState(() => (
+    typeof window === 'undefined' ? 'unsupported' : getPushSupportStatus()
+  ));
+  const [pushMessage, setPushMessage] = useState('');
   const [accountsLoading, setAccountsLoading] = useState(false);
   const [accountsSaving, setAccountsSaving] = useState(false);
   const [accountsError, setAccountsError] = useState('');
@@ -5443,6 +5519,8 @@ function App() {
         setCurrentObrasUser(null);
         setObrasUsers([]);
         setObrasAccounts([]);
+        setObrasNotifications([]);
+        setPushMessage('');
         setData(remoteInitialData);
         setSelectedWorkId('');
         setPlatformAdmin(!supabaseConfigured);
@@ -5553,6 +5631,94 @@ function App() {
     projectDetailsLoading,
     session?.user?.id,
   ]);
+
+  function upsertNotification(notification, { showBrowser = false } = {}) {
+    if (!notification?.id) return;
+
+    setObrasNotifications((current) => {
+      const withoutDuplicate = current.filter((item) => item.id !== notification.id);
+      return [notification, ...withoutDuplicate]
+        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+        .slice(0, 100);
+    });
+
+    if (showBrowser && notification.actorUserId !== session?.user?.id) {
+      void showObrasBrowserNotification(notification).catch(() => {});
+    }
+  }
+
+  async function notifyCompany({ projectId = '', type, title, body, payload = {} }) {
+    if (!supabaseConfigured || !session || !currentObrasUser?.accountId || !type || !title || !body) {
+      return null;
+    }
+
+    try {
+      const notification = await insertObrasNotification({
+        projectId,
+        type,
+        title,
+        body,
+        payload: {
+          ...payload,
+          actorName: currentObrasUser?.nome || currentObrasUser?.email || 'Usuario Obras',
+        },
+      });
+      upsertNotification(notification);
+      void sendObrasPushNotification(notification.id).catch((error) => {
+        console.warn('Nao foi possivel enviar push do Obras.', error);
+      });
+      return notification;
+    } catch (error) {
+      console.warn('Nao foi possivel registrar notificacao do Obras.', error);
+      return null;
+    }
+  }
+
+  async function enablePushForCurrentUser() {
+    if (!supabaseConfigured || !session) {
+      setPushMessage('Entre no Obras para ativar notificacoes push.');
+      return;
+    }
+
+    setPushMessage('Solicitando permissao de notificacao...');
+    try {
+      const result = await enableObrasPushNotifications(upsertObrasPushSubscription);
+      setPushSupport(getPushSupportStatus());
+      setPushMessage(
+        result.mode === 'push'
+          ? 'Push ativo para este navegador.'
+          : 'Notificacoes locais ativas. Falta configurar a chave push para envio em segundo plano.',
+      );
+    } catch (error) {
+      setPushSupport(getPushSupportStatus());
+      setPushMessage(error.message || 'Nao foi possivel ativar notificacoes push.');
+    }
+  }
+
+  useEffect(() => {
+    if (!supabaseConfigured || !session?.user?.id || !currentObrasUser?.accountId) {
+      setObrasNotifications([]);
+      return undefined;
+    }
+
+    let active = true;
+    void fetchObrasNotifications({ limit: 100 })
+      .then((notifications) => {
+        if (active) setObrasNotifications(notifications);
+      })
+      .catch((error) => {
+        console.warn('Nao foi possivel carregar notificacoes do Obras.', error);
+      });
+
+    const unsubscribe = subscribeObrasNotifications(currentObrasUser.accountId, (notification) => {
+      if (active) upsertNotification(notification, { showBrowser: true });
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [session?.user?.id, currentObrasUser?.accountId]);
 
   async function hydrateRemoteSession() {
     setSessionHydrating(true);
@@ -5954,6 +6120,8 @@ function App() {
       setCurrentObrasUser(supabaseConfigured ? null : localObrasUsers[0]);
       setObrasUsers(supabaseConfigured ? [] : localObrasUsers);
       setObrasAccounts(supabaseConfigured ? [] : localObrasAccounts);
+      setObrasNotifications([]);
+      setPushMessage('');
       setPlatformAdmin(!supabaseConfigured);
       setProjectDataProjectId('');
       setLoadedProjectCollections([]);
@@ -6041,6 +6209,17 @@ function App() {
     setSelectedWorkId(nextWork.id);
     setSelectedCity(city);
     setSelectedNeighborhood(neighborhood);
+    void notifyCompany({
+      projectId: nextWork.id,
+      type: 'new_work',
+      title: 'Nova obra cadastrada',
+      body: `${currentObrasUser?.nome || 'Usuario Obras'} cadastrou a obra ${nextWork.nome} em ${city.nome}.`,
+      payload: {
+        workName: nextWork.nome,
+        city: city.nome,
+        neighborhood: neighborhood.nome,
+      },
+    });
     setScreen('workPanel');
   }
 
@@ -6320,6 +6499,21 @@ function App() {
 
       const nextItems = deriveScheduleStages(rawItems);
       await persistScheduleDerivations(previousItems, nextItems);
+      if (values.id && saved?.parentId) {
+        const itemsById = new Map(nextItems.map((item) => [item.id, item]));
+        const context = getScheduleActivityContext(saved.id, itemsById);
+        void notifyCompany({
+          projectId: activeWork.id,
+          type: 'subitem_updated',
+          title: 'Subitem editado',
+          body: `${currentObrasUser?.nome || 'Usuario Obras'} editou ${context.subitemName || saved.nome} em ${activeWork.nome}.`,
+          payload: {
+            workName: activeWork.nome,
+            scheduleItemId: saved.id,
+            ...context,
+          },
+        });
+      }
       return saved;
     } catch (error) {
       setScheduleError(error.message || 'Nao foi possivel salvar o item do cronograma.');
@@ -6342,6 +6536,22 @@ function App() {
         await updateChild('scheduleItems', id, patch);
       }
       await persistScheduleDerivations(previousItems, nextItems);
+      const updatedItem = nextItems.find((item) => item.id === id);
+      if (updatedItem?.parentId) {
+        const itemsById = new Map(nextItems.map((item) => [item.id, item]));
+        const context = getScheduleActivityContext(id, itemsById);
+        void notifyCompany({
+          projectId: activeWork.id,
+          type: 'subitem_updated',
+          title: 'Subitem editado',
+          body: `${currentObrasUser?.nome || 'Usuario Obras'} atualizou ${context.subitemName || updatedItem.nome} em ${activeWork.nome}.`,
+          payload: {
+            workName: activeWork.nome,
+            scheduleItemId: id,
+            ...context,
+          },
+        });
+      }
       return true;
     } catch (error) {
       setScheduleError(error.message || 'Nao foi possivel atualizar o cronograma.');
@@ -6495,6 +6705,19 @@ function App() {
             ]
           : current.checklistResults,
       }));
+      const itemsById = new Map((data.scheduleItems || []).map((item) => [item.id, item]));
+      const context = getScheduleActivityContext(nextLog.scheduleItemId, itemsById);
+      void notifyCompany({
+        projectId: activeWork.id,
+        type: 'daily_log',
+        title: nextLog.id ? 'Diario da obra atualizado' : 'Diario da obra registrado',
+        body: `${currentObrasUser?.nome || 'Usuario Obras'} ${nextLog.id ? 'atualizou' : 'registrou'} diario em ${context.subitemName || context.stageName} - ${activeWork.nome}.`,
+        payload: {
+          workName: activeWork.nome,
+          scheduleLogId: saved.id,
+          ...context,
+        },
+      });
       return saved;
     } catch (error) {
       setScheduleError(error.message || 'Nao foi possivel salvar o diario da obra.');
@@ -6653,6 +6876,18 @@ function App() {
           : stage
       )),
     }));
+    void notifyCompany({
+      projectId: activeWork.id,
+      type: 'photo_added',
+      title: nextPhotos.length > 1 ? 'Fotos adicionadas' : 'Foto adicionada',
+      body: `${currentObrasUser?.nome || 'Usuario Obras'} adicionou ${nextPhotos.length} foto${nextPhotos.length > 1 ? 's' : ''} em ${etapa} - ${activeWork.nome}.`,
+      payload: {
+        workName: activeWork.nome,
+        stageName: etapa,
+        photoCount: nextPhotos.length,
+        photoIds: nextPhotos.map((photo) => photo.id),
+      },
+    });
     setPhotoSaving(false);
     setPhotoDraftStage(null);
     setScreen('photos');
@@ -7507,6 +7742,10 @@ function App() {
             users={obrasUsers}
             currentUser={currentObrasUser}
             selectedCity={selectedCity}
+            notifications={obrasNotifications}
+            pushSupport={pushSupport}
+            pushMessage={pushMessage}
+            onEnablePush={enablePushForCurrentUser}
             setScreen={setScreen}
           />
         );
