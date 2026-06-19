@@ -2713,6 +2713,18 @@ function ChecklistOverview({ scheduleItems = [], checklist = [], checklistResult
   const totalChecklists = stageGroups.reduce((total, group) => total + group.subitems.length, 0);
   const totalItems = stageGroups.reduce((total, group) => total + group.subitems.reduce((sum, entry) => sum + entry.totalItems, 0), 0);
   const totalChecked = stageGroups.reduce((total, group) => total + group.subitems.reduce((sum, entry) => sum + entry.checkedItems, 0), 0);
+  const todayDate = parseScheduleDate(todayIso());
+  const checklistStageState = (group) => {
+    const groupTotalItems = group.subitems.reduce((sum, entry) => sum + entry.totalItems, 0);
+    const groupCheckedItems = group.subitems.reduce((sum, entry) => sum + entry.checkedItems, 0);
+    if (groupTotalItems > 0 && groupCheckedItems >= groupTotalItems) return 'done';
+    const hasOverduePending = group.subitems.some(({ item, totalItems: itemTotal, checkedItems }) => {
+      if (itemTotal > 0 && checkedItems >= itemTotal) return false;
+      const plannedEnd = parseScheduleDate(item.fimPrevisto);
+      return plannedEnd && todayDate && plannedEnd < todayDate;
+    });
+    return hasOverduePending ? 'late' : 'open';
+  };
 
   return (
     <>
@@ -2730,48 +2742,51 @@ function ChecklistOverview({ scheduleItems = [], checklist = [], checklistResult
 
       {stageGroups.length ? (
         <section className="checklist-overview">
-          {stageGroups.map((group) => (
-            <details className="checklist-stage-group" key={group.stage.id}>
-              <summary>
-                <h2>{group.stage.nome}</h2>
-                <span>{group.subitems.length} subitem{group.subitems.length === 1 ? '' : 's'} com checklist</span>
-              </summary>
-              <div>
-                {group.subitems.map(({ item, checklist: itemChecklist, checkedDetails, totalItems: itemTotal, checkedItems }) => {
-                  const percent = itemTotal ? Math.round((checkedItems / itemTotal) * 100) : 0;
-                  return (
-                    <article className="checklist-subitem-card" key={item.id}>
-                      <div className="checklist-subitem-head">
-                        <div>
-                          <strong>{item.nome}</strong>
-                          <span>{itemChecklist.titulo || 'Checklist tecnico'}</span>
+          {stageGroups.map((group) => {
+            const groupState = checklistStageState(group);
+            return (
+              <details className={`checklist-stage-group checklist-stage-${groupState}`} key={group.stage.id}>
+                <summary>
+                  <h2>{group.stage.nome}</h2>
+                  <span>{group.subitems.length} subitem{group.subitems.length === 1 ? '' : 's'} com checklist</span>
+                </summary>
+                <div>
+                  {group.subitems.map(({ item, checklist: itemChecklist, checkedDetails, totalItems: itemTotal, checkedItems }) => {
+                    const percent = itemTotal ? Math.round((checkedItems / itemTotal) * 100) : 0;
+                    return (
+                      <article className="checklist-subitem-card" key={item.id}>
+                        <div className="checklist-subitem-head">
+                          <div>
+                            <strong>{item.nome}</strong>
+                            <span>{itemChecklist.titulo || 'Checklist tecnico'}</span>
+                          </div>
+                          <StatusPill status={checkedItems >= itemTotal && itemTotal > 0 ? 'Concluida' : checkedItems ? 'Em andamento' : 'Nao iniciado'} />
                         </div>
-                        <StatusPill status={checkedItems >= itemTotal && itemTotal > 0 ? 'Concluida' : checkedItems ? 'Em andamento' : 'Nao iniciado'} />
-                      </div>
-                      {itemChecklist.procedimento ? <p>{itemChecklist.procedimento}</p> : null}
-                      <div className="checklist-progress-line">
-                        <span>{checkedItems} de {itemTotal} feitos</span>
-                        <strong>{percent}%</strong>
-                      </div>
-                      <ProgressBar value={percent} />
-                      <div className="checklist-item-status-list">
-                        {(itemChecklist.itens || []).map((checkItem) => {
-                          const detail = checkedDetails.get(checkItem.id);
-                          return (
-                            <div className={detail ? 'done' : ''} key={checkItem.id}>
-                              {detail ? <CheckCircle2 size={18} aria-hidden="true" /> : <Circle size={18} aria-hidden="true" />}
-                              <span>{checkItem.texto}</span>
-                              <small>{detail ? `Feito${detail.checkedAt ? ` - ${formatDateTime(detail.checkedAt)}` : ''}` : 'Pendente'}</small>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            </details>
-          ))}
+                        {itemChecklist.procedimento ? <p>{itemChecklist.procedimento}</p> : null}
+                        <div className="checklist-progress-line">
+                          <span>{checkedItems} de {itemTotal} feitos</span>
+                          <strong>{percent}%</strong>
+                        </div>
+                        <ProgressBar value={percent} />
+                        <div className="checklist-item-status-list">
+                          {(itemChecklist.itens || []).map((checkItem) => {
+                            const detail = checkedDetails.get(checkItem.id);
+                            return (
+                              <div className={detail ? 'done' : ''} key={checkItem.id}>
+                                {detail ? <CheckCircle2 size={18} aria-hidden="true" /> : <Circle size={18} aria-hidden="true" />}
+                                <span>{checkItem.texto}</span>
+                                <small>{detail ? `Feito${detail.checkedAt ? ` - ${formatDateTime(detail.checkedAt)}` : ''}` : 'Pendente'}</small>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </details>
+            );
+          })}
         </section>
       ) : (
         <EmptyNotice Icon={ClipboardCheck} title="Nenhum checklist cadastrado" text="Cadastre checklists nos subitens do cronograma desta obra." />

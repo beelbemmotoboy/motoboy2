@@ -2262,6 +2262,14 @@ button.metric-card {
   background: #fff;
 }
 
+.checklist-stage-group.checklist-stage-done {
+  border-color: #16a34a;
+}
+
+.checklist-stage-group.checklist-stage-late {
+  border-color: #dc2626;
+}
+
 .checklist-stage-group > summary {
   list-style: none;
   display: flex;
@@ -2303,6 +2311,24 @@ button.metric-card {
 .checklist-stage-group summary span {
   color: #2563eb;
   font-weight: 600;
+}
+
+.checklist-stage-group.checklist-stage-done summary span,
+.checklist-stage-group.checklist-stage-done > summary::after {
+  color: #16a34a;
+}
+
+.checklist-stage-group.checklist-stage-done > summary::after {
+  background: #dcfce7;
+}
+
+.checklist-stage-group.checklist-stage-late summary span,
+.checklist-stage-group.checklist-stage-late > summary::after {
+  color: #dc2626;
+}
+
+.checklist-stage-group.checklist-stage-late > summary::after {
+  background: #fee2e2;
 }
 
 .checklist-stage-group > div {
