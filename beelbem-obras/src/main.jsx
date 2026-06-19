@@ -3365,6 +3365,7 @@ function ScheduleItemModal({ item, saving, onClose, onSave }) {
 
 function ScheduleLogModal({ item, log, checklist, checklistResults = [], saving, onClose, onSave, onDelete }) {
   const editing = Boolean(log?.id);
+  const formKey = log?.id || `new-${item.id}`;
   const [checkedItemIds, setCheckedItemIds] = useState(() => (
     checklistExecutionInitialIds(checklist, checklistResults, log)
   ));
@@ -3412,7 +3413,7 @@ function ScheduleLogModal({ item, log, checklist, checklistResults = [], saving,
 
   return (
     <div className="modal-backdrop" role="presentation">
-      <form className="issue-modal schedule-modal" onSubmit={submit}>
+      <form key={formKey} className="issue-modal schedule-modal" onSubmit={submit}>
         <div className="modal-head">
           <div>
             <span>Diario da obra</span>
