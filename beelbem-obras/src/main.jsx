@@ -9,6 +9,7 @@ import {
   Camera,
   CheckCircle2,
   ChevronLeft,
+  Circle,
   ClipboardCheck,
   Clock3,
   Database,
@@ -174,7 +175,7 @@ const projectScreenRequirements = {
   issues: { collections: ['issues'], signPhotoUrls: false },
   supplies: { collections: ['supplies'], signPhotoUrls: false },
   tools: { collections: ['tools'], signPhotoUrls: false },
-  checklist: { collections: ['checklist'], signPhotoUrls: false },
+  checklist: { collections: ['scheduleItems', 'scheduleLogs', 'checklist', 'checklistResults'], signPhotoUrls: false, normalizeSchedule: false },
   reports: { collections: ['scheduleItems', 'scheduleLogs', 'photos', 'issues', 'rdoReports'], signPhotoUrls: false, normalizeSchedule: false },
   workPanel: { collections: ['scheduleItems', 'scheduleLogs'], signPhotoUrls: false, normalizeSchedule: false },
   stageLibrary: { collections: ['stages'], signPhotoUrls: false },
@@ -2222,6 +2223,171 @@ function checkedChecklistIds(results) {
       .filter((result) => result.checked)
       .map((result) => result.checklistItemId)
       .filter(Boolean),
+  );
+}
+
+function checklistCheckedDetails(checklist, results, logs) {
+  const detailByItemId = new Map();
+
+  (results || [])
+    .filter((result) => result.checked)
+    .forEach((result) => {
+      const previous = detailByItemId.get(result.checklistItemId);
+      if (!previous || String(result.checkedAt || '') > String(previous.checkedAt || '')) {
+        detailByItemId.set(result.checklistItemId, result);
+      }
+    });
+
+  if (!checklist?.itens?.length) return detailByItemId;
+
+  (logs || []).forEach((log) => {
+    const legacyCheckedIds = checklistExecutionInitialIds(checklist, [], log);
+    legacyCheckedIds.forEach((itemId) => {
+      if (!detailByItemId.has(itemId)) {
+        detailByItemId.set(itemId, {
+          checklistItemId: itemId,
+          checked: true,
+          checkedAt: log.updatedAt || log.createdAt || log.visitDate || '',
+        });
+      }
+    });
+  });
+
+  return detailByItemId;
+}
+
+function ChecklistOverview({ scheduleItems = [], checklist = [], checklistResults = [], scheduleLogs = [], setScreen }) {
+  const visibleItems = scheduleItems.filter((item) => item.visible !== false);
+  const itemsById = new Map(visibleItems.map((item) => [item.id, item]));
+  const stages = visibleItems
+    .filter((item) => !item.parentId)
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+  const stageGroups = stages
+    .map((stage) => {
+      const subitems = visibleItems
+        .filter((item) => item.parentId === stage.id)
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((item) => {
+          const itemChecklist = findChecklistForScheduleItem(checklist, item);
+          if (!itemChecklist) return null;
+          const itemResults = (checklistResults || []).filter((result) => (
+            result.scheduleItemId === item.id
+            && (!itemChecklist.id || result.checklistId === itemChecklist.id)
+          ));
+          const itemLogs = (scheduleLogs || []).filter((log) => log.scheduleItemId === item.id);
+          const checkedDetails = checklistCheckedDetails(itemChecklist, itemResults, itemLogs);
+          const totalItems = itemChecklist.itens?.length || 0;
+          const checkedItems = (itemChecklist.itens || []).filter((checkItem) => checkedDetails.has(checkItem.id)).length;
+          return {
+            item,
+            checklist: itemChecklist,
+            checkedDetails,
+            totalItems,
+            checkedItems,
+          };
+        })
+        .filter(Boolean);
+
+      return { stage, subitems };
+    })
+    .filter((group) => group.subitems.length);
+
+  const orphanSubitems = visibleItems
+    .filter((item) => item.parentId && !itemsById.has(item.parentId))
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+    .map((item) => {
+      const itemChecklist = findChecklistForScheduleItem(checklist, item);
+      if (!itemChecklist) return null;
+      const itemResults = (checklistResults || []).filter((result) => (
+        result.scheduleItemId === item.id
+        && (!itemChecklist.id || result.checklistId === itemChecklist.id)
+      ));
+      const itemLogs = (scheduleLogs || []).filter((log) => log.scheduleItemId === item.id);
+      const checkedDetails = checklistCheckedDetails(itemChecklist, itemResults, itemLogs);
+      return {
+        item,
+        checklist: itemChecklist,
+        checkedDetails,
+        totalItems: itemChecklist.itens?.length || 0,
+        checkedItems: (itemChecklist.itens || []).filter((checkItem) => checkedDetails.has(checkItem.id)).length,
+      };
+    })
+    .filter(Boolean);
+
+  if (orphanSubitems.length) {
+    stageGroups.push({
+      stage: { id: 'sem-etapa', nome: 'Sem etapa principal' },
+      subitems: orphanSubitems,
+    });
+  }
+
+  const totalChecklists = stageGroups.reduce((total, group) => total + group.subitems.length, 0);
+  const totalItems = stageGroups.reduce((total, group) => total + group.subitems.reduce((sum, entry) => sum + entry.totalItems, 0), 0);
+  const totalChecked = stageGroups.reduce((total, group) => total + group.subitems.reduce((sum, entry) => sum + entry.checkedItems, 0), 0);
+
+  return (
+    <>
+      <PageTitle
+        eyebrow="Checklist tecnico"
+        title="Conferencias por subitem"
+        subtitle="Checklists cadastrados nesta obra e o que ja foi executado."
+        onBack={() => setScreen('workPanel')}
+      />
+      <section className="schedule-toolbar checklist-overview-toolbar">
+        <span><strong>{totalChecklists}</strong> checklists</span>
+        <span><strong>{totalChecked}</strong> itens feitos</span>
+        <span><strong>{Math.max(0, totalItems - totalChecked)}</strong> pendentes</span>
+      </section>
+
+      {stageGroups.length ? (
+        <section className="checklist-overview">
+          {stageGroups.map((group) => (
+            <section className="checklist-stage-group" key={group.stage.id}>
+              <header>
+                <h2>{group.stage.nome}</h2>
+                <span>{group.subitems.length} subitem{group.subitems.length === 1 ? '' : 's'} com checklist</span>
+              </header>
+              <div>
+                {group.subitems.map(({ item, checklist: itemChecklist, checkedDetails, totalItems: itemTotal, checkedItems }) => {
+                  const percent = itemTotal ? Math.round((checkedItems / itemTotal) * 100) : 0;
+                  return (
+                    <article className="checklist-subitem-card" key={item.id}>
+                      <div className="checklist-subitem-head">
+                        <div>
+                          <strong>{item.nome}</strong>
+                          <span>{itemChecklist.titulo || 'Checklist tecnico'}</span>
+                        </div>
+                        <StatusPill status={checkedItems >= itemTotal && itemTotal > 0 ? 'Concluida' : checkedItems ? 'Em andamento' : 'Nao iniciado'} />
+                      </div>
+                      {itemChecklist.procedimento ? <p>{itemChecklist.procedimento}</p> : null}
+                      <div className="checklist-progress-line">
+                        <span>{checkedItems} de {itemTotal} feitos</span>
+                        <strong>{percent}%</strong>
+                      </div>
+                      <ProgressBar value={percent} />
+                      <div className="checklist-item-status-list">
+                        {(itemChecklist.itens || []).map((checkItem) => {
+                          const detail = checkedDetails.get(checkItem.id);
+                          return (
+                            <div className={detail ? 'done' : ''} key={checkItem.id}>
+                              {detail ? <CheckCircle2 size={18} aria-hidden="true" /> : <Circle size={18} aria-hidden="true" />}
+                              <span>{checkItem.texto}</span>
+                              <small>{detail ? `Feito${detail.checkedAt ? ` - ${formatDateTime(detail.checkedAt)}` : ''}` : 'Pendente'}</small>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+        </section>
+      ) : (
+        <EmptyNotice Icon={ClipboardCheck} title="Nenhum checklist cadastrado" text="Cadastre checklists nos subitens do cronograma desta obra." />
+      )}
+    </>
   );
 }
 
@@ -7133,7 +7299,15 @@ function App() {
       case 'tools':
         return <TableList eyebrow="Ferramentas" title="Ferramentas e equipamentos" subtitle="Controle por etapa, tipo e disponibilidade." items={data.tools} setScreen={setScreen} onPrimary={() => updateFirst('tools', (item) => ({ ...item, status: item.status === 'Disponivel' ? 'Em falta' : 'Disponivel' }))} primaryLabel="Alternar status" PrimaryIcon={Wrench} />;
       case 'checklist':
-        return <TableList eyebrow="Checklist tecnico" title="Conferencias por etapa" subtitle="Itens, normas, fotos e responsaveis." items={data.checklist} setScreen={setScreen} onPrimary={() => updateFirst('checklist', (item) => ({ ...item, status: item.status === 'Conferido' ? 'Atencao' : 'Conferido' }))} primaryLabel="Conferir item" PrimaryIcon={ClipboardCheck} />;
+        return (
+          <ChecklistOverview
+            scheduleItems={data.scheduleItems}
+            checklist={data.checklist}
+            checklistResults={data.checklistResults || []}
+            scheduleLogs={data.scheduleLogs}
+            setScreen={setScreen}
+          />
+        );
       case 'standards':
         return <Standards setScreen={setScreen} />;
       case 'reports':

@@ -2059,6 +2059,127 @@ button.metric-card {
   color: #64748b;
 }
 
+.checklist-overview-toolbar {
+  margin-bottom: 16px;
+}
+
+.checklist-overview,
+.checklist-stage-group,
+.checklist-stage-group > div {
+  display: grid;
+  gap: 14px;
+}
+
+.checklist-stage-group {
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.checklist-stage-group > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  color: #fff;
+  background: rgba(37, 99, 235, 0.9);
+}
+
+.checklist-stage-group h2 {
+  margin: 0;
+  font-size: 21px;
+}
+
+.checklist-stage-group header span {
+  color: #dbeafe;
+  font-weight: 800;
+}
+
+.checklist-stage-group > div {
+  padding: 16px;
+}
+
+.checklist-subitem-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 14px;
+  background: #eff6ff;
+}
+
+.checklist-subitem-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.checklist-subitem-head strong {
+  display: block;
+  color: #0f172a;
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.checklist-subitem-head span,
+.checklist-subitem-card > p {
+  color: #64748b;
+  font-weight: 700;
+}
+
+.checklist-subitem-card > p {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.checklist-progress-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: #334155;
+  font-weight: 900;
+}
+
+.checklist-item-status-list {
+  display: grid;
+  gap: 8px;
+}
+
+.checklist-item-status-list > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  padding: 10px;
+  color: #475569;
+  background: #fff;
+}
+
+.checklist-item-status-list > div.done {
+  color: #14532d;
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.checklist-item-status-list span {
+  color: inherit;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.checklist-item-status-list small {
+  color: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: right;
+  white-space: nowrap;
+}
+
 .photo-upload-layout {
   display: grid;
   grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
