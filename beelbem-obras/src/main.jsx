@@ -2258,6 +2258,8 @@ function Schedule({
   const stages = visibleItems
     .filter((item) => !item.parentId)
     .sort((a, b) => a.sortOrder - b.sortOrder);
+  const scheduleDurationDays = calculateScheduleDurationDays(visibleItems);
+  const scheduleDurationLabel = scheduleDurationDays === 1 ? 'dia de obra' : 'dias de obra';
 
   function childrenFor(parentId) {
     return visibleItems
@@ -2380,7 +2382,7 @@ function Schedule({
       </PageTitle>
       <section className="schedule-toolbar">
         <span><strong>{stages.length}</strong> etapas ativas</span>
-        <span><strong>{visibleItems.length - stages.length}</strong> subitens</span>
+        <span><strong>{scheduleDurationDays}</strong> {scheduleDurationLabel}</span>
         <span><strong>{logs.length}</strong> registros de visita</span>
         <button className="schedule-gantt-link" type="button" onClick={() => setGanttOpen(true)}>
           <BarChart3 size={17} /> Abrir cronograma Gantt
@@ -3166,6 +3168,17 @@ function parseScheduleDate(value) {
 
 function daysBetween(start, end) {
   return Math.round((end.getTime() - start.getTime()) / 86400000);
+}
+
+function calculateScheduleDurationDays(items) {
+  const dates = items
+    .flatMap((item) => [parseScheduleDate(item.inicioPrevisto), parseScheduleDate(item.fimPrevisto)])
+    .filter(Boolean);
+
+  if (!dates.length) return 0;
+  const start = new Date(Math.min(...dates.map((date) => date.getTime())));
+  const end = new Date(Math.max(...dates.map((date) => date.getTime())));
+  return Math.max(1, daysBetween(start, end) + 1);
 }
 
 function ScheduleQuickDates({ item, saving, onSave }) {
