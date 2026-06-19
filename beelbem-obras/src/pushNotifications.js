@@ -1,4 +1,5 @@
-const vapidPublicKey = import.meta.env.VITE_OBRAS_PUSH_PUBLIC_KEY || '';
+const defaultVapidPublicKey = 'BAXY5I91oBPJ1H3AtwWz8JvlhepX2ZPZ7vslDEQ25W1J6N5hDxOBiu3zxii9xl8t7Vl-qEFbQ6luAjOnzgMsOIs';
+const vapidPublicKey = import.meta.env.VITE_OBRAS_PUSH_PUBLIC_KEY || defaultVapidPublicKey;
 
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
