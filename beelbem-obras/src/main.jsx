@@ -911,30 +911,32 @@ function Shell({ screen, setScreen, children, activeWork, selectedCity, cities, 
         </header>
 
         {mobileMenuOpen ? (
-          <div className="mobile-drawer" role="dialog" aria-label="Menu">
-            <div className="drawer-head">
-              <strong>Beelbem Obras</strong>
-              <IconButton label="Fechar menu" Icon={X} onClick={() => setMobileMenuOpen(false)} />
-            </div>
-            {sidebarRoutes.map(({ id, label, Icon }) => (
-              <button
-                className={screen === id ? 'active' : ''}
-                type="button"
-                key={id}
-                onClick={() => {
-                  setScreen(id);
-                  setMobileMenuOpen(false);
-                }}
-              >
-                <Icon size={20} aria-hidden="true" />
-                <span>{label}</span>
+          <div className="mobile-drawer-backdrop" onClick={() => setMobileMenuOpen(false)}>
+            <div className="mobile-drawer" role="dialog" aria-label="Menu" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+              <div className="drawer-head">
+                <strong>Beelbem Obras</strong>
+                <IconButton label="Fechar menu" Icon={X} onClick={() => setMobileMenuOpen(false)} />
+              </div>
+              {sidebarRoutes.map(({ id, label, Icon }) => (
+                <button
+                  className={screen === id ? 'active' : ''}
+                  type="button"
+                  key={id}
+                  onClick={() => {
+                    setScreen(id);
+                    setMobileMenuOpen(false);
+                  }}
+                >
+                  <Icon size={20} aria-hidden="true" />
+                  <span>{label}</span>
+                </button>
+              ))}
+              <button className="drawer-logout" type="button" onClick={logoutAndCloseMenu}>
+                <LogOut size={20} aria-hidden="true" />
+                <span>Sair do Obras</span>
+                {currentUser?.email ? <small>{currentUser.email}</small> : null}
               </button>
-            ))}
-            <button className="drawer-logout" type="button" onClick={logoutAndCloseMenu}>
-              <LogOut size={20} aria-hidden="true" />
-              <span>Sair do Obras</span>
-              {currentUser?.email ? <small>{currentUser.email}</small> : null}
-            </button>
+            </div>
           </div>
         ) : null}
 

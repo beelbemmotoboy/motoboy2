@@ -446,10 +446,16 @@ button {
   font-weight: 900;
 }
 
+.mobile-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: transparent;
+}
+
 .mobile-drawer {
   position: fixed;
   inset: 0 auto 0 0;
-  z-index: 30;
   width: min(310px, 86vw);
   display: grid;
   align-content: start;
