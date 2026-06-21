@@ -3954,6 +3954,34 @@ function ScheduleLogSummary({ log, saving, onEdit }) {
 
 function ScheduleItemModal({ item, saving, onClose, onSave }) {
   const isStage = !item.parentId;
+  const [status, setStatus] = useState(item.status || 'Nao iniciado');
+  const [percentual, setPercentual] = useState(String(item.percentual ?? 0));
+  const [formError, setFormError] = useState('');
+
+  function changeStatus(event) {
+    const nextStatus = event.target.value;
+    setStatus(nextStatus);
+    if (nextStatus === 'Concluida') {
+      setPercentual('100');
+      setFormError('');
+      return;
+    }
+    if (nextStatus === 'Em andamento' && Number(percentual || 0) <= 0) {
+      setFormError('Informe um percentual maior que zero para status Em andamento.');
+    } else {
+      setFormError('');
+    }
+  }
+
+  function changePercentual(event) {
+    const nextPercentual = event.target.value;
+    setPercentual(nextPercentual);
+    if (status === 'Em andamento' && Number(nextPercentual || 0) <= 0) {
+      setFormError('Informe um percentual maior que zero para status Em andamento.');
+      return;
+    }
+    setFormError('');
+  }
 
   function submit(event) {
     event.preventDefault();
@@ -3962,7 +3990,13 @@ function ScheduleItemModal({ item, saving, onClose, onSave }) {
       ...Object.fromEntries(new FormData(event.currentTarget).entries()),
     };
     if (!isStage) {
-      values.percentual = Number(event.currentTarget.elements.percentual.value || 0);
+      const nextPercentual = status === 'Concluida' ? 100 : Number(percentual || 0);
+      if (status === 'Em andamento' && nextPercentual <= 0) {
+        setFormError('Informe um percentual maior que zero para status Em andamento.');
+        return;
+      }
+      values.status = status;
+      values.percentual = nextPercentual;
     }
     onSave(values);
   }
@@ -4003,14 +4037,27 @@ function ScheduleItemModal({ item, saving, onClose, onSave }) {
               </label>
               <label className="field">
                 <span>Status</span>
-                <select name="status" defaultValue={item.status || 'Nao iniciado'}>
+                <select name="status" value={status} onChange={changeStatus}>
                   {['Nao iniciado', 'Em andamento', 'Atencao', 'Concluida'].map((status) => <option key={status}>{status}</option>)}
                 </select>
               </label>
-              <Field label="Percentual" name="percentual" type="number" value={item.percentual ?? 0} />
+              <label className="field">
+                <span>Percentual</span>
+                <input
+                  type="number"
+                  name="percentual"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={percentual}
+                  onChange={changePercentual}
+                  readOnly={status === 'Concluida'}
+                />
+              </label>
             </>
           )}
         </div>
+        {formError ? <p className="auth-message error">{formError}</p> : null}
         <div className="form-actions">
           <ActionButton Icon={Save} type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</ActionButton>
           <ActionButton Icon={XCircle} variant="ghost" onClick={onClose}>Cancelar</ActionButton>
@@ -6804,6 +6851,14 @@ function App() {
 
     const previousItems = data.scheduleItems;
     const parentId = values.parentId || '';
+    const nextStatus = values.status || 'Nao iniciado';
+    const nextPercentual = nextStatus === 'Concluida'
+      ? 100
+      : Math.min(100, Math.max(0, Number(values.percentual) || 0));
+    if (parentId && nextStatus === 'Em andamento' && nextPercentual <= 0) {
+      setScheduleError('Informe um percentual maior que zero para status Em andamento.');
+      return null;
+    }
     const normalized = {
       nome: String(values.nome || '').trim() || (parentId ? 'Novo subitem' : 'Nova etapa'),
       parentId,
@@ -6814,8 +6869,8 @@ function App() {
         fimPrevisto: values.fimPrevisto || '',
         inicioReal: values.inicioReal || '',
         fimReal: values.fimReal || '',
-        status: values.status || 'Nao iniciado',
-        percentual: Math.min(100, Math.max(0, Number(values.percentual) || 0)),
+        status: nextStatus,
+        percentual: nextPercentual,
         valorMaoObra: normalizeMoneyValue(values.valorMaoObra),
       } : {}),
     };
