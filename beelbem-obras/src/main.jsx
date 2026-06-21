@@ -780,6 +780,27 @@ function calculateScheduleStageProgress(children) {
   );
 }
 
+function normalizeMoneyValue(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const rawValue = String(value || '').trim();
+  const normalized = rawValue.includes(',')
+    ? rawValue.replace(/\./g, '').replace(',', '.')
+    : rawValue;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+}
+
+function calculateScheduleStagePayments(children) {
+  return children.reduce((totals, item) => {
+    const itemValue = normalizeMoneyValue(item.valorMaoObra);
+    const percentual = Math.min(100, Math.max(0, Number(item.percentual) || 0));
+    return {
+      total: totals.total + itemValue,
+      executed: totals.executed + (itemValue * (percentual / 100)),
+    };
+  }, { total: 0, executed: 0 });
+}
+
 function deriveScheduleStages(items) {
   const nextItems = items.map((item) => ({ ...item }));
   const stages = nextItems.filter((item) => !item.parentId);
@@ -2978,6 +2999,7 @@ function Schedule({
         {stages.map((stage) => {
           const children = childrenFor(stage.id);
           const stageProgress = calculateScheduleStageProgress(children);
+          const stagePayments = calculateScheduleStagePayments(children);
           const stageState = ganttStageState(stage);
           return (
             <details className={`schedule-stage-group schedule-stage-${stageState} ${draggedItem?.id === stage.id ? 'dragging' : ''}`} key={stage.id}>
@@ -2994,6 +3016,9 @@ function Schedule({
                 <div className="schedule-summary-title">
                   <strong>{stage.nome}</strong>
                   <span>{children.length} subitem{children.length === 1 ? '' : 's'}</span>
+                  <span className="schedule-payment-line">
+                    Total a pagar {formatCurrency(stagePayments.total)} - Executado {formatCurrency(stagePayments.executed)}
+                  </span>
                 </div>
                 <div className="schedule-summary-progress">
                   <ProgressBar value={stageProgress} />
@@ -3043,7 +3068,10 @@ function Schedule({
                           </button>
                           <div>
                             <strong>{item.nome}</strong>
-                            <span>{itemLogs.length} registros - {scheduleDateLabel(item.inicioPrevisto)} ate {scheduleDateLabel(item.fimPrevisto)}</span>
+                            <span>
+                              {itemLogs.length} registros - {scheduleDateLabel(item.inicioPrevisto)} ate {scheduleDateLabel(item.fimPrevisto)}
+                              {' - '}Valor {formatCurrency(item.valorMaoObra)}
+                            </span>
                           </div>
                           <StatusPill status={item.status} />
                         </summary>
@@ -3919,6 +3947,17 @@ function ScheduleItemModal({ item, saving, onClose, onSave }) {
               <Field label="Fim previsto" name="fimPrevisto" type="date" value={item.fimPrevisto || ''} />
               <Field label="Inicio real" name="inicioReal" type="date" value={item.inicioReal || ''} />
               <Field label="Fim real" name="fimReal" type="date" value={item.fimReal || ''} />
+              <label className="field">
+                <span>Valor mao de obra (R$)</span>
+                <input
+                  type="number"
+                  name="valorMaoObra"
+                  min="0"
+                  step="0.01"
+                  inputMode="decimal"
+                  defaultValue={item.valorMaoObra ?? 0}
+                />
+              </label>
               <label className="field">
                 <span>Status</span>
                 <select name="status" defaultValue={item.status || 'Nao iniciado'}>
@@ -6522,6 +6561,7 @@ function App() {
         fimReal: values.fimReal || '',
         status: values.status || 'Nao iniciado',
         percentual: Math.min(100, Math.max(0, Number(values.percentual) || 0)),
+        valorMaoObra: normalizeMoneyValue(values.valorMaoObra),
       } : {}),
     };
 
@@ -6564,6 +6604,7 @@ function App() {
             fimReal: '',
             status: 'Nao iniciado',
             percentual: 0,
+            valorMaoObra: 0,
             sortOrder: 0,
             visible: true,
             createdAt: new Date().toISOString(),

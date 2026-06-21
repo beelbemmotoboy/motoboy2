@@ -3395,6 +3395,12 @@ body.gantt-resizing * {
   font-weight: 800;
 }
 
+.schedule-stage-group > summary .schedule-payment-line {
+  color: #0f766e;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .schedule-summary-progress {
   display: flex;
   align-items: center;

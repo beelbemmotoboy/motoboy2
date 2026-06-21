@@ -158,6 +158,7 @@ function scheduleItem(id, parentId, nome, itemType, sortOrder) {
     fimReal: '',
     status: 'Nao iniciado',
     percentual: 0,
+    valorMaoObra: 0,
     sortOrder,
     visible: true,
   };
