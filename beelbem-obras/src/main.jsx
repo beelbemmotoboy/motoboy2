@@ -54,6 +54,7 @@ import {
   bootstrapObrasOwner,
   claimObrasUser,
   deleteChild,
+  deleteDocumentRecord,
   deleteProject,
   deletePhotoRecord,
   fetchProjectChildren,
@@ -90,6 +91,7 @@ import {
   updateSignupRequest,
   upsertObrasPushSubscription,
   uploadObrasAccountLogo,
+  uploadObrasDocumentFile,
   uploadObrasUserAvatar,
   uploadPhotoFile,
 } from './db.js';
@@ -171,8 +173,14 @@ const neighborhoodCatalog = {
   ],
 };
 
-const projectCollections = ['stages', 'scheduleItems', 'scheduleLogs', 'photos', 'plsItems', 'issues', 'supplies', 'tools', 'checklist', 'checklistResults', 'rdoReports'];
+const projectCollections = ['stages', 'scheduleItems', 'scheduleLogs', 'photos', 'plsItems', 'issues', 'supplies', 'tools', 'checklist', 'checklistResults', 'rdoReports', 'documents'];
 const emptyProjectCollections = Object.fromEntries(projectCollections.map((collection) => [collection, []]));
+const documentTypeOptions = [
+  'Projetos da obra',
+  'Documentos clientes',
+  'Contratos Mao de Obra',
+  'Outros documentos',
+];
 const projectScreenRequirements = {
   stages: { collections: ['scheduleItems', 'scheduleLogs', 'photos', 'issues'], signPhotoUrls: false, normalizeSchedule: false },
   stageDetail: { collections: ['stages'], signPhotoUrls: false },
@@ -185,6 +193,8 @@ const projectScreenRequirements = {
   checklist: { collections: ['scheduleItems', 'scheduleLogs', 'checklist', 'checklistResults'], signPhotoUrls: false, normalizeSchedule: false },
   notifications: { collections: ['scheduleItems', 'scheduleLogs', 'photos', 'plsItems', 'issues', 'checklist', 'checklistResults', 'rdoReports'], signPhotoUrls: false, normalizeSchedule: false },
   reports: { collections: ['scheduleItems', 'scheduleLogs', 'photos', 'issues', 'rdoReports'], signPhotoUrls: false, normalizeSchedule: false },
+  documents: { collections: ['documents'], signPhotoUrls: false },
+  standards: { collections: ['documents'], signPhotoUrls: false },
   workPanel: { collections: ['scheduleItems', 'scheduleLogs'], signPhotoUrls: false, normalizeSchedule: false },
   stageLibrary: { collections: ['stages'], signPhotoUrls: false },
 };
@@ -278,6 +288,7 @@ const initialData = {
   scheduleLogs: [],
   checklistResults: [],
   rdoReports: [],
+  documents: [],
   photos: [
     { id: 'foto-1', etapa: 'Fundacao', tipo: 'Durante', data: '03/06/2026', usuario: 'Carlos Lima', observacao: 'Armadura conferida', cor: 'blue' },
     { id: 'foto-2', etapa: 'Muro de arrimo', tipo: 'Problema', data: '03/06/2026', usuario: 'Ana Prado', observacao: 'Dreno pendente', cor: 'red' },
@@ -315,26 +326,6 @@ const remoteInitialData = {
   works: [],
   ...emptyProjectCollections,
 };
-
-const standards = [
-  ['NR-01', 'Gerenciamento de riscos ocupacionais', 'NR', 'Geral', 'Planejamento do canteiro'],
-  ['NR-18', 'Condicoes de seguranca na construcao', 'NR', 'Canteiro', 'Protecao coletiva e organizacao'],
-  ['NR-10', 'Seguranca em instalacoes eletricas', 'NR', 'Eletrica', 'Riscos e documentacao'],
-  ['ABNT NBR 6122', 'Projeto e execucao de fundacoes', 'ABNT', 'Fundacao', 'Execucao conforme projeto'],
-  ['ABNT NBR 6118', 'Estruturas de concreto', 'ABNT', 'Fundacao', 'Armadura, cobrimento e concretagem'],
-  ['ABNT NBR 8545', 'Execucao de alvenaria', 'ABNT', 'Alvenaria', 'Prumo, amarracao e juntas'],
-  ['ABNT NBR 5410', 'Instalacoes eletricas de baixa tensao', 'ABNT', 'Eletrica', 'Quadros, circuitos e aterramento'],
-  ['ABNT NBR 9575', 'Impermeabilizacao', 'ABNT', 'Baldrame', 'Criterios do sistema'],
-].map(([codigo, nome, tipo, etapa, descricao], index) => ({
-  id: `${codigo}-${index}`,
-  codigo,
-  nome,
-  tipo,
-  etapa,
-  descricao,
-  checklist: index % 3 === 0 ? 'Pendente' : 'Conferido',
-  status: index % 4 === 0 ? 'Atencao' : 'Conferido',
-}));
 
 const quickRoutes = [
   { id: 'dashboard', label: 'Inicio', Icon: Home },
@@ -604,6 +595,14 @@ function formatCurrency(value) {
     style: 'currency',
     currency: 'BRL',
   }).format(Number(value) || 0);
+}
+
+function formatFileSize(bytes) {
+  const size = Number(bytes) || 0;
+  if (!size) return 'Tamanho nao informado';
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function formatDateTime(value) {
@@ -1652,7 +1651,7 @@ function WorkPanel({ obra, data, setScreen }) {
     ['Insumos', PackageCheck, 'supplies'],
     ['Ferramentas', Wrench, 'tools'],
     ['Checklist tecnico', ClipboardCheck, 'checklist'],
-    ['Normas aplicaveis', ShieldCheck, 'standards'],
+    ['Documentos', FileText, 'documents'],
     ['Pendencias', AlertTriangle, 'issues'],
     ['Relatorios', BarChart3, 'reports'],
     ['Dados da obra', FileText, 'workProfile'],
@@ -2118,7 +2117,7 @@ function StageDetail({ stage, updateStage, addPhoto, addIssue, setScreen }) {
     ['Ferramentas', Wrench, '3 obrigatorias', 'tools'],
     ['Fotos obrigatorias', Camera, `${stage.fotosFaltando} faltando`, 'photos'],
     ['Checklist tecnico', ClipboardCheck, '12 itens', 'checklist'],
-    ['Normas aplicaveis', ShieldCheck, '4 normas', 'standards'],
+    ['Documentos', FileText, 'Arquivos da obra', 'documents'],
     ['Pendencias da etapa', AlertTriangle, `${stage.pendencias} abertas`, 'issues'],
   ];
   return (
@@ -4833,21 +4832,78 @@ function TableList({ title, eyebrow, subtitle, items, onPrimary, setScreen, prim
   );
 }
 
-function Standards({ setScreen }) {
+function Documents({ documents = [], saving, deletingId, error, onSave, onDelete, setScreen }) {
+  const groupedDocuments = documentTypeOptions.map((type) => ({
+    type,
+    documents: documents.filter((document) => document.tipo === type),
+  }));
+
+  function submit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const values = Object.fromEntries(new FormData(form).entries());
+    const file = form.elements.documentFile.files?.[0];
+    onSave({ ...values, file }, () => form.reset());
+  }
+
   return (
     <>
-      <PageTitle eyebrow="Normas aplicaveis" title="Normas tecnicas" subtitle="NR, ABNT e legislacao relacionada as etapas." onBack={() => setScreen('workPanel')} />
-      <section className="standards-grid">
-        {standards.map((norma) => (
-          <article className="standard-card" key={norma.id}>
-            <div>
-              <strong>{norma.codigo}</strong>
-              <StatusPill status={norma.status} />
-            </div>
-            <h2>{norma.nome}</h2>
-            <p>{norma.descricao}</p>
-            <span>{norma.tipo} - {norma.etapa}</span>
-            <small>Checklist: {norma.checklist}</small>
+      <PageTitle eyebrow="Documentos" title="Documentos da obra" subtitle="Projetos, documentos de clientes e contratos vinculados a esta obra." onBack={() => setScreen('workPanel')} />
+      <form className="document-upload-panel" onSubmit={submit}>
+        <label className="field">
+          <span>Tipo de documento</span>
+          <select name="tipo" defaultValue={documentTypeOptions[0]}>
+            {documentTypeOptions.map((type) => <option value={type} key={type}>{type}</option>)}
+          </select>
+        </label>
+        <Field label="Titulo" name="titulo" required />
+        <label className="field wide">
+          <span>Arquivo</span>
+          <input name="documentFile" type="file" required />
+        </label>
+        <label className="field wide">
+          <span>Descricao</span>
+          <textarea name="descricao" placeholder="Observacao opcional sobre este documento." />
+        </label>
+        {error ? <p className="auth-message error">{error}</p> : null}
+        <div className="form-actions">
+          <ActionButton Icon={Upload} type="submit" disabled={saving}>{saving ? 'Enviando...' : 'Adicionar documento'}</ActionButton>
+        </div>
+      </form>
+      <section className="document-type-groups">
+        {groupedDocuments.map((group) => (
+          <article className="document-type-group" key={group.type}>
+            <header>
+              <h2>{group.type}</h2>
+              <span>{group.documents.length} documento{group.documents.length === 1 ? '' : 's'}</span>
+            </header>
+            {group.documents.length ? (
+              <div className="document-grid">
+                {group.documents.map((document) => (
+                  <article className="document-card" key={document.id}>
+                    <FileText size={28} aria-hidden="true" />
+                    <div>
+                      <strong>{document.titulo}</strong>
+                      <span>{document.fileName || 'Arquivo sem nome'} - {formatFileSize(document.fileSize)}</span>
+                      {document.descricao ? <p>{document.descricao}</p> : null}
+                      <small>{document.createdAt ? `Adicionado em ${formatDateTime(document.createdAt)}` : 'Data nao informada'}</small>
+                    </div>
+                    <div className="button-row">
+                      {document.documentUrl ? (
+                        <a className="button-link" href={document.documentUrl} target="_blank" rel="noreferrer">
+                          <Eye size={17} aria-hidden="true" /> Abrir
+                        </a>
+                      ) : null}
+                      <button type="button" className="danger" disabled={saving || deletingId === document.id} onClick={() => onDelete(document)}>
+                        <Trash2 size={17} aria-hidden="true" /> {deletingId === document.id ? 'Excluindo...' : 'Excluir'}
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="document-empty">Nenhum documento nesta categoria.</p>
+            )}
           </article>
         ))}
       </section>
@@ -5443,6 +5499,9 @@ function App() {
   const [photoSaving, setPhotoSaving] = useState(false);
   const [deletingPhotoId, setDeletingPhotoId] = useState(null);
   const [photoError, setPhotoError] = useState('');
+  const [documentSaving, setDocumentSaving] = useState(false);
+  const [deletingDocumentId, setDeletingDocumentId] = useState(null);
+  const [documentError, setDocumentError] = useState('');
   const [issueDraftStage, setIssueDraftStage] = useState(null);
   const [issueSaving, setIssueSaving] = useState(false);
   const [issueError, setIssueError] = useState('');
@@ -7042,6 +7101,91 @@ function App() {
     }
   }
 
+  async function saveDocument(values, onDone) {
+    if (!activeWork?.id) {
+      setDocumentError('Selecione uma obra antes de adicionar documentos.');
+      return;
+    }
+
+    const file = values.file;
+    if (!file) {
+      setDocumentError('Selecione um arquivo para salvar.');
+      return;
+    }
+
+    const baseDocument = {
+      tipo: values.tipo || documentTypeOptions[0],
+      titulo: String(values.titulo || file.name || 'Documento').trim(),
+      descricao: String(values.descricao || '').trim(),
+    };
+
+    setDocumentSaving(true);
+    setDocumentError('');
+
+    try {
+      let savedDocument;
+      if (supabaseConfigured && session) {
+        const upload = await uploadObrasDocumentFile({
+          userId: session.user.id,
+          projectId: activeWork.id,
+          file,
+        });
+        savedDocument = await insertChild('documents', activeWork.id, { ...baseDocument, ...upload });
+      } else {
+        savedDocument = {
+          id: makeId('documento'),
+          ...baseDocument,
+          fileName: file.name || 'documento',
+          mimeType: file.type || 'application/octet-stream',
+          fileSize: file.size || 0,
+          documentUrl: URL.createObjectURL(file),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+      }
+
+      setData((current) => ({
+        ...current,
+        documents: [savedDocument, ...(current.documents || [])],
+      }));
+      onDone?.();
+    } catch (error) {
+      setDocumentError(error.message || 'Nao foi possivel salvar o documento.');
+    } finally {
+      setDocumentSaving(false);
+    }
+  }
+
+  async function deleteDocument(document) {
+    const confirmed = window.confirm('Excluir este documento? Esta acao nao pode ser desfeita.');
+    if (!confirmed) return;
+
+    setDeletingDocumentId(document.id);
+    setDocumentError('');
+
+    try {
+      let storageWarning = '';
+      if (supabaseConfigured && session) {
+        storageWarning = await deleteDocumentRecord(document);
+      } else if (document.documentUrl?.startsWith('blob:')) {
+        URL.revokeObjectURL(document.documentUrl);
+      }
+
+      setData((current) => ({
+        ...current,
+        documents: (current.documents || []).filter((item) => item.id !== document.id),
+      }));
+
+      if (storageWarning) {
+        setDocumentError('O documento foi excluido, mas o arquivo antigo nao pode ser removido do armazenamento.');
+      }
+    } catch (error) {
+      setDocumentError(error.message || 'Nao foi possivel excluir o documento.');
+    } finally {
+      setDeletingDocumentId(null);
+    }
+  }
+
   function addIssue(etapa = 'Geral') {
     setIssueError('');
     setIssueDraftStage(etapa || 'Geral');
@@ -7701,7 +7845,7 @@ function App() {
       );
     }
 
-    const projectScreens = ['workPanel', 'stages', 'stageDetail', 'photos', 'pls', 'schedule', 'issues', 'supplies', 'tools', 'checklist', 'notifications', 'standards', 'stageLibrary', 'workProfile'];
+    const projectScreens = ['workPanel', 'stages', 'stageDetail', 'photos', 'pls', 'schedule', 'issues', 'supplies', 'tools', 'checklist', 'notifications', 'documents', 'standards', 'stageLibrary', 'workProfile'];
     if (!activeWork && projectScreens.includes(screen)) {
       return (
         <>
@@ -7898,8 +8042,19 @@ function App() {
             setScreen={setScreen}
           />
         );
+      case 'documents':
       case 'standards':
-        return <Standards setScreen={setScreen} />;
+        return (
+          <Documents
+            documents={data.documents}
+            saving={documentSaving}
+            deletingId={deletingDocumentId}
+            error={documentError}
+            onSave={saveDocument}
+            onDelete={deleteDocument}
+            setScreen={setScreen}
+          />
+        );
       case 'reports':
         return (
           <Reports

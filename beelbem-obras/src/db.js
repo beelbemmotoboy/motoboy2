@@ -7,6 +7,7 @@ const legacySupabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 const supabaseUrl = obrasSupabaseUrl || legacySupabaseUrl;
 const supabaseAnonKey = obrasSupabaseAnonKey || legacySupabaseAnonKey;
 const photoBucket = 'obras-photos';
+const documentBucket = 'obras-documents';
 const userAvatarBucket = 'obras-user-avatars';
 const accountLogoBucket = 'obras-account-logos';
 const photoThumbnailTable = 'obras_photo_thumbnails';
@@ -44,6 +45,7 @@ const childTables = {
   checklist: 'obras_checklist',
   checklistResults: 'obras_schedule_checklist_results',
   rdoReports: 'obras_rdo_reports',
+  documents: 'obras_documents',
 };
 
 export function projectFromDb(row) {
@@ -430,6 +432,35 @@ export const rowMappers = {
       file_name: item.fileName || null,
       mime_type: item.mimeType || null,
       file_size: item.fileSize || null,
+    }),
+  },
+  documents: {
+    fromDb: (row) => ({
+      id: row.id,
+      tipo: row.tipo,
+      titulo: row.titulo,
+      descricao: row.descricao || '',
+      storagePath: row.storage_path || '',
+      fileName: row.file_name || '',
+      mimeType: row.mime_type || '',
+      fileSize: Number(row.file_size || 0),
+      uploadedBy: row.uploaded_by || '',
+      createdAt: row.created_at || '',
+      updatedAt: row.updated_at || '',
+    }),
+    toDb: (item) => ({
+      tipo: item.tipo,
+      titulo: item.titulo,
+      descricao: item.descricao || null,
+      storage_path: item.storagePath || null,
+      file_name: item.fileName || null,
+      mime_type: item.mimeType || null,
+      file_size: item.fileSize || null,
+    }),
+    patchToDb: (patch) => ({
+      ...(patch.tipo !== undefined ? { tipo: patch.tipo } : {}),
+      ...(patch.titulo !== undefined ? { titulo: patch.titulo } : {}),
+      ...(patch.descricao !== undefined ? { descricao: patch.descricao || null } : {}),
     }),
   },
   plsItems: {
@@ -984,6 +1015,7 @@ export async function fetchProjectChildren(projectId, options = {}) {
       if (error) throw error;
       let rows = (data || []).map(rowMappers[key].fromDb);
       if (key === 'photos' && signPhotoUrls) rows = await withSignedPhotoUrls(rows, projectId);
+      if (key === 'documents') rows = await withSignedDocumentUrls(rows);
       return [key, rows];
     }),
   );
@@ -1072,6 +1104,7 @@ export async function insertChild(collection, projectId, item) {
   if (error) throw error;
   const row = mapper.fromDb(data);
   if (collection === 'photos') return withSignedPhotoUrl(row);
+  if (collection === 'documents') return withSignedDocumentUrl(row);
   return row;
 }
 
@@ -1163,6 +1196,16 @@ export async function deletePhotoRecord(photo) {
   return storageError?.message || '';
 }
 
+export async function deleteDocumentRecord(document) {
+  const storagePaths = document.storagePath ? [document.storagePath] : [];
+  const { error } = await supabase.from(childTables.documents).delete().eq('id', document.id);
+  if (error) throw error;
+  if (!storagePaths.length) return '';
+
+  const { error: storageError } = await supabase.storage.from(documentBucket).remove(storagePaths);
+  return storageError?.message || '';
+}
+
 export async function uploadObrasUserAvatar({ accountId, userId, file, previousPath }) {
   const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const fileName = safeFileName(file.name || `${id}.jpg`);
@@ -1208,6 +1251,26 @@ export async function uploadObrasAccountLogo({ accountId, file, previousPath }) 
     logoMimeType: file.type || 'image/jpeg',
     logoFileSize: file.size || 0,
     logoUrl: await createSignedAccountLogoUrl(storagePath),
+  };
+}
+
+export async function uploadObrasDocumentFile({ userId, projectId, file }) {
+  const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const fileName = safeFileName(file.name || `${id}.pdf`);
+  const storagePath = `${userId}/${projectId}/${id}-${fileName}`;
+  const { error } = await supabase.storage.from(documentBucket).upload(storagePath, file, {
+    cacheControl: '3600',
+    contentType: file.type || 'application/octet-stream',
+    upsert: false,
+  });
+
+  if (error) throw error;
+  return {
+    storagePath,
+    fileName,
+    mimeType: file.type || 'application/octet-stream',
+    fileSize: file.size || 0,
+    documentUrl: await createSignedDocumentUrl(storagePath),
   };
 }
 
@@ -1301,6 +1364,22 @@ async function withSignedPhotoUrl(photo) {
   return nextPhoto;
 }
 
+async function withSignedDocumentUrls(documents) {
+  return Promise.all((documents || []).map(withSignedDocumentUrl));
+}
+
+async function withSignedDocumentUrl(document) {
+  if (!document?.storagePath) return document;
+  try {
+    return {
+      ...document,
+      documentUrl: await createSignedDocumentUrl(document.storagePath),
+    };
+  } catch {
+    return document;
+  }
+}
+
 async function fetchPhotoThumbnailsByProject(projectId) {
   const { data, error } = await supabase
     .from(photoThumbnailTable)
@@ -1325,6 +1404,12 @@ async function withSignedThumbnailUrl(thumbnail) {
 
 async function createSignedPhotoUrl(storagePath) {
   const { data, error } = await supabase.storage.from(photoBucket).createSignedUrl(storagePath, 60 * 60 * 24);
+  if (error) throw error;
+  return data.signedUrl;
+}
+
+async function createSignedDocumentUrl(storagePath) {
+  const { data, error } = await supabase.storage.from(documentBucket).createSignedUrl(storagePath, 60 * 60 * 24);
   if (error) throw error;
   return data.signedUrl;
 }

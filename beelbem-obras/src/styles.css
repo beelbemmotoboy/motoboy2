@@ -1812,6 +1812,123 @@ button.metric-card {
   color: #4b5563;
 }
 
+.document-upload-panel,
+.document-type-groups {
+  display: grid;
+  gap: 14px;
+}
+
+.document-upload-panel {
+  margin-bottom: 18px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 16px;
+  background: #fff;
+}
+
+.document-type-group {
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.document-type-group > header {
+  min-height: 64px;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.document-type-group h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.document-type-group header span {
+  color: #2563eb;
+  font-weight: 850;
+}
+
+.document-grid {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px 16px;
+}
+
+.document-card {
+  min-width: 0;
+  border: 1px solid #eef2f7;
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 12px;
+  background: #fff;
+}
+
+.document-card > svg {
+  color: #1d4ed8;
+}
+
+.document-card strong,
+.document-card span,
+.document-card small,
+.document-card p {
+  overflow-wrap: anywhere;
+}
+
+.document-card strong {
+  display: block;
+  font-size: 16px;
+}
+
+.document-card span,
+.document-card small {
+  display: block;
+  color: #64748b;
+}
+
+.document-card p {
+  margin: 5px 0;
+  color: #4b5563;
+}
+
+.document-card .button-row {
+  justify-content: flex-end;
+}
+
+.button-link {
+  min-height: 38px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 12px;
+  color: #1d4ed8;
+  background: #eff6ff;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.document-card button.danger {
+  border-color: #fecaca;
+  color: #991b1b;
+  background: #fff7f7;
+}
+
+.document-empty {
+  margin: 0;
+  padding: 16px;
+  color: #64748b;
+}
+
 .photo-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
@@ -4041,6 +4158,24 @@ body.gantt-resizing * {
 
   .photo-subitem-group > header button {
     justify-content: center;
+  }
+
+  .document-type-group > header,
+  .document-card {
+    grid-template-columns: 1fr;
+  }
+
+  .document-type-group > header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .document-card .button-row {
+    justify-content: stretch;
+  }
+
+  .document-card .button-row > * {
+    flex: 1 1 140px;
   }
 
   .photo-modal {
