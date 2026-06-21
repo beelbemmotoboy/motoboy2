@@ -1,11 +1,19 @@
 const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
 const MARGIN = 38;
+const HEADER_BOTTOM = 76;
+const FOOTER_TOP = PAGE_HEIGHT - 34;
+const CONTENT_WIDTH = PAGE_WIDTH - (MARGIN * 2);
+
 const BLUE = [30, 64, 175];
+const DARK_BLUE = [15, 45, 120];
 const LIGHT_BLUE = [239, 246, 255];
+const HEADER_BG = [248, 250, 252];
 const BORDER = [203, 213, 225];
+const LIGHT_BORDER = [226, 232, 240];
 const TEXT = [15, 23, 42];
 const MUTED = [71, 85, 105];
+const WHITE = [255, 255, 255];
 
 function cleanText(value) {
   return String(value ?? '')
@@ -19,17 +27,50 @@ function escapePdfText(value) {
   return cleanText(value).replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
 }
 
+function normalizeDateKey(value) {
+  const raw = String(value || '').trim();
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const br = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+  return '';
+}
+
 function formatDate(value) {
-  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
-  return match ? `${match[3]}/${match[2]}/${match[1]}` : cleanText(value || '-');
+  const key = normalizeDateKey(value);
+  if (!key) return cleanText(value || '-');
+  const [year, month, day] = key.split('-');
+  return `${day}/${month}/${year}`;
 }
 
 function dateRangeLabel(startDate, endDate) {
-  return startDate === endDate ? formatDate(startDate) : `${formatDate(startDate)} a ${formatDate(endDate)}`;
+  const start = normalizeDateKey(startDate);
+  const end = normalizeDateKey(endDate);
+  return start && start === end ? formatDate(start) : `${formatDate(start)} a ${formatDate(end)}`;
+}
+
+function dayDiff(startDate, endDate) {
+  const start = normalizeDateKey(startDate);
+  const end = normalizeDateKey(endDate);
+  if (!start || !end) return null;
+  const startTime = new Date(`${start}T00:00:00`).getTime();
+  const endTime = new Date(`${end}T00:00:00`).getTime();
+  return Math.max(0, Math.round((endTime - startTime) / 86400000) + 1);
+}
+
+function todayLabel() {
+  return formatDate(new Date().toISOString().slice(0, 10));
 }
 
 function bestPhotoUrl(photo) {
   return photo.thumbnailUrl || photo.photoUrl || '';
+}
+
+function splitLines(value) {
+  return String(value || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
 }
 
 function wrapText(text, maxWidth, size) {
@@ -56,7 +97,8 @@ function rgb(values) {
 }
 
 class PdfDocument {
-  constructor() {
+  constructor(headerInfo = {}) {
+    this.headerInfo = headerInfo;
     this.objects = [null];
     this.pages = [];
     this.rootObj = this.reserve();
@@ -66,7 +108,7 @@ class PdfDocument {
     this.setObject(this.fontRegularObj, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
     this.setObject(this.fontBoldObj, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>');
     this.current = null;
-    this.y = MARGIN;
+    this.y = HEADER_BOTTOM + 18;
     this.newPage();
   }
 
@@ -82,19 +124,13 @@ class PdfDocument {
   newPage() {
     this.current = { ops: [], images: new Map() };
     this.pages.push(this.current);
-    this.y = MARGIN;
+    this.y = HEADER_BOTTOM + 18;
+    this.reportHeader();
   }
 
   ensure(height) {
-    if (this.y + height <= PAGE_HEIGHT - 54) return;
+    if (this.y + height <= FOOTER_TOP) return;
     this.newPage();
-    this.smallHeader();
-  }
-
-  smallHeader() {
-    this.fillRect(MARGIN, 24, PAGE_WIDTH - (MARGIN * 2), 22, LIGHT_BLUE);
-    this.text(MARGIN + 10, 39, 'RDO - Relatorio Diario de Obra', 9, true, BLUE);
-    this.y = 58;
   }
 
   fillRect(x, y, width, height, color) {
@@ -114,6 +150,12 @@ class PdfDocument {
     this.current.ops.push(`${rgb(color)} rg BT /${font} ${size} Tf ${x.toFixed(2)} ${(PAGE_HEIGHT - y).toFixed(2)} Td (${escapePdfText(value)}) Tj ET`);
   }
 
+  textRight(xRight, y, value, size = 10, bold = false, color = TEXT) {
+    const text = cleanText(value);
+    const width = text.length * size * 0.52;
+    this.text(xRight - width, y, text, size, bold, color);
+  }
+
   wrappedText(x, y, value, width, size = 10, bold = false, lineGap = 4, color = TEXT) {
     let cursor = y;
     wrapText(value, width, size).forEach((line) => {
@@ -123,23 +165,96 @@ class PdfDocument {
     return cursor;
   }
 
-  section(title) {
-    this.ensure(44);
-    this.fillRect(MARGIN, this.y, PAGE_WIDTH - (MARGIN * 2), 22, BLUE);
-    this.text(MARGIN + 10, this.y + 15, title, 10, true, [255, 255, 255]);
-    this.y += 32;
+  reportHeader() {
+    const { companyName, companyAddress, companyContact, generatedAt } = this.headerInfo;
+    this.fillRect(0, 0, PAGE_WIDTH, HEADER_BOTTOM - 10, HEADER_BG);
+    this.text(MARGIN, 24, companyName || 'Empresa nao informada', 10.5, true, TEXT);
+    this.text(MARGIN, 40, companyAddress || 'Endereco da empresa nao informado', 8.5, false, MUTED);
+    this.text(MARGIN, 54, companyContact || 'Contato da empresa nao informado', 8.5, false, MUTED);
+    this.textRight(PAGE_WIDTH - MARGIN, 30, generatedAt || todayLabel(), 8.5, false, MUTED);
+    this.line(MARGIN, HEADER_BOTTOM - 10, PAGE_WIDTH - MARGIN, HEADER_BOTTOM - 10, LIGHT_BORDER);
   }
 
-  field(label, value, width = PAGE_WIDTH - (MARGIN * 2)) {
-    this.ensure(26);
-    this.text(MARGIN, this.y, `${label}:`, 9, true, MUTED);
-    const nextY = this.wrappedText(MARGIN + 112, this.y, value || '-', width - 112, 9, false, 3, TEXT);
-    this.y = Math.max(this.y + 17, nextY);
+  title(title, subtitle) {
+    this.ensure(54);
+    this.text(MARGIN, this.y, title, 15, true, DARK_BLUE);
+    this.y += 18;
+    if (subtitle) {
+      this.text(MARGIN, this.y, subtitle, 8.5, false, MUTED);
+      this.y += 14;
+    }
+    this.line(MARGIN, this.y, PAGE_WIDTH - MARGIN, this.y, LIGHT_BORDER);
+    this.y += 18;
+  }
+
+  section(title) {
+    this.ensure(28);
+    this.text(MARGIN, this.y, title, 11, true, DARK_BLUE);
+    this.line(MARGIN, this.y + 6, PAGE_WIDTH - MARGIN, this.y + 6, LIGHT_BORDER);
+    this.y += 22;
   }
 
   paragraph(value) {
     this.ensure(32);
-    this.y = this.wrappedText(MARGIN, this.y, value || '-', PAGE_WIDTH - (MARGIN * 2), 9.5, false, 4, TEXT) + 4;
+    this.y = this.wrappedText(MARGIN, this.y, value || '-', CONTENT_WIDTH, 9, false, 4, TEXT) + 4;
+  }
+
+  infoGrid(items, columns = 2) {
+    const gap = 8;
+    const cellWidth = (CONTENT_WIDTH - (gap * (columns - 1))) / columns;
+    for (let index = 0; index < items.length; index += columns) {
+      const row = items.slice(index, index + columns);
+      const heights = row.map((item) => {
+        const valueLines = wrapText(item.value || '-', cellWidth - 14, 8.8);
+        return Math.max(44, 28 + (valueLines.length * 11));
+      });
+      const rowHeight = Math.max(...heights);
+      this.ensure(rowHeight + 6);
+      row.forEach((item, offset) => {
+        const x = MARGIN + (offset * (cellWidth + gap));
+        this.fillRect(x, this.y, cellWidth, rowHeight, WHITE);
+        this.strokeRect(x, this.y, cellWidth, rowHeight, LIGHT_BORDER);
+        this.text(x + 7, this.y + 13, item.label, 7.5, true, MUTED);
+        this.wrappedText(x + 7, this.y + 29, item.value || '-', cellWidth - 14, 8.8, item.bold !== false, 3, TEXT);
+      });
+      this.y += rowHeight + 6;
+    }
+  }
+
+  table(headers, rows, widths) {
+    const normalizedRows = rows.length ? rows : [headers.map(() => '-')];
+    const drawHeader = () => {
+      this.ensure(22);
+      let x = MARGIN;
+      this.fillRect(MARGIN, this.y, CONTENT_WIDTH, 20, LIGHT_BLUE);
+      headers.forEach((header, index) => {
+        this.strokeRect(x, this.y, widths[index], 20, LIGHT_BORDER);
+        this.text(x + 5, this.y + 13, header, 7.8, true, DARK_BLUE);
+        x += widths[index];
+      });
+      this.y += 20;
+    };
+
+    drawHeader();
+    normalizedRows.forEach((row, rowIndex) => {
+      const cellLines = row.map((value, index) => wrapText(value || '-', widths[index] - 10, 8));
+      const rowHeight = Math.max(22, ...cellLines.map((lines) => 10 + (lines.length * 10)));
+      if (this.y + rowHeight > FOOTER_TOP) {
+        this.newPage();
+        drawHeader();
+      }
+      let x = MARGIN;
+      if (rowIndex % 2 === 1) this.fillRect(MARGIN, this.y, CONTENT_WIDTH, rowHeight, [252, 252, 253]);
+      cellLines.forEach((lines, index) => {
+        this.strokeRect(x, this.y, widths[index], rowHeight, LIGHT_BORDER);
+        lines.forEach((line, lineIndex) => {
+          this.text(x + 5, this.y + 13 + (lineIndex * 10), line, 8, false, TEXT);
+        });
+        x += widths[index];
+      });
+      this.y += rowHeight;
+    });
+    this.y += 14;
   }
 
   addImage(imageSource, x, y, width, height) {
@@ -163,9 +278,39 @@ class PdfDocument {
     this.current.ops.push(`q ${width.toFixed(2)} 0 0 ${height.toFixed(2)} ${x.toFixed(2)} ${(PAGE_HEIGHT - y - height).toFixed(2)} cm /${name} Do Q`);
   }
 
+  photoBox(imageData, x, y, width, height) {
+    this.fillRect(x, y, width, height, [241, 245, 249]);
+    this.strokeRect(x, y, width, height, LIGHT_BORDER);
+    if (!imageData) {
+      this.text(x + 24, y + (height / 2), 'Imagem indisponivel', 8, false, MUTED);
+      return;
+    }
+    const fit = Math.min(width / imageData.width, height / imageData.height);
+    const drawWidth = Math.max(1, imageData.width * fit);
+    const drawHeight = Math.max(1, imageData.height * fit);
+    this.addImage(
+      imageData,
+      x + ((width - drawWidth) / 2),
+      y + ((height - drawHeight) / 2),
+      drawWidth,
+      drawHeight,
+    );
+  }
+
+  signature(label) {
+    this.ensure(68);
+    this.y += 16;
+    const width = 220;
+    const x = MARGIN;
+    this.line(x, this.y, x + width, this.y, MUTED);
+    this.text(x, this.y + 15, label || 'Responsavel', 8.5, false, MUTED);
+    this.y += 36;
+  }
+
   build() {
     this.pages.forEach((page, index) => {
-      page.ops.push(`${rgb(MUTED)} rg BT /F1 8 Tf ${(PAGE_WIDTH - MARGIN - 54).toFixed(2)} 24 Td (Pagina ${index + 1}/${this.pages.length}) Tj ET`);
+      page.ops.push(`${rgb(MUTED)} rg BT /F1 8 Tf ${(PAGE_WIDTH - MARGIN - 52).toFixed(2)} ${(PAGE_HEIGHT - 50).toFixed(2)} Td (Pagina ${index + 1}/${this.pages.length}) Tj ET`);
+      page.ops.push(`${rgb(LIGHT_BORDER)} RG ${MARGIN.toFixed(2)} ${(PAGE_HEIGHT - FOOTER_TOP + 4).toFixed(2)} m ${(PAGE_WIDTH - MARGIN).toFixed(2)} ${(PAGE_HEIGHT - FOOTER_TOP + 4).toFixed(2)} l S`);
     });
 
     const pageRefs = this.pages.map((page) => {
@@ -182,7 +327,7 @@ class PdfDocument {
     this.setObject(this.pagesObj, `<< /Type /Pages /Kids [${pageRefs.map((ref) => `${ref} 0 R`).join(' ')}] /Count ${pageRefs.length} >>`);
     this.setObject(this.rootObj, `<< /Type /Catalog /Pages ${this.pagesObj} 0 R >>`);
 
-    let pdf = '%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
+    let pdf = '%PDF-1.4\n%----\n';
     const offsets = [0];
     for (let index = 1; index < this.objects.length; index += 1) {
       offsets[index] = pdf.length;
@@ -198,7 +343,7 @@ class PdfDocument {
   }
 }
 
-async function imageToJpegDataUrl(url, maxWidth = 900, maxHeight = 650) {
+async function imageToJpegDataUrl(url, maxWidth = 720, maxHeight = 520) {
   if (!url) return '';
   const image = await new Promise((resolve, reject) => {
     const img = new Image();
@@ -237,92 +382,224 @@ function safeFileName(value) {
   return cleanText(value).replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'rdo';
 }
 
-export async function generateRdoPdf({ report, account, project }) {
-  const doc = new PdfDocument();
-  const period = dateRangeLabel(report.startDate || report.reportDate, report.endDate || report.reportDate);
-  const companyName = account?.nome || 'Empresa nao informada';
-  const title = report.titulo || `RDO - ${project?.nome || 'Obra'} - ${period}`;
-
-  doc.fillRect(0, 0, PAGE_WIDTH, 72, BLUE);
-  doc.text(MARGIN, 30, 'RELATORIO DIARIO DE OBRA - RDO', 15, true, [255, 255, 255]);
-  doc.text(MARGIN, 51, period, 10, false, [219, 234, 254]);
-  doc.y = 92;
-
-  doc.section('1. CABECALHO');
-  doc.field('Empresa', companyName);
-  doc.field('CPF/CNPJ', account?.documento || 'Nao informado');
-  doc.field('Responsavel', account?.responsavel || project?.responsavel || 'Nao informado');
-  doc.field('Contato', [account?.telefone, account?.email].filter(Boolean).join(' - ') || 'Nao informado');
-  doc.field('Endereco empresa', [account?.endereco, account?.cidade].filter(Boolean).join(' - ') || 'Nao informado');
-  doc.field('Obra', project?.nome || 'Nao informada');
-  doc.field('Cliente', project?.cliente || 'Nao informado');
-  doc.field('Endereco obra', [project?.endereco, project?.bairro, project?.cidade].filter(Boolean).join(' - ') || 'Nao informado');
-  doc.field('Periodo', period);
-
-  doc.section('2. RESUMO DO PERIODO');
-  doc.field('Titulo', title);
-  doc.field('Clima', report.clima || 'Nao informado');
-  doc.paragraph(report.resumo || 'Sem resumo informado.');
-
-  doc.section('3. MAO DE OBRA');
-  doc.paragraph(report.equipe || 'Nao informado.');
-
-  doc.section('4. SERVICOS EXECUTADOS');
-  doc.paragraph(report.servicosExecutados || 'Nao houve servicos registrados no periodo.');
-
-  doc.section('5. MATERIAIS, FERRAMENTAS E OCORRENCIAS');
-  doc.field('Materiais', report.materiais || 'Nao informado');
-  doc.field('Ferramentas', report.ferramentas || 'Nao informado');
-  doc.field('Ocorrencias', report.ocorrencias || 'Nao informado');
-
-  doc.section('6. REGISTRO FOTOGRAFICO POR CRONOGRAMA');
+function collectPhotos(report) {
   const groups = report.payload?.groupedPhotos || [];
-  if (!groups.length) {
-    doc.paragraph('Nenhuma foto registrada no periodo.');
+  if (groups.length) {
+    return groups.flatMap((group) => (
+      (group.photos || []).map((photo) => ({
+        ...photo,
+        stageName: photo.stageName || group.stageName || '',
+        subitemName: photo.subitemName || group.subitemName || '',
+      }))
+    ));
   }
+  return report.payload?.photos || [];
+}
 
-  for (const group of groups) {
-    doc.ensure(56);
-    doc.fillRect(MARGIN, doc.y, PAGE_WIDTH - (MARGIN * 2), 24, LIGHT_BLUE);
-    doc.text(MARGIN + 8, doc.y + 16, `${group.stageName}${group.subitemName ? ` / ${group.subitemName}` : ''}`, 10, true, BLUE);
-    doc.y += 34;
+function groupPhotosByDateAndSchedule(report) {
+  const grouped = new Map();
+  collectPhotos(report).forEach((photo) => {
+    const dateKey = normalizeDateKey(photo.data || photo.createdAt || photo.updatedAt) || 'sem-data';
+    const scheduleKey = [photo.stageName || photo.etapa || 'Sem etapa', photo.subitemName || ''].filter(Boolean).join(' / ');
+    if (!grouped.has(dateKey)) grouped.set(dateKey, new Map());
+    const schedules = grouped.get(dateKey);
+    if (!schedules.has(scheduleKey)) schedules.set(scheduleKey, []);
+    schedules.get(scheduleKey).push(photo);
+  });
 
-    for (const photo of group.photos || []) {
-      doc.ensure(170);
-      const yStart = doc.y;
-      const imageUrl = bestPhotoUrl(photo);
-      let imageData = '';
-      try {
-        imageData = await imageToJpegDataUrl(imageUrl);
-      } catch {
-        imageData = '';
+  return [...grouped.entries()]
+    .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
+    .map(([date, schedules]) => ({
+      date,
+      schedules: [...schedules.entries()].map(([title, photos]) => ({ title, photos })),
+    }));
+}
+
+function collectActivityDates(report) {
+  const dates = new Set();
+  (report.payload?.logs || []).forEach((log) => dates.add(normalizeDateKey(log.visitDate)));
+  (report.payload?.openIssues || []).forEach((issue) => dates.add(normalizeDateKey(issue.updatedAt || issue.createdAt || issue.prazo)));
+  (report.payload?.checklistResults || []).forEach((result) => dates.add(normalizeDateKey(result.checkedAt || result.updatedAt || result.createdAt)));
+  collectPhotos(report).forEach((photo) => dates.add(normalizeDateKey(photo.data || photo.createdAt || photo.updatedAt)));
+  dates.delete('');
+  if (!dates.size && normalizeDateKey(report.startDate || report.reportDate)) dates.add(normalizeDateKey(report.startDate || report.reportDate));
+  return [...dates].sort();
+}
+
+function scheduleBounds(scheduleItems) {
+  const dates = (scheduleItems || [])
+    .filter((item) => item.visible !== false)
+    .flatMap((item) => [item.inicioPrevisto, item.fimPrevisto, item.inicioReal, item.fimReal])
+    .map(normalizeDateKey)
+    .filter(Boolean)
+    .sort();
+  return {
+    start: dates[0] || '',
+    end: dates[dates.length - 1] || '',
+  };
+}
+
+function buildProjectData({ report, account, project }) {
+  const scheduleItems = report.payload?.scheduleItems || [];
+  const bounds = scheduleBounds(scheduleItems);
+  const totalDays = dayDiff(bounds.start, bounds.end);
+  const elapsedDays = bounds.start ? dayDiff(bounds.start, report.endDate || report.reportDate) : null;
+  const remainingDays = totalDays === null || elapsedDays === null ? null : Math.max(0, totalDays - elapsedDays);
+  return [
+    { label: 'Periodo (de)', value: formatDate(report.startDate || report.reportDate) },
+    { label: 'Periodo (ate)', value: formatDate(report.endDate || report.reportDate) },
+    { label: 'Obra/servico', value: [project?.nome, project?.endereco, project?.quadra ? `Quadra ${project.quadra}` : '', project?.lote ? `Lote ${project.lote}` : '', project?.bairro, project?.cidade].filter(Boolean).join(' - ') },
+    { label: 'Proprietario', value: project?.cliente || 'Nao informado' },
+    { label: 'CEP', value: project?.cep || 'Nao informado' },
+    { label: 'Endereco', value: [project?.endereco, project?.bairro, project?.cidade].filter(Boolean).join(' - ') || 'Nao informado' },
+    { label: 'Inicio', value: formatDate(bounds.start || project?.inicio || '') },
+    { label: 'Previsao de termino', value: formatDate(bounds.end || project?.previsaoTermino || '') },
+    { label: 'Prazo (dias)', value: totalDays === null ? '-' : String(totalDays) },
+    { label: 'Tempo decorrido', value: elapsedDays === null ? '-' : String(elapsedDays) },
+    { label: 'Saldo prazo', value: remainingDays === null ? '-' : String(remainingDays) },
+    { label: 'Responsavel', value: project?.responsavel || account?.responsavel || 'Nao informado' },
+    { label: 'Resp. tecnico', value: project?.responsavelTecnico || project?.responsavel || 'Nao informado' },
+    { label: 'ART no', value: project?.art || 'Nao informado' },
+    { label: 'Observacoes', value: project?.observacoes || report.resumo || 'Sem observacoes', bold: false },
+  ];
+}
+
+function buildDateRows(report) {
+  const photos = collectPhotos(report);
+  const logs = report.payload?.logs || [];
+  const issues = report.payload?.openIssues || [];
+  return collectActivityDates(report).map((date) => {
+    const logCount = logs.filter((log) => normalizeDateKey(log.visitDate) === date).length;
+    const photoCount = photos.filter((photo) => normalizeDateKey(photo.data || photo.createdAt || photo.updatedAt) === date).length;
+    const issueCount = issues.filter((issue) => normalizeDateKey(issue.updatedAt || issue.createdAt || issue.prazo) === date).length;
+    const parts = [
+      logCount ? `${logCount} registro(s) de diario` : '',
+      photoCount ? `${photoCount} foto(s)` : '',
+      issueCount ? `${issueCount} ocorrencia(s)` : '',
+    ].filter(Boolean);
+    return [formatDate(date), parts.join(' - ') || 'Sem movimentacao detalhada'];
+  });
+}
+
+function buildTaskRows(report) {
+  const logs = report.payload?.logs || [];
+  if (!logs.length) return [];
+  return logs.map((log) => [
+    formatDate(log.visitDate),
+    log.itemLabel || 'Cronograma',
+    log.observacoes || log.checklist || 'Registro diario da obra',
+    '',
+  ]);
+}
+
+function buildOccurrenceRows(report) {
+  const rows = [];
+  (report.payload?.openIssues || []).forEach((issue) => {
+    rows.push([
+      formatDate(issue.updatedAt || issue.createdAt || issue.prazo),
+      `${issue.etapa || 'Pendencia'}: ${issue.descricao || issue.status || 'Ocorrencia registrada'}`,
+    ]);
+  });
+  splitLines(report.ocorrencias).forEach((line) => rows.push(['-', line]));
+  return rows;
+}
+
+function buildImageRows(report) {
+  return groupPhotosByDateAndSchedule(report).flatMap((dateGroup) => (
+    dateGroup.schedules.map((schedule) => [
+      formatDate(dateGroup.date),
+      `${schedule.title} - ${schedule.photos.length} foto(s)`,
+    ])
+  ));
+}
+
+function companyHeader(account) {
+  return {
+    companyName: account?.nome || 'Empresa nao informada',
+    companyAddress: [account?.endereco, account?.cidade].filter(Boolean).join(' - ') || 'Endereco da empresa nao informado',
+    companyContact: [account?.email, account?.documento ? `CNPJ/CPF: ${account.documento}` : '', account?.telefone].filter(Boolean).join(' - ') || 'Contato da empresa nao informado',
+    generatedAt: todayLabel(),
+  };
+}
+
+async function renderPhotoPages(doc, report) {
+  const groupsByDate = groupPhotosByDateAndSchedule(report);
+  if (!groupsByDate.length) return;
+
+  for (const dateGroup of groupsByDate) {
+    doc.newPage();
+    doc.title('Registro fotografico', formatDate(dateGroup.date));
+
+    for (const schedule of dateGroup.schedules) {
+      doc.ensure(34);
+      doc.text(MARGIN, doc.y, schedule.title, 10, true, DARK_BLUE);
+      doc.y += 16;
+
+      let column = 0;
+      const gap = 12;
+      const cardWidth = (CONTENT_WIDTH - gap) / 2;
+      const imageHeight = 118;
+      const cardHeight = 154;
+
+      for (const photo of schedule.photos) {
+        if (column === 0) doc.ensure(cardHeight + 8);
+        const x = MARGIN + (column * (cardWidth + gap));
+        const y = doc.y;
+        const imageUrl = bestPhotoUrl(photo);
+        let imageData = '';
+        try {
+          imageData = await imageToJpegDataUrl(imageUrl);
+        } catch {
+          imageData = '';
+        }
+        doc.photoBox(imageData, x, y, cardWidth, imageHeight);
+        doc.wrappedText(x, y + imageHeight + 13, photo.fileName || photo.observacao || 'Registro fotografico', cardWidth, 7.6, false, 2, MUTED);
+        column += 1;
+        if (column >= 2) {
+          column = 0;
+          doc.y += cardHeight + 8;
+        }
       }
-
-      if (imageData) {
-        doc.addImage(imageData, MARGIN, yStart, 168, 126);
-      } else {
-        doc.strokeRect(MARGIN, yStart, 168, 126, BORDER);
-        doc.text(MARGIN + 18, yStart + 64, 'Imagem indisponivel', 9, false, MUTED);
-      }
-
-      const textX = MARGIN + 182;
-      doc.text(textX, yStart + 14, formatDate(photo.data || photo.createdAt), 9, true, TEXT);
-      const afterDescription = doc.wrappedText(
-        textX,
-        yStart + 32,
-        photo.observacao || photo.fileName || 'Registro fotografico da obra',
-        PAGE_WIDTH - textX - MARGIN,
-        9,
-        false,
-        4,
-        TEXT,
-      );
-      doc.text(textX, Math.max(afterDescription + 8, yStart + 104), photo.usuario || 'Usuario nao informado', 8.5, false, MUTED);
-      doc.y = yStart + 142;
-      doc.line(MARGIN, doc.y, PAGE_WIDTH - MARGIN, doc.y, BORDER);
-      doc.y += 12;
+      if (column !== 0) doc.y += cardHeight + 8;
+      doc.y += 4;
     }
   }
+}
+
+export async function generateRdoPdf({ report, account, project }) {
+  const doc = new PdfDocument(companyHeader(account));
+  const period = dateRangeLabel(report.startDate || report.reportDate, report.endDate || report.reportDate);
+  const title = report.titulo || `RDO - ${project?.nome || 'Obra'} - ${period}`;
+
+  doc.title('RELATORIO DIARIO DE OBRA', title);
+
+  doc.section('Dados da obra');
+  doc.infoGrid(buildProjectData({ report, account, project }));
+
+  doc.section('Data / Descricao');
+  doc.table(['Data', 'Descricao'], buildDateRows(report), [110, CONTENT_WIDTH - 110]);
+
+  doc.section('Turno / Tempo');
+  doc.table(['Data', 'Manha', 'Tarde', 'Noite'], collectActivityDates(report).map((date) => [formatDate(date), '-', '-', '-']), [130, 129, 130, 130]);
+
+  if (report.equipe) {
+    doc.section('Equipe / mao de obra');
+    doc.paragraph(report.equipe);
+  }
+
+  doc.section('Tarefas');
+  doc.table(['Data', 'Fase/Servico', 'Descricao', 'Medicao'], buildTaskRows(report), [82, 150, 227, 60]);
+
+  doc.section('Ocorrencias');
+  doc.table(['Data', 'Descricao'], buildOccurrenceRows(report), [110, CONTENT_WIDTH - 110]);
+
+  doc.section('Imagens');
+  doc.table(['Data', 'Descricao'], buildImageRows(report), [110, CONTENT_WIDTH - 110]);
+
+  await renderPhotoPages(doc, report);
+
+  doc.section('Assinatura');
+  doc.signature('Responsavel');
 
   const blob = doc.build();
   downloadBlob(blob, `${safeFileName(title)}.pdf`);

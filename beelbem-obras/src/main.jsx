@@ -5061,6 +5061,7 @@ function buildRdoDraft({ data, activeWork, startDate, endDate, savedReport }) {
       obra: activeWork || null,
       startDate: range.startDate,
       endDate: range.endDate,
+      scheduleItems: data.scheduleItems || [],
       logs: logs.map((log) => ({
         ...log,
         itemLabel: scheduleItemLabel(itemsById, log.scheduleItemId),
