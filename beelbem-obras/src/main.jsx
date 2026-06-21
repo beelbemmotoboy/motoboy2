@@ -5059,7 +5059,7 @@ function buildRdoDraft({ data, activeWork, startDate, endDate, savedReport }) {
   return savedReport ? { ...generated, ...savedReport, payload: generated.payload } : generated;
 }
 
-function Reports({ data, activeWork, account, saving, error, message, setScreen, onSaveRdo, onLoadRdoPhotos }) {
+function Reports({ data, activeWork, account, saving, error, message, setScreen, onSaveRdo, onDeleteRdo, onLoadRdoPhotos }) {
   const [startDate, setStartDate] = useState(todayIso());
   const [endDate, setEndDate] = useState(todayIso());
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -5133,6 +5133,14 @@ function Reports({ data, activeWork, account, saving, error, message, setScreen,
     }
   }
 
+  function deleteSavedReport(event, report) {
+    event.stopPropagation();
+    const period = formatDateRangeBr(report.startDate || report.reportDate, report.endDate || report.reportDate);
+    const confirmed = window.confirm(`Excluir o RDO de ${period}? Esta acao nao pode ser desfeita.`);
+    if (!confirmed) return;
+    onDeleteRdo(report.id);
+  }
+
   return (
     <>
       <PageTitle eyebrow="RDO" title="Relatorio diario de obra" subtitle="Gere e grave o RDO por obra e periodo." onBack={() => setScreen('workPanel')}>
@@ -5181,24 +5189,37 @@ function Reports({ data, activeWork, account, saving, error, message, setScreen,
         <aside className="rdo-history">
           <strong>RDOs salvos</strong>
           {savedReports.length ? savedReports.map((report) => (
-            <button
-              type="button"
+            <div
               className={
                 normalizeDateKey(report.startDate || report.reportDate) === range.startDate
                 && normalizeDateKey(report.endDate || report.reportDate) === range.endDate
-                  ? 'active'
-                  : ''
+                  ? 'rdo-history-item active'
+                  : 'rdo-history-item'
               }
               key={report.id}
-              onClick={() => {
-                setStartDate(normalizeDateKey(report.startDate || report.reportDate));
-                setEndDate(normalizeDateKey(report.endDate || report.reportDate));
-              }}
             >
-              <FileText size={18} aria-hidden="true" />
-              <span>{formatDateRangeBr(report.startDate || report.reportDate, report.endDate || report.reportDate)}</span>
-              <small>{report.titulo}</small>
-            </button>
+              <button
+                type="button"
+                className="rdo-history-select"
+                onClick={() => {
+                  setStartDate(normalizeDateKey(report.startDate || report.reportDate));
+                  setEndDate(normalizeDateKey(report.endDate || report.reportDate));
+                }}
+              >
+                <FileText size={18} aria-hidden="true" />
+                <span>{formatDateRangeBr(report.startDate || report.reportDate, report.endDate || report.reportDate)}</span>
+                <small>{report.titulo}</small>
+              </button>
+              <button
+                type="button"
+                className="rdo-history-delete"
+                onClick={(event) => deleteSavedReport(event, report)}
+                disabled={saving}
+                aria-label={`Excluir RDO ${formatDateRangeBr(report.startDate || report.reportDate, report.endDate || report.reportDate)}`}
+              >
+                <Trash2 size={18} aria-hidden="true" />
+              </button>
+            </div>
           )) : <p>Nenhum RDO salvo para esta obra.</p>}
         </aside>
       </section>
@@ -7548,6 +7569,29 @@ function App() {
     }
   }
 
+  async function deleteRdoReport(reportId) {
+    if (!reportId) return false;
+    setRdoSaving(true);
+    setRdoError('');
+    setRdoMessage('');
+    try {
+      if (supabaseConfigured && session) {
+        await deleteChild('rdoReports', reportId);
+      }
+      setData((current) => ({
+        ...current,
+        rdoReports: (current.rdoReports || []).filter((report) => report.id !== reportId),
+      }));
+      setRdoMessage('RDO excluido.');
+      return true;
+    } catch (error) {
+      setRdoError(error.message || 'Nao foi possivel excluir o RDO.');
+      return false;
+    } finally {
+      setRdoSaving(false);
+    }
+  }
+
   async function loadRdoPhotosWithUrls() {
     if (!activeWork?.id) return [];
     const hasSignedUrls = photoUrlsProjectId === activeWork.id && (data.photos || []).some((photo) => getBestPhotoUrl(photo));
@@ -8245,6 +8289,7 @@ function App() {
             message={rdoMessage}
             setScreen={setScreen}
             onSaveRdo={saveRdoReport}
+            onDeleteRdo={deleteRdoReport}
             onLoadRdoPhotos={loadRdoPhotosWithUrls}
           />
         );

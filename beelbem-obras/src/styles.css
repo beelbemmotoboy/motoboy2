@@ -840,29 +840,57 @@ button.metric-card {
   font-size: 18px;
 }
 
-.rdo-history button {
+.rdo-history-item {
   border: 1px solid #dbeafe;
   border-radius: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  color: #1e3a8a;
+  background: #eff6ff;
+  overflow: hidden;
+}
+
+.rdo-history-select {
+  border: 0;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 3px 8px;
   padding: 11px;
-  color: #1e3a8a;
-  background: #eff6ff;
+  color: inherit;
+  background: transparent;
   text-align: left;
 }
 
-.rdo-history button.active {
+.rdo-history-item.active {
   border-color: #2563eb;
   color: #fff;
   background: #2563eb;
 }
 
-.rdo-history button small {
+.rdo-history-select small {
   grid-column: 2;
   color: inherit;
   opacity: 0.82;
   overflow-wrap: anywhere;
+}
+
+.rdo-history-delete {
+  width: 40px;
+  height: 40px;
+  margin-right: 8px;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  display: inline-grid;
+  place-items: center;
+  color: #b91c1c;
+  background: #fff1f2;
+}
+
+.rdo-history-delete:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .rdo-history p {
