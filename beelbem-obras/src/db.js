@@ -735,14 +735,15 @@ export async function fetchCurrentObrasUser(authUserId) {
   return data ? withSignedObrasUserAvatar(obrasUserFromDb(data)) : null;
 }
 
-export async function fetchObrasUsers() {
+export async function fetchObrasUsers({ signAvatars = false } = {}) {
   const { data, error } = await supabase
     .from('obras_users')
     .select('*')
     .order('created_at', { ascending: false });
 
   if (error) throw error;
-  return Promise.all((data || []).map((row) => withSignedObrasUserAvatar(obrasUserFromDb(row))));
+  const users = (data || []).map(obrasUserFromDb);
+  return signAvatars ? Promise.all(users.map(withSignedObrasUserAvatar)) : users;
 }
 
 export async function fetchObrasNotifications({ limit = 80 } = {}) {
@@ -827,14 +828,15 @@ export async function sendObrasPushNotification(notificationId) {
   return data;
 }
 
-export async function fetchObrasAccounts() {
+export async function fetchObrasAccounts({ signLogos = false } = {}) {
   const { data, error } = await supabase
     .from('obras_accounts')
     .select('*')
     .order('created_at', { ascending: false });
 
   if (error) throw error;
-  return Promise.all((data || []).map((row) => withSignedObrasAccountLogo(obrasAccountFromDb(row))));
+  const accounts = (data || []).map(obrasAccountFromDb);
+  return signLogos ? Promise.all(accounts.map(withSignedObrasAccountLogo)) : accounts;
 }
 
 export async function updateObrasAccount(accountId, patch) {

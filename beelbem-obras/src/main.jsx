@@ -5925,8 +5925,13 @@ function App() {
 
   useEffect(() => {
     if (screen !== 'companies') return;
-    void loadObrasAccounts();
+    void loadObrasAccounts({ signLogos: true });
   }, [screen, session?.user?.id, platformAdmin]);
+
+  useEffect(() => {
+    if (screen !== 'users') return;
+    void loadRemoteUsers({ signAvatars: true });
+  }, [screen, session?.user?.id]);
 
   const cityWorks = useMemo(
     () => data.works.filter((work) => work.cidadeId === selectedCity.id),
@@ -6051,7 +6056,7 @@ function App() {
     }
 
     let active = true;
-    void fetchObrasNotifications({ limit: 500 })
+    void fetchObrasNotifications({ limit: 80 })
       .then((notifications) => {
         if (active) setObrasNotifications(notifications);
       })
@@ -6083,8 +6088,10 @@ function App() {
         setScreen('login');
         return;
       }
-      await loadObrasAccounts();
-      await loadRemoteData();
+      await Promise.all([
+        loadObrasAccounts(),
+        loadRemoteData(),
+      ]);
     } catch {
       // The specific loading error is already displayed by the failing request.
     } finally {
@@ -6092,7 +6099,7 @@ function App() {
     }
   }
 
-  async function loadRemoteUsers() {
+  async function loadRemoteUsers({ signAvatars = false } = {}) {
     if (!supabaseConfigured || !session) {
       setObrasUsers(localObrasUsers);
       setCurrentObrasUser(localObrasUsers[0]);
@@ -6104,7 +6111,7 @@ function App() {
     try {
       const currentUser = await ensureCurrentObrasUser();
       const nextPlatformAdmin = await isObrasPlatformAdmin().catch(() => false);
-      const users = await fetchObrasUsers();
+      const users = await fetchObrasUsers({ signAvatars });
       setPlatformAdmin(nextPlatformAdmin);
       setCurrentObrasUser(currentUser || users.find((item) => item.authUserId === session.user.id) || null);
       setObrasUsers(users);
@@ -6117,7 +6124,7 @@ function App() {
     }
   }
 
-  async function loadObrasAccounts() {
+  async function loadObrasAccounts({ signLogos = false } = {}) {
     setAccountsLoading(true);
     setAccountsError('');
     setAccountsMessage('');
@@ -6129,7 +6136,7 @@ function App() {
     }
 
     try {
-      const accounts = await fetchObrasAccounts();
+      const accounts = await fetchObrasAccounts({ signLogos });
       setObrasAccounts(accounts);
     } catch (error) {
       setAccountsError(error.message || 'Nao foi possivel carregar empresas do Obras.');
@@ -8198,7 +8205,7 @@ function App() {
             saving={accountsSaving}
             error={accountsError}
             message={accountsMessage}
-            onRefresh={loadObrasAccounts}
+            onRefresh={() => loadObrasAccounts({ signLogos: true })}
             onSave={saveObrasAccount}
             setScreen={setScreen}
           />
@@ -8213,7 +8220,7 @@ function App() {
             message={usersMessage}
             saving={usersSaving}
             canManage={canManageObrasUsers}
-            onRefresh={loadRemoteUsers}
+            onRefresh={() => loadRemoteUsers({ signAvatars: true })}
             onSave={saveObrasUser}
             onToggle={toggleObrasUser}
             setScreen={setScreen}
