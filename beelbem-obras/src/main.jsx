@@ -95,7 +95,6 @@ import {
   uploadObrasUserAvatar,
   uploadPhotoFile,
 } from './db.js';
-import { analisarProjetoComGemini, geminiProjectConfig } from './analisa_projeto_gemini.js';
 import { getBestPhotoUrl, prepareAvatarUpload, prepareLogoUpload, preparePhotoUpload } from './photoFunctions.js';
 import { enableObrasPushNotifications, getPushSupportStatus, showObrasBrowserNotification } from './pushNotifications.js';
 import {
@@ -1399,7 +1398,15 @@ function NewWork({ createWork, setScreen, selectedCity, onProjectAnalyzed, works
     setAiError('');
     setSelectedFileName(file.name || 'Arquivo selecionado');
 
-    const result = await analisarProjetoComGemini({ arquivo: file });
+    let result;
+    try {
+      const { analisarProjetoComGemini } = await import('./analisa_projeto_gemini.js');
+      result = await analisarProjetoComGemini({ arquivo: file });
+    } catch (error) {
+      setAiLoading(false);
+      setAiError(`Nao foi possivel carregar a analise por IA: ${error.message}`);
+      return;
+    }
     setAiLoading(false);
 
     if (!result.ok) {
@@ -1445,7 +1452,7 @@ function NewWork({ createWork, setScreen, selectedCity, onProjectAnalyzed, works
         <div className="ai-panel-status" aria-live="polite">
           {aiLoading ? <span>Analisando {selectedFileName || 'projeto'} com Gemini...</span> : null}
           {!aiLoading && aiError ? <span className="ai-panel-error">{aiError}</span> : null}
-          {!aiLoading && !aiError && !geminiProjectConfig.configured ? <span>Gemini ainda nao configurado neste ambiente.</span> : null}
+          {!aiLoading && !aiError && !supabaseConfigured ? <span>Gemini ainda nao configurado neste ambiente.</span> : null}
         </div>
       </section>
       <section ref={manualFormRef} className="form-grid">
