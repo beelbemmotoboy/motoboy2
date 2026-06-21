@@ -104,6 +104,8 @@ import {
   buildScheduleSourceOptions,
 } from './scheduleFunctions.js';
 import { buildLocalScheduleItems, defaultScheduleBlueprint } from './scheduleBlueprint.js';
+import loginBackground from './assets/login-background.jpg';
+import obrasLogo from './assets/beelbem-obras-logo.jpg';
 import './styles.css';
 
 const STORAGE_KEY = 'beelbem-obras-local-v1';
@@ -977,22 +979,21 @@ function Shell({ screen, setScreen, children, activeWork, selectedCity, cities, 
 
 function LoginScreen({ onLogin, authError, authLoading, dbAvailable, onOpenSignup }) {
   return (
-    <main className="login-page">
+    <main
+      className="login-page"
+      style={{
+        '--login-background': `url("${loginBackground}")`,
+        '--login-logo': `url("${obrasLogo}")`,
+      }}
+    >
       <section className="login-visual" aria-label="Beelbem Obras">
-        <div className="login-grid" />
         <div className="login-badge">
-          <HardHat size={58} aria-hidden="true" />
-          <strong>Beelbem Obras</strong>
-          <span>Controle inteligente de obras</span>
+          <div className="login-logo-full" role="img" aria-label="Beelbem Obras - Controle inteligente de obras" />
         </div>
       </section>
       <section className="login-panel">
         <div className="brand-lockup login-brand">
-          <div className="brand-mark"><HardHat size={32} aria-hidden="true" /></div>
-          <div>
-            <strong>Beelbem Obras</strong>
-            <span>Controle inteligente de obras</span>
-          </div>
+          <div className="login-brand-logo" role="img" aria-label="Beelbem Obras" />
         </div>
         <form onSubmit={onLogin}>
           <label>
