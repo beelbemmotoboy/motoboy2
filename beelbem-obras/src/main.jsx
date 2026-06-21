@@ -340,7 +340,7 @@ const sidebarRoutes = [
   ...quickRoutes,
   { id: 'companies', label: 'Empresas', Icon: Landmark },
   { id: 'users', label: 'Usuarios', Icon: UsersRound },
-  { id: 'commercial', label: 'Assinaturas', Icon: Landmark },
+  { id: 'commercial', label: 'Assinaturas', Icon: Landmark, disabled: true },
   { id: 'pls', label: 'PLS Caixa', Icon: FileCheck2 },
   { id: 'reports', label: 'Relatorios', Icon: BarChart3 },
   { id: 'stageLibrary', label: 'Cadastro etapas', Icon: Library },
@@ -916,8 +916,15 @@ function Shell({ screen, setScreen, children, activeWork, selectedCity, cities, 
           </div>
         </div>
         <nav aria-label="Menu principal">
-          {sidebarRoutes.map(({ id, label, Icon }) => (
-            <button className={screen === id ? 'active' : ''} type="button" key={id} onClick={() => setScreen(id)}>
+          {sidebarRoutes.map(({ id, label, Icon, disabled }) => (
+            <button
+              className={screen === id && !disabled ? 'active' : ''}
+              type="button"
+              key={id}
+              disabled={disabled}
+              title={disabled ? 'Temporariamente desativado' : undefined}
+              onClick={() => setScreen(id)}
+            >
               <Icon size={20} aria-hidden="true" />
               <span>{label}</span>
             </button>
@@ -965,11 +972,13 @@ function Shell({ screen, setScreen, children, activeWork, selectedCity, cities, 
                 <strong>Beelbem Obras</strong>
                 <IconButton label="Fechar menu" Icon={X} onClick={() => setMobileMenuOpen(false)} />
               </div>
-              {sidebarRoutes.map(({ id, label, Icon }) => (
+              {sidebarRoutes.map(({ id, label, Icon, disabled }) => (
                 <button
-                  className={screen === id ? 'active' : ''}
+                  className={screen === id && !disabled ? 'active' : ''}
                   type="button"
                   key={id}
+                  disabled={disabled}
+                  title={disabled ? 'Temporariamente desativado' : undefined}
                   onClick={() => {
                     setScreen(id);
                     setMobileMenuOpen(false);
