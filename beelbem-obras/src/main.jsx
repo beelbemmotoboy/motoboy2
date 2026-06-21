@@ -194,7 +194,7 @@ const projectScreenRequirements = {
   tools: { collections: ['tools'], signPhotoUrls: false },
   checklist: { collections: ['scheduleItems', 'scheduleLogs', 'checklist', 'checklistResults'], signPhotoUrls: false, normalizeSchedule: false },
   notifications: { collections: ['scheduleItems', 'scheduleLogs', 'photos', 'plsItems', 'issues', 'checklist', 'checklistResults', 'rdoReports'], signPhotoUrls: false, normalizeSchedule: false },
-  reports: { collections: ['scheduleItems', 'scheduleLogs', 'photos', 'issues', 'rdoReports'], signPhotoUrls: false, normalizeSchedule: false },
+  reports: { collections: ['scheduleItems', 'scheduleLogs', 'photos', 'issues', 'checklist', 'checklistResults', 'rdoReports'], signPhotoUrls: false, normalizeSchedule: false },
   documents: { collections: ['documents'], signPhotoUrls: false },
   standards: { collections: ['documents'], signPhotoUrls: false },
   workPanel: { collections: ['scheduleItems', 'scheduleLogs'], signPhotoUrls: false, normalizeSchedule: false },
@@ -635,6 +635,33 @@ function normalizeDateKey(value) {
   match = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (match) return `${match[3]}-${match[2]}-${match[1]}`;
   return text;
+}
+
+function compareDateKeys(a, b) {
+  return String(normalizeDateKey(a)).localeCompare(String(normalizeDateKey(b)));
+}
+
+function isDateInRange(value, startDate, endDate) {
+  const dateKey = normalizeDateKey(value);
+  const startKey = normalizeDateKey(startDate);
+  const endKey = normalizeDateKey(endDate);
+  if (!dateKey || !startKey || !endKey) return false;
+  return dateKey >= startKey && dateKey <= endKey;
+}
+
+function normalizeDateRange(startDate, endDate) {
+  const startKey = normalizeDateKey(startDate) || todayIso();
+  const endKey = normalizeDateKey(endDate) || startKey;
+  return compareDateKeys(startKey, endKey) <= 0
+    ? { startDate: startKey, endDate: endKey }
+    : { startDate: endKey, endDate: startKey };
+}
+
+function formatDateRangeBr(startDate, endDate) {
+  const range = normalizeDateRange(startDate, endDate);
+  return range.startDate === range.endDate
+    ? formatDateBr(range.startDate)
+    : `${formatDateBr(range.startDate)} a ${formatDateBr(range.endDate)}`;
 }
 
 function activityDateKey(value) {
@@ -4928,28 +4955,86 @@ function scheduleItemLabel(itemsById, itemId) {
   return parent ? `${parent.nome} / ${item.nome}` : item.nome;
 }
 
-function buildRdoDraft({ data, activeWork, reportDate, savedReport }) {
+function resolveSchedulePhotoContext(photo, itemsByName, itemsById) {
+  const item = itemsByName.get(normalizeSearch(photo.etapa));
+  if (!item) {
+    return {
+      stageName: photo.etapa || 'Sem etapa',
+      subitemName: '',
+    };
+  }
+  return getScheduleActivityContext(item.id, itemsById);
+}
+
+function groupRdoPhotosBySchedule(photos, scheduleItems) {
+  const itemsById = new Map((scheduleItems || []).map((item) => [item.id, item]));
+  const itemsByName = new Map();
+  (scheduleItems || []).forEach((item) => {
+    itemsByName.set(normalizeSearch(item.nome), item);
+  });
+  const groups = new Map();
+  photos.forEach((photo) => {
+    const context = resolveSchedulePhotoContext(photo, itemsByName, itemsById);
+    const key = `${context.stageName}__${context.subitemName}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        stageName: context.stageName,
+        subitemName: context.subitemName,
+        photos: [],
+      });
+    }
+    groups.get(key).photos.push({ ...photo, ...context });
+  });
+
+  return [...groups.values()].sort((a, b) => {
+    const stageCompare = a.stageName.localeCompare(b.stageName);
+    return stageCompare || a.subitemName.localeCompare(b.subitemName);
+  });
+}
+
+function buildRdoDraft({ data, activeWork, startDate, endDate, savedReport }) {
+  const range = normalizeDateRange(startDate, endDate);
   const itemsById = new Map((data.scheduleItems || []).map((item) => [item.id, item]));
-  const logs = (data.scheduleLogs || []).filter((log) => normalizeDateKey(log.visitDate) === reportDate);
-  const photos = (data.photos || []).filter((photo) => normalizeDateKey(photo.data) === reportDate);
-  const openIssues = (data.issues || []).filter((issue) => normalizeSearch(issue.status) !== 'resolvida');
+  const checklistById = new Map((data.checklist || []).map((entry) => [entry.id, entry]));
+  const checklistItemsById = new Map();
+  (data.checklist || []).forEach((checklist) => {
+    (checklist.itens || []).forEach((item) => checklistItemsById.set(item.id, item));
+  });
+  const logs = (data.scheduleLogs || []).filter((log) => isDateInRange(log.visitDate, range.startDate, range.endDate));
+  const photos = (data.photos || []).filter((photo) => isDateInRange(photo.data || photo.createdAt || photo.updatedAt, range.startDate, range.endDate));
+  const openIssues = (data.issues || []).filter((issue) => (
+    normalizeSearch(issue.status) !== 'resolvida'
+    || isDateInRange(issue.updatedAt || issue.createdAt || issue.prazo, range.startDate, range.endDate)
+  ));
+  const checklistResults = (data.checklistResults || []).filter((result) => (
+    result.checked && isDateInRange(result.checkedAt || result.updatedAt || result.createdAt, range.startDate, range.endDate)
+  ));
   const serviceLines = logs.map((log) => {
     const label = scheduleItemLabel(itemsById, log.scheduleItemId);
     const description = log.observacoes || log.checklist || 'Registro diario da obra';
-    return `${label}: ${description}`;
+    return `${formatDateBr(log.visitDate)} - ${label}: ${description}`;
+  });
+  const checklistLines = checklistResults.map((result) => {
+    const checklist = checklistById.get(result.checklistId);
+    const checklistItem = checklistItemsById.get(result.checklistItemId);
+    return `${formatDateBr(normalizeDateKey(result.checkedAt))} - ${scheduleItemLabel(itemsById, result.scheduleItemId)}: ${checklistItem?.texto || checklist?.titulo || 'Checklist conferido'}`;
   });
   const occurrenceLines = [
     ...logs.map((log) => log.fotosObservacao ? `${scheduleItemLabel(itemsById, log.scheduleItemId)}: ${log.fotosObservacao}` : ''),
     ...openIssues.map((issue) => `${issue.etapa}: ${issue.descricao} (${issue.status})`),
+    ...checklistLines,
   ];
+  const groupedPhotos = groupRdoPhotosBySchedule(photos, data.scheduleItems || []);
   const generated = {
-    reportDate,
-    titulo: `RDO - ${activeWork?.nome || 'Obra'} - ${formatDateBr(reportDate)}`,
+    reportDate: range.startDate,
+    startDate: range.startDate,
+    endDate: range.endDate,
+    titulo: `RDO - ${activeWork?.nome || 'Obra'} - ${formatDateRangeBr(range.startDate, range.endDate)}`,
     clima: '',
     equipe: uniqueTextLines(logs.map((log) => log.maoObra)),
     resumo: logs.length
-      ? `${logs.length} registro(s) de diario encontrados para ${formatDateBr(reportDate)}.`
-      : `Sem registros de diario para ${formatDateBr(reportDate)}.`,
+      ? `${logs.length} registro(s) de diario encontrados no periodo ${formatDateRangeBr(range.startDate, range.endDate)}.`
+      : `Sem registros de diario no periodo ${formatDateRangeBr(range.startDate, range.endDate)}.`,
     servicosExecutados: uniqueTextLines(serviceLines),
     materiais: uniqueTextLines(logs.map((log) => log.pedidoMaterial)),
     ferramentas: uniqueTextLines(logs.map((log) => log.ferramentas)),
@@ -4958,34 +5043,51 @@ function buildRdoDraft({ data, activeWork, reportDate, savedReport }) {
     payload: {
       generatedAt: new Date().toISOString(),
       obra: activeWork || null,
-      reportDate,
+      startDate: range.startDate,
+      endDate: range.endDate,
       logs: logs.map((log) => ({
         ...log,
         itemLabel: scheduleItemLabel(itemsById, log.scheduleItemId),
       })),
       photos,
+      groupedPhotos,
       openIssues,
+      checklistResults,
     },
   };
 
-  return savedReport ? { ...generated, ...savedReport, payload: savedReport.payload || generated.payload } : generated;
+  return savedReport ? { ...generated, ...savedReport, payload: generated.payload } : generated;
 }
 
-function Reports({ data, activeWork, saving, error, message, setScreen, onSaveRdo }) {
-  const [reportDate, setReportDate] = useState(todayIso());
-  const savedReports = (data.rdoReports || []).slice().sort((a, b) => String(b.reportDate).localeCompare(String(a.reportDate)));
-  const savedReport = savedReports.find((report) => normalizeDateKey(report.reportDate) === reportDate);
+function Reports({ data, activeWork, account, saving, error, message, setScreen, onSaveRdo, onLoadRdoPhotos }) {
+  const [startDate, setStartDate] = useState(todayIso());
+  const [endDate, setEndDate] = useState(todayIso());
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const formRef = useRef(null);
+  const range = normalizeDateRange(startDate, endDate);
+  const savedReports = (data.rdoReports || [])
+    .slice()
+    .sort((a, b) => String(b.startDate || b.reportDate).localeCompare(String(a.startDate || a.reportDate)));
+  const savedReport = savedReports.find((report) => {
+    const reportStart = normalizeDateKey(report.startDate || report.reportDate);
+    const reportEnd = normalizeDateKey(report.endDate || report.reportDate);
+    return reportStart === range.startDate && reportEnd === range.endDate;
+  });
   const draft = useMemo(
-    () => buildRdoDraft({ data, activeWork, reportDate, savedReport }),
-    [data, activeWork, reportDate, savedReport?.id],
+    () => buildRdoDraft({ data, activeWork, startDate: range.startDate, endDate: range.endDate, savedReport }),
+    [data, activeWork, range.startDate, range.endDate, savedReport?.id],
   );
 
-  function submit(event) {
-    event.preventDefault();
-    const values = Object.fromEntries(new FormData(event.currentTarget).entries());
-    onSaveRdo({
+  function currentFormValues() {
+    return Object.fromEntries(new FormData(formRef.current).entries());
+  }
+
+  function buildReportFromValues(values, extraPayload = {}) {
+    return {
       id: savedReport?.id || '',
-      reportDate,
+      reportDate: range.startDate,
+      startDate: range.startDate,
+      endDate: range.endDate,
       titulo: values.titulo,
       clima: values.clima,
       equipe: values.equipe,
@@ -4998,34 +5100,70 @@ function Reports({ data, activeWork, saving, error, message, setScreen, onSaveRd
       payload: {
         ...draft.payload,
         campos: values,
+        ...extraPayload,
       },
-    });
+    };
+  }
+
+  function submit(event) {
+    event.preventDefault();
+    onSaveRdo(buildReportFromValues(currentFormValues()));
+  }
+
+  async function downloadPdf() {
+    if (!formRef.current || pdfLoading) return;
+    setPdfLoading(true);
+    try {
+      const signedPhotos = await onLoadRdoPhotos(range);
+      const periodPhotos = signedPhotos.filter((photo) => isDateInRange(photo.data || photo.createdAt || photo.updatedAt, range.startDate, range.endDate));
+      const groupedPhotos = groupRdoPhotosBySchedule(periodPhotos, data.scheduleItems || []);
+      const report = buildReportFromValues(currentFormValues(), {
+        photos: periodPhotos,
+        groupedPhotos,
+      });
+      report.fotosCount = periodPhotos.length;
+      const { generateRdoPdf } = await import('./rdoPdf.js');
+      await generateRdoPdf({
+        report,
+        account,
+        project: activeWork,
+      });
+    } finally {
+      setPdfLoading(false);
+    }
   }
 
   return (
     <>
-      <PageTitle eyebrow="RDO" title="Relatorio diario de obra" subtitle="Gere e grave um RDO por obra e data." onBack={() => setScreen('workPanel')}>
-        <ActionButton Icon={FileText} variant="secondary" onClick={() => window.print()}>Imprimir RDO</ActionButton>
+      <PageTitle eyebrow="RDO" title="Relatorio diario de obra" subtitle="Gere e grave o RDO por obra e periodo." onBack={() => setScreen('workPanel')}>
+        <ActionButton Icon={FileText} variant="secondary" onClick={downloadPdf} disabled={pdfLoading}>
+          {pdfLoading ? 'Gerando PDF...' : 'Gerar PDF'}
+        </ActionButton>
       </PageTitle>
       <section className="report-summary rdo-summary">
         <strong>{activeWork?.nome || 'Obra selecionada'}</strong>
-        <span>{activeWork?.cliente || 'Cliente'} - {activeWork?.endereco || 'Endereco nao informado'}</span>
-        <span>{savedReport ? `RDO salvo em ${formatDateTime(savedReport.updatedAt || savedReport.createdAt)}` : 'RDO ainda nao salvo para esta data'}</span>
+        <span>{account?.nome || 'Empresa'} - {activeWork?.cliente || 'Cliente'} - {activeWork?.endereco || 'Endereco nao informado'}</span>
+        <span>Periodo: {formatDateRangeBr(range.startDate, range.endDate)}</span>
+        <span>{savedReport ? `RDO salvo em ${formatDateTime(savedReport.updatedAt || savedReport.createdAt)}` : 'RDO ainda nao salvo para este periodo'}</span>
       </section>
       {error ? <p className="auth-message error">{error}</p> : null}
       {message ? <p className="auth-message success">{message}</p> : null}
       <section className="rdo-layout">
-        <form className="rdo-form" key={`${activeWork?.id || 'obra'}-${reportDate}-${savedReport?.id || 'novo'}`} onSubmit={submit}>
+        <form ref={formRef} className="rdo-form" key={`${activeWork?.id || 'obra'}-${range.startDate}-${range.endDate}-${savedReport?.id || 'novo'}`} onSubmit={submit}>
           <div className="form-grid">
             <label className="field">
-              <span>Data do RDO</span>
-              <input type="date" value={reportDate} onChange={(event) => setReportDate(event.target.value)} required />
+              <span>Data inicial</span>
+              <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} required />
+            </label>
+            <label className="field">
+              <span>Data final</span>
+              <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} required />
             </label>
             <Field label="Titulo" name="titulo" value={draft.titulo} required />
             <Field label="Clima" name="clima" value={draft.clima} />
-            <Field label="Fotos do dia" name="fotosCountDisplay" value={`${draft.fotosCount} foto(s)`} disabled />
+            <Field label="Fotos do periodo" name="fotosCountDisplay" value={`${draft.fotosCount} foto(s)`} disabled />
             <TextAreaField label="Equipe / mao de obra" name="equipe" value={draft.equipe} />
-            <TextAreaField label="Resumo do dia" name="resumo" value={draft.resumo} />
+            <TextAreaField label="Resumo do periodo" name="resumo" value={draft.resumo} />
             <TextAreaField label="Servicos executados" name="servicosExecutados" value={draft.servicosExecutados} />
             <TextAreaField label="Materiais" name="materiais" value={draft.materiais} />
             <TextAreaField label="Ferramentas / equipamentos" name="ferramentas" value={draft.ferramentas} />
@@ -5035,8 +5173,8 @@ function Reports({ data, activeWork, saving, error, message, setScreen, onSaveRd
             <ActionButton Icon={Save} type="submit" disabled={saving}>
               {saving ? 'Salvando...' : savedReport ? 'Atualizar RDO' : 'Salvar RDO'}
             </ActionButton>
-            <ActionButton Icon={Share2} variant="secondary" onClick={() => navigator.clipboard?.writeText(window.location.href)}>
-              Compartilhar link
+            <ActionButton Icon={FileText} variant="secondary" onClick={downloadPdf} disabled={pdfLoading}>
+              {pdfLoading ? 'Gerando PDF...' : 'Baixar PDF'}
             </ActionButton>
           </div>
         </form>
@@ -5045,12 +5183,20 @@ function Reports({ data, activeWork, saving, error, message, setScreen, onSaveRd
           {savedReports.length ? savedReports.map((report) => (
             <button
               type="button"
-              className={normalizeDateKey(report.reportDate) === reportDate ? 'active' : ''}
+              className={
+                normalizeDateKey(report.startDate || report.reportDate) === range.startDate
+                && normalizeDateKey(report.endDate || report.reportDate) === range.endDate
+                  ? 'active'
+                  : ''
+              }
               key={report.id}
-              onClick={() => setReportDate(normalizeDateKey(report.reportDate))}
+              onClick={() => {
+                setStartDate(normalizeDateKey(report.startDate || report.reportDate));
+                setEndDate(normalizeDateKey(report.endDate || report.reportDate));
+              }}
             >
               <FileText size={18} aria-hidden="true" />
-              <span>{formatDateBr(report.reportDate)}</span>
+              <span>{formatDateRangeBr(report.startDate || report.reportDate, report.endDate || report.reportDate)}</span>
               <small>{report.titulo}</small>
             </button>
           )) : <p>Nenhum RDO salvo para esta obra.</p>}
@@ -5773,6 +5919,10 @@ function App() {
   const cityUsers = useMemo(
     () => obrasUsers.filter((user) => !user.cidadeId || user.cidadeId === selectedCity.id),
     [obrasUsers, selectedCity.id],
+  );
+  const currentObrasAccount = useMemo(
+    () => obrasAccounts.find((account) => account.id === currentObrasUser?.accountId) || obrasAccounts[0] || null,
+    [obrasAccounts, currentObrasUser?.accountId],
   );
   const activeStage = data.stages.find((stage) => stage.id === selectedStageId) || data.stages[0];
   const canManageObrasUsers = !supabaseConfigured || ['owner', 'admin'].includes(currentObrasUser?.role);
@@ -7343,14 +7493,18 @@ function App() {
   }
 
   async function saveRdoReport(values) {
-    if (!activeWork?.id || !values?.reportDate) {
-      setRdoError('Selecione uma obra e uma data para salvar o RDO.');
+    if (!activeWork?.id || !values?.startDate || !values?.endDate) {
+      setRdoError('Selecione uma obra, data inicial e data final para salvar o RDO.');
       return null;
     }
 
+    const range = normalizeDateRange(values.startDate, values.endDate);
     const normalized = {
       ...values,
-      titulo: values.titulo || `RDO - ${activeWork.nome} - ${formatDateBr(values.reportDate)}`,
+      reportDate: range.startDate,
+      startDate: range.startDate,
+      endDate: range.endDate,
+      titulo: values.titulo || `RDO - ${activeWork.nome} - ${formatDateRangeBr(range.startDate, range.endDate)}`,
       fotosCount: Number(values.fotosCount || 0),
       payload: values.payload || {},
     };
@@ -7391,6 +7545,30 @@ function App() {
       return null;
     } finally {
       setRdoSaving(false);
+    }
+  }
+
+  async function loadRdoPhotosWithUrls() {
+    if (!activeWork?.id) return [];
+    const hasSignedUrls = photoUrlsProjectId === activeWork.id && (data.photos || []).some((photo) => getBestPhotoUrl(photo));
+    if (!supabaseConfigured || !session || hasSignedUrls) return data.photos || [];
+
+    try {
+      const children = await fetchProjectChildren(activeWork.id, {
+        collections: ['photos'],
+        signPhotoUrls: true,
+      });
+      const photosWithUrls = children.photos || [];
+      const photosById = new Map(photosWithUrls.map((photo) => [photo.id, photo]));
+      setData((current) => ({
+        ...current,
+        photos: (current.photos || []).map((photo) => photosById.get(photo.id) || photo),
+      }));
+      setPhotoUrlsProjectId(activeWork.id);
+      return photosWithUrls;
+    } catch (error) {
+      setRdoError(error.message || 'Nao foi possivel carregar as fotos para o PDF.');
+      return data.photos || [];
     }
   }
 
@@ -8061,11 +8239,13 @@ function App() {
           <Reports
             data={data}
             activeWork={activeWork}
+            account={currentObrasAccount}
             saving={rdoSaving}
             error={rdoError}
             message={rdoMessage}
             setScreen={setScreen}
             onSaveRdo={saveRdoReport}
+            onLoadRdoPhotos={loadRdoPhotosWithUrls}
           />
         );
       case 'workProfile':

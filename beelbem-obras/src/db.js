@@ -630,6 +630,8 @@ export const rowMappers = {
     fromDb: (row) => ({
       id: row.id,
       reportDate: row.report_date || '',
+      startDate: row.start_date || row.report_date || '',
+      endDate: row.end_date || row.report_date || '',
       titulo: row.titulo || 'Relatorio diario de obra',
       clima: row.clima || '',
       equipe: row.equipe || '',
@@ -645,7 +647,9 @@ export const rowMappers = {
       updatedAt: row.updated_at || '',
     }),
     toDb: (item) => ({
-      report_date: item.reportDate,
+      report_date: item.reportDate || item.startDate,
+      start_date: item.startDate || item.reportDate,
+      end_date: item.endDate || item.reportDate || item.startDate,
       titulo: item.titulo || 'Relatorio diario de obra',
       clima: item.clima || null,
       equipe: item.equipe || null,
@@ -659,6 +663,8 @@ export const rowMappers = {
     }),
     patchToDb: (patch) => ({
       ...(patch.reportDate !== undefined ? { report_date: patch.reportDate } : {}),
+      ...(patch.startDate !== undefined ? { start_date: patch.startDate || patch.reportDate } : {}),
+      ...(patch.endDate !== undefined ? { end_date: patch.endDate || patch.reportDate || patch.startDate } : {}),
       ...(patch.titulo !== undefined ? { titulo: patch.titulo || 'Relatorio diario de obra' } : {}),
       ...(patch.clima !== undefined ? { clima: patch.clima || null } : {}),
       ...(patch.equipe !== undefined ? { equipe: patch.equipe || null } : {}),
