@@ -58,6 +58,7 @@ import {
   deleteDocumentRecord,
   deleteProject,
   deletePhotoRecord,
+  fetchChecklistPhotos,
   fetchProjectChildren,
   fetchProjects,
   fetchCommercialPlans,
@@ -73,6 +74,7 @@ import {
   insertContractor,
   insertScheduleItemChecklistResults,
   insertChild,
+  insertChecklistPhoto,
   insertPhotoThumbnail,
   insertObrasNotification,
   insertObrasUser,
@@ -115,6 +117,7 @@ import obrasLogo from './assets/beelbem-obras-logo.jpg';
 import './styles.css';
 
 const STORAGE_KEY = 'beelbem-obras-local-v1';
+const MAX_CHECKLIST_PHOTOS_PER_ITEM = 20;
 
 const statusClasses = {
   Concluida: 'success',
@@ -181,7 +184,7 @@ const neighborhoodCatalog = {
   ],
 };
 
-const projectCollections = ['stages', 'scheduleItems', 'scheduleLogs', 'photos', 'plsItems', 'issues', 'supplies', 'tools', 'checklist', 'checklistResults', 'rdoReports', 'documents', 'contractorAssignments'];
+const projectCollections = ['stages', 'scheduleItems', 'scheduleLogs', 'photos', 'plsItems', 'issues', 'supplies', 'tools', 'checklist', 'checklistResults', 'checklistPhotos', 'rdoReports', 'documents', 'contractorAssignments'];
 const emptyProjectCollections = Object.fromEntries(projectCollections.map((collection) => [collection, []]));
 const documentTypeOptions = [
   'Projetos da obra',
@@ -295,6 +298,7 @@ const initialData = {
   scheduleItems: buildLocalScheduleItems(),
   scheduleLogs: [],
   checklistResults: [],
+  checklistPhotos: [],
   rdoReports: [],
   documents: [],
   photos: [
@@ -2902,6 +2906,8 @@ function Schedule({
   onSaveChecklist,
   onDeleteChecklist,
   onSaveChecklistCheck,
+  onLoadChecklistPhotos,
+  onSaveChecklistPhotos,
   onSaveContractorAssignment,
   onReorderItem,
   addPhoto,
@@ -3302,6 +3308,8 @@ function Schedule({
             findChecklistForScheduleItem(checklist, checklistCheckItem),
           )}
           saving={saving}
+          loadChecklistPhotos={onLoadChecklistPhotos}
+          onSaveChecklistPhotos={onSaveChecklistPhotos}
           onClose={() => {
             if (!saving) setChecklistCheckItem(null);
           }}
@@ -3465,13 +3473,60 @@ function ScheduleChecklistModal({ item, checklist, saving, onClose, onSave, onDe
   );
 }
 
-function ScheduleChecklistCheckModal({ item, checklist, checklistResults = [], saving, onClose, onSave }) {
+function ScheduleChecklistCheckModal({
+  item,
+  checklist,
+  checklistResults = [],
+  saving,
+  onClose,
+  onSave,
+  loadChecklistPhotos,
+  onSaveChecklistPhotos,
+}) {
   const savedCheckedIds = useMemo(() => checkedChecklistIds(checklistResults), [checklistResults]);
   const [checkedItemIds, setCheckedItemIds] = useState(() => new Set(savedCheckedIds));
+  const [photosByItemId, setPhotosByItemId] = useState(() => new Map());
+  const [photosLoading, setPhotosLoading] = useState(false);
+  const [photoError, setPhotoError] = useState('');
+  const [uploadingChecklistItemId, setUploadingChecklistItemId] = useState('');
 
   useEffect(() => {
     setCheckedItemIds(new Set(savedCheckedIds));
   }, [checklist?.id, savedCheckedIds]);
+
+  useEffect(() => {
+    let active = true;
+    setPhotoError('');
+
+    if (!checklist?.id || !item?.id || !loadChecklistPhotos) {
+      setPhotosByItemId(new Map());
+      return () => {
+        active = false;
+      };
+    }
+
+    setPhotosLoading(true);
+    loadChecklistPhotos({ scheduleItemId: item.id, checklistId: checklist.id })
+      .then((photos) => {
+        if (!active) return;
+        const next = new Map();
+        (photos || []).forEach((photo) => {
+          const current = next.get(photo.checklistItemId) || [];
+          next.set(photo.checklistItemId, [...current, photo]);
+        });
+        setPhotosByItemId(next);
+      })
+      .catch((error) => {
+        if (active) setPhotoError(error.message || 'Nao foi possivel carregar as fotos do checklist.');
+      })
+      .finally(() => {
+        if (active) setPhotosLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [checklist?.id, item?.id]);
 
   function toggleItem(checkItemId) {
     if (savedCheckedIds.has(checkItemId)) return;
@@ -3484,6 +3539,40 @@ function ScheduleChecklistCheckModal({ item, checklist, checklistResults = [], s
       }
       return next;
     });
+  }
+
+  async function addChecklistPhotos(checkItem, fileList) {
+    if (!checklist?.id || !item?.id || !onSaveChecklistPhotos) return;
+    const existingPhotos = photosByItemId.get(checkItem.id) || [];
+    const remainingSlots = MAX_CHECKLIST_PHOTOS_PER_ITEM - existingPhotos.length;
+    const selectedFiles = Array.from(fileList || []).slice(0, Math.max(0, remainingSlots));
+
+    if (remainingSlots <= 0) {
+      setPhotoError(`Limite de ${MAX_CHECKLIST_PHOTOS_PER_ITEM} fotos atingido para este item.`);
+      return;
+    }
+    if (!selectedFiles.length) return;
+
+    setPhotoError('');
+    setUploadingChecklistItemId(checkItem.id);
+    try {
+      const savedPhotos = await onSaveChecklistPhotos({
+        scheduleItemId: item.id,
+        checklistId: checklist.id,
+        checklistItemId: checkItem.id,
+        files: selectedFiles,
+      });
+      if (!savedPhotos?.length) return;
+      setPhotosByItemId((current) => {
+        const next = new Map(current);
+        next.set(checkItem.id, [...savedPhotos, ...(next.get(checkItem.id) || [])]);
+        return next;
+      });
+    } catch (error) {
+      setPhotoError(error.message || 'Nao foi possivel salvar as fotos do checklist.');
+    } finally {
+      setUploadingChecklistItemId('');
+    }
   }
 
   function submit(event) {
@@ -3533,20 +3622,58 @@ function ScheduleChecklistCheckModal({ item, checklist, checklistResults = [], s
             <section className="checklist-run-list">
               {items.map((checkItem) => {
                 const saved = savedCheckedIds.has(checkItem.id);
+                const itemPhotos = photosByItemId.get(checkItem.id) || [];
+                const photoLimitReached = itemPhotos.length >= MAX_CHECKLIST_PHOTOS_PER_ITEM;
+                const uploading = uploadingChecklistItemId === checkItem.id;
                 return (
-                  <label className={saved ? 'locked' : ''} key={checkItem.id}>
-                    <input
-                      type="checkbox"
-                      checked={checkedItemIds.has(checkItem.id)}
-                      disabled={saving || saved}
-                      onChange={() => toggleItem(checkItem.id)}
-                    />
-                    <span>{checkItem.texto}</span>
-                    {saved ? <small>Ja conferido</small> : null}
-                  </label>
+                  <article className={`checklist-run-item ${saved ? 'locked' : ''}`} key={checkItem.id}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={checkedItemIds.has(checkItem.id)}
+                        disabled={saving || saved}
+                        onChange={() => toggleItem(checkItem.id)}
+                      />
+                      <span>{checkItem.texto}</span>
+                      {saved ? <small>Ja conferido</small> : null}
+                    </label>
+                    <div className="checklist-item-photos">
+                      {itemPhotos.length ? (
+                        <div className="checklist-photo-strip" aria-label={`Fotos do item ${checkItem.texto}`}>
+                          {itemPhotos.map((photo) => {
+                            const photoUrl = getBestPhotoUrl(photo);
+                            return (
+                              <span className="checklist-photo-thumb" key={photo.id}>
+                                {photoUrl ? <img src={photoUrl} alt={`Foto do checklist ${checkItem.texto}`} /> : <Camera size={18} aria-hidden="true" />}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                      <div className="checklist-photo-actions">
+                        <label className={`checklist-photo-button ${photoLimitReached ? 'disabled' : ''}`}>
+                          <Camera size={16} aria-hidden="true" />
+                          <span>{uploading ? 'Enviando...' : 'Foto'}</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            disabled={saving || uploading || photoLimitReached}
+                            onChange={(event) => {
+                              addChecklistPhotos(checkItem, event.target.files);
+                              event.target.value = '';
+                            }}
+                          />
+                        </label>
+                        <small>{itemPhotos.length}/{MAX_CHECKLIST_PHOTOS_PER_ITEM} fotos</small>
+                      </div>
+                    </div>
+                  </article>
                 );
               })}
             </section>
+            {photosLoading ? <p className="checklist-photo-message">Carregando fotos do checklist...</p> : null}
+            {photoError ? <p className="auth-message error">{photoError}</p> : null}
             <p className="checklist-once-note">Itens ja conferidos ficam bloqueados para evitar marcacao duplicada.</p>
           </>
         ) : (
@@ -7777,6 +7904,136 @@ function App() {
     }
   }
 
+  async function loadChecklistPhotosForItem({ scheduleItemId, checklistId, checklistItemId = '' }) {
+    if (!activeWork?.id || !scheduleItemId || !checklistId) return [];
+
+    if (supabaseConfigured && session) {
+      const photos = await fetchChecklistPhotos(activeWork.id, { scheduleItemId, checklistId, checklistItemId });
+      setData((current) => {
+        const existingById = new Map((current.checklistPhotos || []).map((photo) => [photo.id, photo]));
+        photos.forEach((photo) => existingById.set(photo.id, photo));
+        return {
+          ...current,
+          checklistPhotos: Array.from(existingById.values()),
+        };
+      });
+      return photos;
+    }
+
+    return (data.checklistPhotos || []).filter((photo) => (
+      photo.scheduleItemId === scheduleItemId
+      && photo.checklistId === checklistId
+      && (!checklistItemId || photo.checklistItemId === checklistItemId)
+    ));
+  }
+
+  async function saveChecklistPhotos({ scheduleItemId, checklistId, checklistItemId, files }) {
+    if (!activeWork?.id || !scheduleItemId || !checklistId || !checklistItemId) {
+      throw new Error('Selecione um item de checklist antes de adicionar fotos.');
+    }
+
+    const selectedFiles = Array.from(files || []);
+    if (!selectedFiles.length) return [];
+
+    const existingCount = (data.checklistPhotos || []).filter((photo) => (
+      photo.scheduleItemId === scheduleItemId
+      && photo.checklistId === checklistId
+      && photo.checklistItemId === checklistItemId
+    )).length;
+    const remainingSlots = MAX_CHECKLIST_PHOTOS_PER_ITEM - existingCount;
+    if (remainingSlots <= 0) {
+      throw new Error(`Limite de ${MAX_CHECKLIST_PHOTOS_PER_ITEM} fotos atingido para este item.`);
+    }
+
+    const filesToSave = selectedFiles.slice(0, remainingSlots);
+    setScheduleSaving(true);
+    setScheduleError('');
+
+    try {
+      let savedPhotos = [];
+      if (supabaseConfigured && session) {
+        const uploadResults = await Promise.allSettled(filesToSave.map(async (file) => {
+          const prepared = await preparePhotoUpload(file);
+          const upload = await uploadPhotoFile({
+            userId: session.user.id,
+            projectId: activeWork.id,
+            file: prepared.photoFile,
+            thumbnailFile: prepared.thumbnailFile,
+          });
+          const { thumbnail, ...photoUpload } = upload;
+          return insertChecklistPhoto(activeWork.id, {
+            scheduleItemId,
+            checklistId,
+            checklistItemId,
+            ...photoUpload,
+            width: prepared.width,
+            height: prepared.height,
+            thumbnailStoragePath: thumbnail?.storagePath || '',
+            thumbnailFileName: thumbnail?.fileName || '',
+            thumbnailMimeType: thumbnail?.mimeType || 'image/jpeg',
+            thumbnailFileSize: thumbnail?.fileSize || 0,
+            thumbnailWidth: prepared.thumbnailWidth,
+            thumbnailHeight: prepared.thumbnailHeight,
+          });
+        }));
+        savedPhotos = uploadResults
+          .filter((result) => result.status === 'fulfilled')
+          .map((result) => result.value);
+        if (!savedPhotos.length) {
+          const failed = uploadResults.find((result) => result.status === 'rejected');
+          throw failed?.reason || new Error('Nenhuma foto foi salva.');
+        }
+        const failedCount = uploadResults.length - savedPhotos.length;
+        if (failedCount) {
+          setScheduleError(`${failedCount} foto${failedCount > 1 ? 's' : ''} nao foi${failedCount > 1 ? 'ram' : ''} salva${failedCount > 1 ? 's' : ''}.`);
+        }
+      } else {
+        const uploadResults = await Promise.allSettled(filesToSave.map(async (file) => {
+          const prepared = await preparePhotoUpload(file);
+          return {
+            id: makeId('checklist-foto'),
+            projectId: activeWork.id,
+            scheduleItemId,
+            checklistId,
+            checklistItemId,
+            fileName: prepared.photoFile.name,
+            mimeType: prepared.photoFile.type || 'image/jpeg',
+            fileSize: prepared.compressedSize,
+            width: prepared.width,
+            height: prepared.height,
+            photoUrl: URL.createObjectURL(prepared.photoFile),
+            thumbnailFileName: prepared.thumbnailFile.name,
+            thumbnailMimeType: prepared.thumbnailFile.type || 'image/jpeg',
+            thumbnailFileSize: prepared.thumbnailSize,
+            thumbnailWidth: prepared.thumbnailWidth,
+            thumbnailHeight: prepared.thumbnailHeight,
+            thumbnailUrl: URL.createObjectURL(prepared.thumbnailFile),
+            createdBy: currentObrasUser?.id || '',
+            createdAt: new Date().toISOString(),
+          };
+        }));
+        savedPhotos = uploadResults
+          .filter((result) => result.status === 'fulfilled')
+          .map((result) => result.value);
+        if (!savedPhotos.length) {
+          const failed = uploadResults.find((result) => result.status === 'rejected');
+          throw failed?.reason || new Error('Nenhuma foto foi preparada.');
+        }
+      }
+
+      setData((current) => ({
+        ...current,
+        checklistPhotos: [...savedPhotos, ...(current.checklistPhotos || [])],
+      }));
+      return savedPhotos;
+    } catch (error) {
+      setScheduleError(error.message || 'Nao foi possivel salvar as fotos do checklist.');
+      throw error;
+    } finally {
+      setScheduleSaving(false);
+    }
+  }
+
   async function saveRdoReport(values) {
     if (!activeWork?.id || !values?.startDate || !values?.endDate) {
       setRdoError('Selecione uma obra, data inicial e data final para salvar o RDO.');
@@ -7961,6 +8218,7 @@ function App() {
         ...current,
         checklist: current.checklist.filter((entry) => entry.id !== checklistItem.id),
         checklistResults: (current.checklistResults || []).filter((entry) => entry.checklistId !== checklistItem.id),
+        checklistPhotos: (current.checklistPhotos || []).filter((entry) => entry.checklistId !== checklistItem.id),
       }));
       return true;
     } catch (error) {
@@ -8643,6 +8901,8 @@ function App() {
             onSaveChecklist={saveScheduleChecklist}
             onDeleteChecklist={deleteScheduleChecklist}
             onSaveChecklistCheck={saveScheduleChecklistCheck}
+            onLoadChecklistPhotos={loadChecklistPhotosForItem}
+            onSaveChecklistPhotos={saveChecklistPhotos}
             onSaveContractorAssignment={saveContractorAssignment}
             onReorderItem={reorderScheduleItem}
             addPhoto={addPhoto}

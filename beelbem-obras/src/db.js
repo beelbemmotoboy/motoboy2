@@ -15,6 +15,7 @@ const notificationsTable = 'obras_notifications';
 const pushSubscriptionsTable = 'obras_push_subscriptions';
 const serviceCategoriesTable = 'obras_service_categories';
 const contractorsTable = 'obras_contractors';
+const checklistPhotosTable = 'obras_checklist_photos';
 
 export const supabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 export const usingLegacySupabaseConfig = Boolean(
@@ -1509,6 +1510,50 @@ export async function insertPhotoThumbnail(projectId, photoId, thumbnail) {
   return withSignedThumbnailUrl(photoThumbnailFromDb(data));
 }
 
+export async function fetchChecklistPhotos(projectId, { scheduleItemId = '', checklistId = '', checklistItemId = '' } = {}) {
+  let query = supabase
+    .from(checklistPhotosTable)
+    .select('*')
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: false });
+
+  if (scheduleItemId) query = query.eq('schedule_item_id', scheduleItemId);
+  if (checklistId) query = query.eq('checklist_id', checklistId);
+  if (checklistItemId) query = query.eq('checklist_item_id', checklistItemId);
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return Promise.all((data || []).map((row) => withSignedChecklistPhotoUrl(checklistPhotoFromDb(row))));
+}
+
+export async function insertChecklistPhoto(projectId, photo) {
+  const { data, error } = await supabase
+    .from(checklistPhotosTable)
+    .insert({
+      project_id: projectId,
+      schedule_item_id: photo.scheduleItemId,
+      checklist_id: photo.checklistId,
+      checklist_item_id: photo.checklistItemId,
+      storage_path: photo.storagePath,
+      file_name: photo.fileName || null,
+      mime_type: photo.mimeType || 'image/jpeg',
+      file_size: photo.fileSize || null,
+      width: photo.width || null,
+      height: photo.height || null,
+      thumbnail_storage_path: photo.thumbnailStoragePath || null,
+      thumbnail_file_name: photo.thumbnailFileName || null,
+      thumbnail_mime_type: photo.thumbnailMimeType || 'image/jpeg',
+      thumbnail_file_size: photo.thumbnailFileSize || null,
+      thumbnail_width: photo.thumbnailWidth || null,
+      thumbnail_height: photo.thumbnailHeight || null,
+    })
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return withSignedChecklistPhotoUrl(checklistPhotoFromDb(data));
+}
+
 async function uploadPhotoStorageObject({ userId, projectId, id, file, folder = '' }) {
   const fileName = safeFileName(file.name || `${id}.jpg`);
   const storagePath = `${userId}/${projectId}/${id}-${fileName}`;
@@ -1595,6 +1640,25 @@ async function withSignedThumbnailUrl(thumbnail) {
   };
 }
 
+async function withSignedChecklistPhotoUrl(photo) {
+  const nextPhoto = { ...photo };
+  if (photo.storagePath) {
+    try {
+      nextPhoto.photoUrl = await createSignedPhotoUrl(photo.storagePath);
+    } catch {
+      // Keep metadata visible if the signed URL cannot be created.
+    }
+  }
+  if (photo.thumbnailStoragePath) {
+    try {
+      nextPhoto.thumbnailUrl = await createSignedPhotoUrl(photo.thumbnailStoragePath);
+    } catch {
+      // The full photo URL can still be used as a fallback.
+    }
+  }
+  return nextPhoto;
+}
+
 async function createSignedPhotoUrl(storagePath) {
   const { data, error } = await supabase.storage.from(photoBucket).createSignedUrl(storagePath, 60 * 60 * 24);
   if (error) throw error;
@@ -1653,6 +1717,30 @@ function photoThumbnailFromDb(row) {
     thumbnailFileSize: Number(row.file_size || 0),
     thumbnailWidth: Number(row.width || 0),
     thumbnailHeight: Number(row.height || 0),
+  };
+}
+
+function checklistPhotoFromDb(row) {
+  return {
+    id: row.id,
+    projectId: row.project_id || '',
+    scheduleItemId: row.schedule_item_id || '',
+    checklistId: row.checklist_id || '',
+    checklistItemId: row.checklist_item_id || '',
+    storagePath: row.storage_path || '',
+    fileName: row.file_name || '',
+    mimeType: row.mime_type || '',
+    fileSize: Number(row.file_size || 0),
+    width: Number(row.width || 0),
+    height: Number(row.height || 0),
+    thumbnailStoragePath: row.thumbnail_storage_path || '',
+    thumbnailFileName: row.thumbnail_file_name || '',
+    thumbnailMimeType: row.thumbnail_mime_type || '',
+    thumbnailFileSize: Number(row.thumbnail_file_size || 0),
+    thumbnailWidth: Number(row.thumbnail_width || 0),
+    thumbnailHeight: Number(row.thumbnail_height || 0),
+    createdBy: row.created_by || '',
+    createdAt: row.created_at || '',
   };
 }
 
