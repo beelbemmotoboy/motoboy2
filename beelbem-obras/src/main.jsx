@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { Contractors, ServiceCategories } from './catalogScreens.jsx';
 import {
   AlertTriangle,
   BarChart3,
@@ -60,19 +61,23 @@ import {
   fetchProjectChildren,
   fetchProjects,
   fetchCommercialPlans,
+  fetchContractors,
   fetchObrasAccounts,
   fetchObrasNotifications,
   fetchObrasSubscriptions,
   fetchObrasUsers,
   fetchSignupRequests,
+  fetchServiceCategories,
   getSession,
   ensureProjectSchedule,
+  insertContractor,
   insertScheduleItemChecklistResults,
   insertChild,
   insertPhotoThumbnail,
   insertObrasNotification,
   insertObrasUser,
   insertProject,
+  insertServiceCategory,
   insertSignupRequest,
   isObrasPlatformAdmin,
   onAuthStateChange,
@@ -85,9 +90,11 @@ import {
   updateCurrentObrasUserProfile,
   updateCurrentUserPassword,
   updateChild,
+  updateContractor,
   updateObrasAccount,
   updateObrasUser,
   updateProject,
+  updateServiceCategory,
   updateSignupRequest,
   upsertObrasPushSubscription,
   uploadObrasAccountLogo,
@@ -174,7 +181,7 @@ const neighborhoodCatalog = {
   ],
 };
 
-const projectCollections = ['stages', 'scheduleItems', 'scheduleLogs', 'photos', 'plsItems', 'issues', 'supplies', 'tools', 'checklist', 'checklistResults', 'rdoReports', 'documents'];
+const projectCollections = ['stages', 'scheduleItems', 'scheduleLogs', 'photos', 'plsItems', 'issues', 'supplies', 'tools', 'checklist', 'checklistResults', 'rdoReports', 'documents', 'contractorAssignments'];
 const emptyProjectCollections = Object.fromEntries(projectCollections.map((collection) => [collection, []]));
 const documentTypeOptions = [
   'Projetos da obra',
@@ -187,7 +194,7 @@ const projectScreenRequirements = {
   stageDetail: { collections: ['stages'], signPhotoUrls: false },
   photos: { collections: ['scheduleItems', 'photos'], signPhotoUrls: true, normalizeSchedule: false },
   pls: { collections: ['plsItems'], signPhotoUrls: false },
-  schedule: { collections: ['scheduleItems', 'scheduleLogs', 'checklist', 'checklistResults'], signPhotoUrls: false, normalizeSchedule: true },
+  schedule: { collections: ['scheduleItems', 'scheduleLogs', 'checklist', 'checklistResults', 'contractorAssignments'], signPhotoUrls: false, normalizeSchedule: true },
   issues: { collections: ['issues'], signPhotoUrls: false },
   supplies: { collections: ['supplies'], signPhotoUrls: false },
   tools: { collections: ['tools'], signPhotoUrls: false },
@@ -320,11 +327,23 @@ const initialData = {
     { id: 'chk-2', descricao: 'Verificar cobrimento da armadura', etapa: 'Fundacao', norma: 'ABNT NBR 6118', foto: 'Obrigatoria', responsavel: 'Carlos Lima', data: '03/06', status: 'Conferido' },
     { id: 'chk-3', descricao: 'Registrar impermeabilizacao', etapa: 'Baldrame', norma: 'ABNT NBR 9574', foto: 'Obrigatoria', responsavel: 'Marcos Reis', data: '13/07', status: 'Em andamento' },
   ],
+  serviceCategories: [
+    { id: 'cat-fundacao', nome: 'Fundacao', descricao: 'Servicos de fundacao, estacas, blocos e sapatas.', ativo: true },
+    { id: 'cat-alvenaria', nome: 'Alvenaria', descricao: 'Execucao de paredes, pilares, vergas e respaldo.', ativo: true },
+    { id: 'cat-estrutura', nome: 'Estrutura', descricao: 'Laje, vigas, pilares e cobertura estrutural.', ativo: true },
+    { id: 'cat-hidraulica', nome: 'Hidraulica', descricao: 'Instalacoes hidraulicas e sanitarias.', ativo: true },
+    { id: 'cat-eletrica', nome: 'Eletrica', descricao: 'Instalacoes eletricas brutas e finais.', ativo: true },
+    { id: 'cat-acabamento', nome: 'Acabamento', descricao: 'Revestimentos, pintura, forro e limpeza final.', ativo: true },
+  ],
+  contractors: [],
+  contractorAssignments: [],
 };
 
 const remoteInitialData = {
   ...initialData,
   works: [],
+  serviceCategories: [],
+  contractors: [],
   ...emptyProjectCollections,
 };
 
@@ -340,6 +359,8 @@ const sidebarRoutes = [
   ...quickRoutes,
   { id: 'companies', label: 'Empresas', Icon: Landmark },
   { id: 'users', label: 'Usuarios', Icon: UsersRound },
+  { id: 'serviceCategories', label: 'Categorias', Icon: FolderKanban },
+  { id: 'contractors', label: 'Empreiteiros', Icon: HardHat },
   { id: 'commercial', label: 'Assinaturas', Icon: Landmark, disabled: true },
   { id: 'pls', label: 'PLS Caixa', Icon: FileCheck2 },
   { id: 'reports', label: 'Relatorios', Icon: BarChart3 },
@@ -2866,6 +2887,9 @@ function Schedule({
   logs,
   checklist = [],
   checklistResults = [],
+  serviceCategories = [],
+  contractors = [],
+  contractorAssignments = [],
   saving,
   error,
   onSaveItem,
@@ -2876,6 +2900,7 @@ function Schedule({
   onSaveChecklist,
   onDeleteChecklist,
   onSaveChecklistCheck,
+  onSaveContractorAssignment,
   onReorderItem,
   addPhoto,
   setScreen,
@@ -2888,9 +2913,21 @@ function Schedule({
   const [removeCandidate, setRemoveCandidate] = useState(null);
   const [checklistItem, setChecklistItem] = useState(null);
   const [checklistCheckItem, setChecklistCheckItem] = useState(null);
+  const [contractorItem, setContractorItem] = useState(null);
   const [draggedItem, setDraggedItem] = useState(null);
   const pointerDragRef = useRef(null);
   const visibleItems = items.filter((item) => item.visible !== false);
+  const categoriesById = useMemo(() => new Map(serviceCategories.map((category) => [category.id, category])), [serviceCategories]);
+  const contractorsById = useMemo(() => new Map(contractors.map((contractor) => [contractor.id, contractor])), [contractors]);
+  const assignmentsBySubitem = useMemo(() => {
+    const next = new Map();
+    contractorAssignments
+      .filter((assignment) => assignment.ativo !== false)
+      .forEach((assignment) => {
+        next.set(assignment.scheduleItemId, assignment);
+      });
+    return next;
+  }, [contractorAssignments]);
   const removedItems = items.filter((item) => item.visible === false);
   const removedEntries = removedItems.filter((item) => (
     !item.parentId || items.find((parent) => parent.id === item.parentId)?.visible !== false
@@ -3080,6 +3117,9 @@ function Schedule({
                   {children.map((item) => {
                     const itemLogs = logsFor(item.id);
                     const itemChecklist = findChecklistForScheduleItem(checklist, item);
+                    const itemCategory = categoriesById.get(item.categoriaServicoId);
+                    const itemAssignment = assignmentsBySubitem.get(item.id);
+                    const itemContractor = itemAssignment ? contractorsById.get(itemAssignment.contractorId) : null;
                     return (
                       <details className={`schedule-subitem ${draggedItem?.id === item.id ? 'dragging' : ''}`} key={item.id}>
                         <summary
@@ -3115,6 +3155,13 @@ function Schedule({
                               {itemLogs.length} registros - {scheduleDateLabel(item.inicioPrevisto)} ate {scheduleDateLabel(item.fimPrevisto)}
                               {' - '}Valor {formatCurrency(item.valorMaoObra)}
                             </span>
+                            {(itemCategory || itemContractor) ? (
+                              <span className="schedule-subitem-meta">
+                                {itemCategory ? `Categoria: ${itemCategory.nome}` : ''}
+                                {itemCategory && itemContractor ? ' - ' : ''}
+                                {itemContractor ? `Empreiteiro: ${itemContractor.nome}` : ''}
+                              </span>
+                            ) : null}
                           </div>
                           <StatusPill status={item.status} />
                         </summary>
@@ -3124,6 +3171,7 @@ function Schedule({
                             <button type="button" onClick={() => setItemModal(item)}><Pencil size={16} /> Editar</button>
                             <button type="button" onClick={() => setLogItem(item)}><ClipboardCheck size={16} /> Diario</button>
                             <button type="button" onClick={() => addPhoto(item.nome)}><Camera size={16} /> Foto</button>
+                            <button type="button" onClick={() => setContractorItem(item)}><HardHat size={16} /> Empreiteiro</button>
                             <button type="button" onClick={() => setChecklistItem(item)}>
                               <ClipboardCheck size={16} /> Adicionar checklist
                             </button>
@@ -3172,11 +3220,28 @@ function Schedule({
       {itemModal ? (
         <ScheduleItemModal
           item={itemModal}
+          serviceCategories={serviceCategories}
           saving={saving}
           onClose={() => setItemModal(null)}
           onSave={async (values) => {
             const saved = await onSaveItem(values);
             if (saved) setItemModal(null);
+          }}
+        />
+      ) : null}
+
+      {contractorItem ? (
+        <ScheduleContractorModal
+          item={contractorItem}
+          contractors={contractors}
+          assignment={assignmentsBySubitem.get(contractorItem.id)}
+          saving={saving}
+          onClose={() => {
+            if (!saving) setContractorItem(null);
+          }}
+          onSave={async (values) => {
+            const saved = await onSaveContractorAssignment(values);
+            if (saved) setContractorItem(null);
           }}
         />
       ) : null}
@@ -3952,11 +4017,12 @@ function ScheduleLogSummary({ log, saving, onEdit }) {
   );
 }
 
-function ScheduleItemModal({ item, saving, onClose, onSave }) {
+function ScheduleItemModal({ item, serviceCategories = [], saving, onClose, onSave }) {
   const isStage = !item.parentId;
   const [status, setStatus] = useState(item.status || 'Nao iniciado');
   const [percentual, setPercentual] = useState(String(item.percentual ?? 0));
   const [formError, setFormError] = useState('');
+  const categoryOptions = serviceCategories.filter((category) => category.ativo !== false || category.id === item.categoriaServicoId);
 
   function changeStatus(event) {
     const nextStatus = event.target.value;
@@ -4025,6 +4091,15 @@ function ScheduleItemModal({ item, saving, onClose, onSave }) {
               <Field label="Inicio real" name="inicioReal" type="date" value={item.inicioReal || ''} />
               <Field label="Fim real" name="fimReal" type="date" value={item.fimReal || ''} />
               <label className="field">
+                <span>Categoria do servico</span>
+                <select name="categoriaServicoId" defaultValue={item.categoriaServicoId || ''}>
+                  <option value="">Sem categoria</option>
+                  {categoryOptions.map((category) => (
+                    <option value={category.id} key={category.id}>{category.nome}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
                 <span>Valor mao de obra (R$)</span>
                 <input
                   type="number"
@@ -4060,6 +4135,74 @@ function ScheduleItemModal({ item, saving, onClose, onSave }) {
         {formError ? <p className="auth-message error">{formError}</p> : null}
         <div className="form-actions">
           <ActionButton Icon={Save} type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</ActionButton>
+          <ActionButton Icon={XCircle} variant="ghost" onClick={onClose}>Cancelar</ActionButton>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function ScheduleContractorModal({ item, contractors = [], assignment, saving, onClose, onSave }) {
+  const contractorOptions = contractors.filter((contractor) => (
+    contractor.ativo !== false || contractor.id === assignment?.contractorId
+  ));
+
+  function submit(event) {
+    event.preventDefault();
+    const values = Object.fromEntries(new FormData(event.currentTarget).entries());
+    onSave({
+      ...assignment,
+      ...values,
+      id: assignment?.id || '',
+      scheduleItemId: item.id,
+    });
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <form className="issue-modal schedule-modal" onSubmit={submit}>
+        <div className="modal-head">
+          <div>
+            <span>Empreiteiro do subitem</span>
+            <h2>{item.nome}</h2>
+          </div>
+          <IconButton label="Fechar" Icon={X} onClick={onClose} />
+        </div>
+        {!contractorOptions.length ? (
+          <section className="warning-strip">
+            <AlertTriangle size={20} aria-hidden="true" />
+            <span>Cadastre um empreiteiro antes de vincular ao subitem.</span>
+          </section>
+        ) : null}
+        <input type="hidden" name="scheduleItemId" value={item.id} readOnly />
+        <div className="form-grid modal-fields">
+          <label className="field wide">
+            <span>Empreiteiro</span>
+            <select name="contractorId" defaultValue={assignment?.contractorId || ''}>
+              <option value="">Sem empreiteiro vinculado</option>
+              {contractorOptions.map((contractor) => (
+                <option value={contractor.id} key={contractor.id}>{contractor.nome}</option>
+              ))}
+            </select>
+          </label>
+          <Field label="Inicio do servico" name="dataInicio" type="date" value={assignment?.dataInicio || item.inicioPrevisto || ''} />
+          <Field label="Fim do servico" name="dataFim" type="date" value={assignment?.dataFim || item.fimPrevisto || ''} />
+          <label className="field">
+            <span>Valor contratado (R$)</span>
+            <input
+              type="number"
+              name="valorContratado"
+              min="0"
+              step="0.01"
+              inputMode="decimal"
+              defaultValue={assignment?.valorContratado ?? item.valorMaoObra ?? 0}
+            />
+          </label>
+          <Field label="Forma de pagamento" name="formaPagamento" value={assignment?.formaPagamento || ''} />
+          <TextAreaField label="Observacoes" name="observacoes" value={assignment?.observacoes || ''} />
+        </div>
+        <div className="form-actions">
+          <ActionButton Icon={Save} type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Salvar vinculo'}</ActionButton>
           <ActionButton Icon={XCircle} variant="ghost" onClick={onClose}>Cancelar</ActionButton>
         </div>
       </form>
@@ -5774,6 +5917,9 @@ function App() {
   const [workProfileSaving, setWorkProfileSaving] = useState(false);
   const [workProfileError, setWorkProfileError] = useState('');
   const [workProfileMessage, setWorkProfileMessage] = useState('');
+  const [catalogSaving, setCatalogSaving] = useState(false);
+  const [catalogError, setCatalogError] = useState('');
+  const [catalogMessage, setCatalogMessage] = useState('');
   const [aiProjectDraft, setAiProjectDraft] = useState(null);
   const [selectedCity, setSelectedCity] = useState(cityCatalog[0]);
   const [selectedNeighborhood, setSelectedNeighborhood] = useState(null);
@@ -6154,6 +6300,7 @@ function App() {
       }
       await Promise.all([
         loadObrasAccounts(),
+        loadServiceCatalogs(),
         loadRemoteData(),
       ]);
     } catch {
@@ -6209,6 +6356,31 @@ function App() {
     }
   }
 
+  async function loadServiceCatalogs() {
+    if (!supabaseConfigured || !session) {
+      setData((current) => ({
+        ...current,
+        serviceCategories: initialData.serviceCategories,
+        contractors: initialData.contractors,
+      }));
+      return;
+    }
+
+    try {
+      const [serviceCategories, contractors] = await Promise.all([
+        fetchServiceCategories({ includeInactive: true }),
+        fetchContractors({ includeInactive: true }),
+      ]);
+      setData((current) => ({
+        ...current,
+        serviceCategories,
+        contractors,
+      }));
+    } catch (error) {
+      setDataError(error.message || 'Nao foi possivel carregar categorias e empreiteiros.');
+    }
+  }
+
   async function loadRemoteData(preferredProjectId) {
     setDataLoading(true);
     setDataError('');
@@ -6216,7 +6388,11 @@ function App() {
       let works = await fetchProjects();
 
       if (!works.length) {
-        setData(remoteInitialData);
+        setData((current) => ({
+          ...remoteInitialData,
+          serviceCategories: current.serviceCategories,
+          contractors: current.contractors,
+        }));
         setSelectedWorkId('');
         setProjectDataProjectId('');
         setLoadedProjectCollections([]);
@@ -6231,7 +6407,12 @@ function App() {
         : cityProject?.id || works[0].id;
       const project = works.find((work) => work.id === projectId);
       const projectCity = cityCatalog.find((city) => city.id === project?.cidadeId);
-      setData({ ...remoteInitialData, works });
+      setData((current) => ({
+        ...remoteInitialData,
+        serviceCategories: current.serviceCategories,
+        contractors: current.contractors,
+        works,
+      }));
       if (projectCity) setSelectedCity(projectCity);
       setSelectedNeighborhood(null);
       setSelectedWorkId(projectId);
@@ -6872,6 +7053,7 @@ function App() {
         status: nextStatus,
         percentual: nextPercentual,
         valorMaoObra: normalizeMoneyValue(values.valorMaoObra),
+        categoriaServicoId: values.categoriaServicoId || '',
       } : {}),
     };
 
@@ -6915,6 +7097,7 @@ function App() {
             status: 'Nao iniciado',
             percentual: 0,
             valorMaoObra: 0,
+            categoriaServicoId: '',
             sortOrder: 0,
             visible: true,
             createdAt: new Date().toISOString(),
@@ -8120,6 +8303,201 @@ function App() {
     }
   }
 
+  async function saveServiceCategory(values) {
+    const nome = String(values.nome || '').trim();
+    if (!nome) {
+      setCatalogError('Informe o nome da categoria.');
+      return null;
+    }
+
+    setCatalogSaving(true);
+    setCatalogError('');
+    setCatalogMessage('');
+
+    try {
+      let saved = {
+        ...values,
+        nome,
+        descricao: String(values.descricao || '').trim(),
+        ativo: values.ativo !== false,
+      };
+
+      if (supabaseConfigured && session) {
+        saved = values.id
+          ? await updateServiceCategory(values.id, saved)
+          : await insertServiceCategory(saved);
+      } else {
+        saved = { ...saved, id: values.id || makeId('categoria') };
+      }
+
+      setData((current) => ({
+        ...current,
+        serviceCategories: current.serviceCategories.some((item) => item.id === saved.id)
+          ? current.serviceCategories.map((item) => (item.id === saved.id ? saved : item))
+          : [...current.serviceCategories, saved].sort((a, b) => a.nome.localeCompare(b.nome)),
+      }));
+      setCatalogMessage('Categoria salva.');
+      return saved;
+    } catch (error) {
+      setCatalogError(error.message || 'Nao foi possivel salvar a categoria.');
+      return null;
+    } finally {
+      setCatalogSaving(false);
+    }
+  }
+
+  async function toggleServiceCategory(category) {
+    if (!category?.id) return null;
+    return saveServiceCategory({ ...category, ativo: category.ativo === false });
+  }
+
+  async function saveContractor(values) {
+    const nome = String(values.nome || '').trim();
+    if (!nome) {
+      setCatalogError('Informe o nome do empreiteiro.');
+      return null;
+    }
+
+    setCatalogSaving(true);
+    setCatalogError('');
+    setCatalogMessage('');
+
+    try {
+      let saved = {
+        ...values,
+        nome,
+        telefone: String(values.telefone || '').trim(),
+        documento: String(values.documento || '').trim(),
+        email: String(values.email || '').trim().toLowerCase(),
+        observacoes: String(values.observacoes || '').trim(),
+        ativo: values.ativo !== false,
+      };
+
+      if (supabaseConfigured && session) {
+        saved = values.id
+          ? await updateContractor(values.id, saved)
+          : await insertContractor(saved);
+      } else {
+        saved = { ...saved, id: values.id || makeId('empreiteiro') };
+      }
+
+      setData((current) => ({
+        ...current,
+        contractors: current.contractors.some((item) => item.id === saved.id)
+          ? current.contractors.map((item) => (item.id === saved.id ? saved : item))
+          : [...current.contractors, saved].sort((a, b) => a.nome.localeCompare(b.nome)),
+      }));
+      setCatalogMessage('Empreiteiro salvo.');
+      return saved;
+    } catch (error) {
+      setCatalogError(error.message || 'Nao foi possivel salvar o empreiteiro.');
+      return null;
+    } finally {
+      setCatalogSaving(false);
+    }
+  }
+
+  async function toggleContractor(contractor) {
+    if (!contractor?.id) return null;
+    return saveContractor({ ...contractor, ativo: contractor.ativo === false });
+  }
+
+  async function saveContractorAssignment(values) {
+    if (!activeWork?.id) {
+      setScheduleError('Selecione uma obra antes de vincular empreiteiro.');
+      return null;
+    }
+    if (!values.scheduleItemId) {
+      setScheduleError('Selecione um subitem para vincular empreiteiro.');
+      return null;
+    }
+
+    const activeAssignment = data.contractorAssignments.find((item) => (
+      item.scheduleItemId === values.scheduleItemId && item.ativo !== false
+    ));
+
+    setScheduleSaving(true);
+    setScheduleError('');
+
+    try {
+      if (!values.contractorId) {
+        if (!activeAssignment) return { scheduleItemId: values.scheduleItemId, contractorId: '' };
+        const patch = { ativo: false };
+        if (supabaseConfigured && session) {
+          await updateChild('contractorAssignments', activeAssignment.id, patch);
+        }
+        const inactiveAssignment = { ...activeAssignment, ...patch };
+        setData((current) => ({
+          ...current,
+          contractorAssignments: current.contractorAssignments.map((item) => (
+            item.id === activeAssignment.id ? inactiveAssignment : item
+          )),
+        }));
+        return inactiveAssignment;
+      }
+
+      const normalized = {
+        id: values.id || activeAssignment?.id || '',
+        scheduleItemId: values.scheduleItemId,
+        contractorId: values.contractorId,
+        dataInicio: values.dataInicio || '',
+        dataFim: values.dataFim || '',
+        valorContratado: normalizeMoneyValue(values.valorContratado),
+        formaPagamento: String(values.formaPagamento || '').trim(),
+        observacoes: String(values.observacoes || '').trim(),
+        ativo: true,
+      };
+
+      let saved;
+      if (normalized.id) {
+        if (supabaseConfigured && session) {
+          await updateChild('contractorAssignments', normalized.id, normalized);
+        }
+        saved = { ...activeAssignment, ...normalized, updatedAt: new Date().toISOString() };
+      } else {
+        const localAssignment = {
+          ...normalized,
+          id: makeId('empreiteiro-subitem'),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        saved = supabaseConfigured && session
+          ? await insertChild('contractorAssignments', activeWork.id, localAssignment)
+          : localAssignment;
+      }
+
+      setData((current) => ({
+        ...current,
+        contractorAssignments: current.contractorAssignments.some((item) => item.id === saved.id)
+          ? current.contractorAssignments.map((item) => (item.id === saved.id ? saved : item))
+          : [saved, ...current.contractorAssignments],
+      }));
+
+      const contractor = data.contractors.find((item) => item.id === saved.contractorId);
+      const subitem = data.scheduleItems.find((item) => item.id === saved.scheduleItemId);
+      if (contractor && subitem) {
+        void notifyCompany({
+          projectId: activeWork.id,
+          type: 'subitem_updated',
+          title: 'Empreiteiro vinculado',
+          body: `${currentObrasUser?.nome || 'Usuario Obras'} vinculou ${contractor.nome} ao subitem ${subitem.nome}.`,
+          payload: {
+            workName: activeWork.nome,
+            scheduleItemId: subitem.id,
+            subitemName: subitem.nome,
+            contractorName: contractor.nome,
+          },
+        });
+      }
+      return saved;
+    } catch (error) {
+      setScheduleError(error.message || 'Nao foi possivel vincular o empreiteiro.');
+      return null;
+    } finally {
+      setScheduleSaving(false);
+    }
+  }
+
   function renderScreen() {
     const publicScreens = ['login', 'signup'];
 
@@ -8249,6 +8627,9 @@ function App() {
             logs={data.scheduleLogs}
             checklist={data.checklist}
             checklistResults={data.checklistResults || []}
+            serviceCategories={data.serviceCategories || []}
+            contractors={data.contractors || []}
+            contractorAssignments={data.contractorAssignments || []}
             saving={scheduleSaving}
             error={scheduleError}
             onSaveItem={saveScheduleItem}
@@ -8259,6 +8640,7 @@ function App() {
             onSaveChecklist={saveScheduleChecklist}
             onDeleteChecklist={deleteScheduleChecklist}
             onSaveChecklistCheck={saveScheduleChecklistCheck}
+            onSaveContractorAssignment={saveContractorAssignment}
             onReorderItem={reorderScheduleItem}
             addPhoto={addPhoto}
             setScreen={setScreen}
@@ -8295,6 +8677,30 @@ function App() {
             onRefresh={() => loadRemoteUsers({ signAvatars: true })}
             onSave={saveObrasUser}
             onToggle={toggleObrasUser}
+            setScreen={setScreen}
+          />
+        );
+      case 'serviceCategories':
+        return (
+          <ServiceCategories
+            categories={data.serviceCategories || []}
+            saving={catalogSaving}
+            error={catalogError}
+            message={catalogMessage}
+            onSave={saveServiceCategory}
+            onToggle={toggleServiceCategory}
+            setScreen={setScreen}
+          />
+        );
+      case 'contractors':
+        return (
+          <Contractors
+            contractors={data.contractors || []}
+            saving={catalogSaving}
+            error={catalogError}
+            message={catalogMessage}
+            onSave={saveContractor}
+            onToggle={toggleContractor}
             setScreen={setScreen}
           />
         );

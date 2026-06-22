@@ -540,6 +540,49 @@ main {
   gap: 10px;
 }
 
+.data-toolbar {
+  display: grid;
+  max-width: 520px;
+  margin-bottom: 18px;
+}
+
+.catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.catalog-card {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 18px;
+  background: #fff;
+}
+
+.catalog-card h2 {
+  margin: 4px 0 6px;
+  color: #0f172a;
+  font-size: 20px;
+  line-height: 1.18;
+}
+
+.catalog-card p,
+.catalog-card small {
+  margin: 0;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.catalog-kicker {
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
 .action-button:disabled {
   cursor: not-allowed;
   opacity: 0.62;
@@ -3656,6 +3699,11 @@ body.gantt-resizing * {
   color: #6b7280;
   font-size: 12px;
   font-weight: 400;
+}
+
+.schedule-subitem-main .schedule-subitem-meta {
+  color: #2563eb;
+  font-size: 11px;
 }
 
 .schedule-subitem .status,

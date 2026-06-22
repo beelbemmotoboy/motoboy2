@@ -43,6 +43,7 @@ function resetScheduleItem(item, fallbackType, sortOrder) {
     status: 'Nao iniciado',
     percentual: 0,
     valorMaoObra: Number(item.valorMaoObra || 0),
+    categoriaServicoId: item.categoriaServicoId || '',
     sortOrder,
     visible: item.visible !== false,
   };

@@ -13,6 +13,8 @@ const accountLogoBucket = 'obras-account-logos';
 const photoThumbnailTable = 'obras_photo_thumbnails';
 const notificationsTable = 'obras_notifications';
 const pushSubscriptionsTable = 'obras_push_subscriptions';
+const serviceCategoriesTable = 'obras_service_categories';
+const contractorsTable = 'obras_contractors';
 
 export const supabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 export const usingLegacySupabaseConfig = Boolean(
@@ -46,6 +48,7 @@ const childTables = {
   checklistResults: 'obras_schedule_checklist_results',
   rdoReports: 'obras_rdo_reports',
   documents: 'obras_documents',
+  contractorAssignments: 'obras_subitem_contractors',
 };
 
 export function projectFromDb(row) {
@@ -290,6 +293,71 @@ export function subscriptionFromDb(row) {
   };
 }
 
+export function serviceCategoryFromDb(row) {
+  return {
+    id: row.id,
+    accountId: row.account_id || '',
+    nome: row.nome || '',
+    descricao: row.descricao || '',
+    ativo: row.ativo !== false,
+    createdAt: row.created_at || '',
+    updatedAt: row.updated_at || '',
+  };
+}
+
+function serviceCategoryToDb(values) {
+  return {
+    nome: String(values.nome || '').trim(),
+    descricao: String(values.descricao || '').trim() || null,
+    ativo: values.ativo !== false,
+  };
+}
+
+function serviceCategoryPatchToDb(values) {
+  return {
+    ...(values.nome !== undefined ? { nome: String(values.nome || '').trim() } : {}),
+    ...(values.descricao !== undefined ? { descricao: String(values.descricao || '').trim() || null } : {}),
+    ...(values.ativo !== undefined ? { ativo: values.ativo !== false } : {}),
+  };
+}
+
+export function contractorFromDb(row) {
+  return {
+    id: row.id,
+    accountId: row.account_id || '',
+    nome: row.nome || '',
+    telefone: row.telefone || '',
+    documento: row.documento || '',
+    email: row.email || '',
+    observacoes: row.observacoes || '',
+    ativo: row.ativo !== false,
+    createdAt: row.created_at || '',
+    updatedAt: row.updated_at || '',
+  };
+}
+
+function contractorToDb(values) {
+  return {
+    nome: String(values.nome || '').trim(),
+    telefone: String(values.telefone || '').trim() || null,
+    documento: String(values.documento || '').trim() || null,
+    email: String(values.email || '').trim().toLowerCase() || null,
+    observacoes: String(values.observacoes || '').trim() || null,
+    ativo: values.ativo !== false,
+  };
+}
+
+function contractorPatchToDb(values) {
+  return {
+    ...(values.nome !== undefined ? { nome: String(values.nome || '').trim() } : {}),
+    ...(values.telefone !== undefined ? { telefone: String(values.telefone || '').trim() || null } : {}),
+    ...(values.documento !== undefined ? { documento: String(values.documento || '').trim() || null } : {}),
+    ...(values.email !== undefined ? { email: String(values.email || '').trim().toLowerCase() || null } : {}),
+    ...(values.observacoes !== undefined ? { observacoes: String(values.observacoes || '').trim() || null } : {}),
+    ...(values.ativo !== undefined ? { ativo: values.ativo !== false } : {}),
+  };
+}
+
 export const rowMappers = {
   stages: {
     fromDb: (row) => ({
@@ -338,6 +406,7 @@ export const rowMappers = {
       status: row.status || 'Nao iniciado',
       percentual: row.percentual ?? 0,
       valorMaoObra: Number(row.valor_mao_obra || 0),
+      categoriaServicoId: row.categoria_servico_id || '',
       sortOrder: row.sort_order ?? 0,
       visible: row.visible !== false,
       createdAt: row.created_at || '',
@@ -355,6 +424,7 @@ export const rowMappers = {
       status: item.status || 'Nao iniciado',
       percentual: item.percentual ?? 0,
       valor_mao_obra: Number(item.valorMaoObra || 0),
+      categoria_servico_id: item.categoriaServicoId || null,
       sort_order: item.sortOrder ?? index,
       visible: item.visible !== false,
     }),
@@ -368,6 +438,7 @@ export const rowMappers = {
       ...(patch.status !== undefined ? { status: patch.status } : {}),
       ...(patch.percentual !== undefined ? { percentual: patch.percentual } : {}),
       ...(patch.valorMaoObra !== undefined ? { valor_mao_obra: Number(patch.valorMaoObra || 0) } : {}),
+      ...(patch.categoriaServicoId !== undefined ? { categoria_servico_id: patch.categoriaServicoId || null } : {}),
       ...(patch.sortOrder !== undefined ? { sort_order: patch.sortOrder } : {}),
       ...(patch.visible !== undefined ? { visible: patch.visible } : {}),
     }),
@@ -461,6 +532,42 @@ export const rowMappers = {
       ...(patch.tipo !== undefined ? { tipo: patch.tipo } : {}),
       ...(patch.titulo !== undefined ? { titulo: patch.titulo } : {}),
       ...(patch.descricao !== undefined ? { descricao: patch.descricao || null } : {}),
+    }),
+  },
+  contractorAssignments: {
+    fromDb: (row) => ({
+      id: row.id,
+      projectId: row.project_id || '',
+      scheduleItemId: row.schedule_item_id || '',
+      contractorId: row.contractor_id || '',
+      dataInicio: row.data_inicio || '',
+      dataFim: row.data_fim || '',
+      valorContratado: Number(row.valor_contratado || 0),
+      formaPagamento: row.forma_pagamento || '',
+      observacoes: row.observacoes || '',
+      ativo: row.ativo !== false,
+      createdAt: row.created_at || '',
+      updatedAt: row.updated_at || '',
+    }),
+    toDb: (item) => ({
+      schedule_item_id: item.scheduleItemId,
+      contractor_id: item.contractorId,
+      data_inicio: item.dataInicio || null,
+      data_fim: item.dataFim || null,
+      valor_contratado: Number(item.valorContratado || 0),
+      forma_pagamento: item.formaPagamento || null,
+      observacoes: item.observacoes || null,
+      ativo: item.ativo !== false,
+    }),
+    patchToDb: (patch) => ({
+      ...(patch.scheduleItemId !== undefined ? { schedule_item_id: patch.scheduleItemId } : {}),
+      ...(patch.contractorId !== undefined ? { contractor_id: patch.contractorId } : {}),
+      ...(patch.dataInicio !== undefined ? { data_inicio: patch.dataInicio || null } : {}),
+      ...(patch.dataFim !== undefined ? { data_fim: patch.dataFim || null } : {}),
+      ...(patch.valorContratado !== undefined ? { valor_contratado: Number(patch.valorContratado || 0) } : {}),
+      ...(patch.formaPagamento !== undefined ? { forma_pagamento: patch.formaPagamento || null } : {}),
+      ...(patch.observacoes !== undefined ? { observacoes: patch.observacoes || null } : {}),
+      ...(patch.ativo !== undefined ? { ativo: patch.ativo !== false } : {}),
     }),
   },
   plsItems: {
@@ -852,6 +959,84 @@ export async function updateObrasAccount(accountId, patch) {
 
   if (error) throw error;
   return withSignedObrasAccountLogo(obrasAccountFromDb(data));
+}
+
+export async function fetchServiceCategories({ includeInactive = true } = {}) {
+  let query = supabase
+    .from(serviceCategoriesTable)
+    .select('*')
+    .order('nome', { ascending: true });
+
+  if (!includeInactive) query = query.eq('ativo', true);
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data || []).map(serviceCategoryFromDb);
+}
+
+export async function insertServiceCategory(values) {
+  const { data, error } = await supabase
+    .from(serviceCategoriesTable)
+    .insert(serviceCategoryToDb(values))
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return serviceCategoryFromDb(data);
+}
+
+export async function updateServiceCategory(categoryId, patch) {
+  const dbPatch = serviceCategoryPatchToDb(patch);
+  if (!Object.keys(dbPatch).length) return null;
+
+  const { data, error } = await supabase
+    .from(serviceCategoriesTable)
+    .update(dbPatch)
+    .eq('id', categoryId)
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return serviceCategoryFromDb(data);
+}
+
+export async function fetchContractors({ includeInactive = true } = {}) {
+  let query = supabase
+    .from(contractorsTable)
+    .select('*')
+    .order('nome', { ascending: true });
+
+  if (!includeInactive) query = query.eq('ativo', true);
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data || []).map(contractorFromDb);
+}
+
+export async function insertContractor(values) {
+  const { data, error } = await supabase
+    .from(contractorsTable)
+    .insert(contractorToDb(values))
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return contractorFromDb(data);
+}
+
+export async function updateContractor(contractorId, patch) {
+  const dbPatch = contractorPatchToDb(patch);
+  if (!Object.keys(dbPatch).length) return null;
+
+  const { data, error } = await supabase
+    .from(contractorsTable)
+    .update(dbPatch)
+    .eq('id', contractorId)
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return contractorFromDb(data);
 }
 
 export async function insertObrasUser(accountId, user) {
