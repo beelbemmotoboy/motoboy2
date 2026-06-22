@@ -4297,35 +4297,7 @@ function ScheduleLogSummary({ log, saving, onEdit }) {
 
 function ScheduleItemModal({ item, serviceCategories = [], saving, onClose, onSave }) {
   const isStage = !item.parentId;
-  const [status, setStatus] = useState(item.status || 'Nao iniciado');
-  const [percentual, setPercentual] = useState(String(item.percentual ?? 0));
-  const [formError, setFormError] = useState('');
   const categoryOptions = serviceCategories.filter((category) => category.ativo !== false || category.id === item.categoriaServicoId);
-
-  function changeStatus(event) {
-    const nextStatus = event.target.value;
-    setStatus(nextStatus);
-    if (nextStatus === 'Concluida') {
-      setPercentual('100');
-      setFormError('');
-      return;
-    }
-    if (nextStatus === 'Em andamento' && Number(percentual || 0) <= 0) {
-      setFormError('Informe um percentual maior que zero para status Em andamento.');
-    } else {
-      setFormError('');
-    }
-  }
-
-  function changePercentual(event) {
-    const nextPercentual = event.target.value;
-    setPercentual(nextPercentual);
-    if (status === 'Em andamento' && Number(nextPercentual || 0) <= 0) {
-      setFormError('Informe um percentual maior que zero para status Em andamento.');
-      return;
-    }
-    setFormError('');
-  }
 
   function submit(event) {
     event.preventDefault();
@@ -4333,15 +4305,6 @@ function ScheduleItemModal({ item, serviceCategories = [], saving, onClose, onSa
       ...item,
       ...Object.fromEntries(new FormData(event.currentTarget).entries()),
     };
-    if (!isStage) {
-      const nextPercentual = status === 'Concluida' ? 100 : Number(percentual || 0);
-      if (status === 'Em andamento' && nextPercentual <= 0) {
-        setFormError('Informe um percentual maior que zero para status Em andamento.');
-        return;
-      }
-      values.status = status;
-      values.percentual = nextPercentual;
-    }
     onSave(values);
   }
 
@@ -4388,29 +4351,9 @@ function ScheduleItemModal({ item, serviceCategories = [], saving, onClose, onSa
                   defaultValue={item.valorMaoObra ?? 0}
                 />
               </label>
-              <label className="field">
-                <span>Status</span>
-                <select name="status" value={status} onChange={changeStatus}>
-                  {['Nao iniciado', 'Em andamento', 'Atencao', 'Concluida'].map((status) => <option key={status}>{status}</option>)}
-                </select>
-              </label>
-              <label className="field">
-                <span>Percentual</span>
-                <input
-                  type="number"
-                  name="percentual"
-                  min="0"
-                  max="100"
-                  step="1"
-                  value={percentual}
-                  onChange={changePercentual}
-                  readOnly={status === 'Concluida'}
-                />
-              </label>
             </>
           )}
         </div>
-        {formError ? <p className="auth-message error">{formError}</p> : null}
         <div className="form-actions">
           <ActionButton Icon={Save} type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Salvar'}</ActionButton>
           <ActionButton Icon={XCircle} variant="ghost" onClick={onClose}>Cancelar</ActionButton>
@@ -4491,15 +4434,50 @@ function ScheduleContractorModal({ item, contractors = [], assignment, saving, o
 function ScheduleLogModal({ item, log, saving, onClose, onSave, onDelete }) {
   const editing = Boolean(log?.id);
   const formKey = log?.id || `new-${item.id}`;
+  const [status, setStatus] = useState(item.status || 'Nao iniciado');
+  const [percentual, setPercentual] = useState(String(item.percentual ?? 0));
+  const [formError, setFormError] = useState('');
+
+  function changeStatus(event) {
+    const nextStatus = event.target.value;
+    setStatus(nextStatus);
+    if (nextStatus === 'Concluida') {
+      setPercentual('100');
+      setFormError('');
+      return;
+    }
+    if (nextStatus === 'Em andamento' && Number(percentual || 0) <= 0) {
+      setFormError('Informe um percentual maior que zero para status Em andamento.');
+      return;
+    }
+    setFormError('');
+  }
+
+  function changePercentual(event) {
+    const nextPercentual = event.target.value;
+    setPercentual(nextPercentual);
+    if (status === 'Em andamento' && Number(nextPercentual || 0) <= 0) {
+      setFormError('Informe um percentual maior que zero para status Em andamento.');
+      return;
+    }
+    setFormError('');
+  }
 
   function submit(event) {
     event.preventDefault();
+    const nextPercentual = status === 'Concluida' ? 100 : Number(percentual || 0);
+    if (status === 'Em andamento' && nextPercentual <= 0) {
+      setFormError('Informe um percentual maior que zero para status Em andamento.');
+      return;
+    }
     const values = Object.fromEntries(new FormData(event.currentTarget).entries());
     const submitter = event.nativeEvent.submitter;
     onSave({
       ...values,
       id: log?.id || '',
       scheduleItemId: item.id,
+      status,
+      percentual: nextPercentual,
     }, submitter?.dataset?.action === 'photo');
   }
 
@@ -4520,12 +4498,32 @@ function ScheduleLogModal({ item, log, saving, onClose, onSave, onDelete }) {
         </div>
         <div className="form-grid modal-fields">
           <Field label="Data da visita" name="visitDate" type="date" value={log?.visitDate || new Date().toISOString().slice(0, 10)} required />
+          <label className="field">
+            <span>Status do subitem</span>
+            <select name="status" value={status} onChange={changeStatus}>
+              {['Nao iniciado', 'Em andamento', 'Atencao', 'Concluida'].map((statusOption) => <option key={statusOption}>{statusOption}</option>)}
+            </select>
+          </label>
+          <label className="field">
+            <span>Percentual executado</span>
+            <input
+              type="number"
+              name="percentual"
+              min="0"
+              max="100"
+              step="1"
+              value={percentual}
+              onChange={changePercentual}
+              readOnly={status === 'Concluida'}
+            />
+          </label>
           <TextAreaField label="Observacoes" name="observacoes" value={log?.observacoes || ''} />
           <TextAreaField label="Pedido de material" name="pedidoMaterial" value={log?.pedidoMaterial || ''} />
           <TextAreaField label="Ferramentas necessarias ou usadas" name="ferramentas" value={log?.ferramentas || ''} />
           <TextAreaField label="Mao de obra presente" name="maoObra" value={log?.maoObra || ''} />
           <TextAreaField label="Observacao sobre fotos" name="fotosObservacao" value={log?.fotosObservacao || ''} />
         </div>
+        {formError ? <p className="auth-message error">{formError}</p> : null}
         <div className="form-actions">
           <button className="action-button primary" type="submit" data-action="save" disabled={saving}><Save size={20} /><span>{editing ? 'Salvar alteracoes' : 'Salvar registro'}</span></button>
           <button className="action-button secondary" type="submit" data-action="photo" disabled={saving}><Camera size={20} /><span>{editing ? 'Salvar e adicionar fotos' : 'Salvar e adicionar fotos'}</span></button>
@@ -7545,7 +7543,39 @@ function App() {
 
     const hasChecklistResults = Array.isArray(values.checklistResults);
     const checklistResultDrafts = hasChecklistResults ? values.checklistResults : [];
-    const { checklistResults: _checklistResults, ...logValues } = values;
+    const {
+      checklistResults: _checklistResults,
+      status: scheduleStatus,
+      percentual: schedulePercentual,
+      ...logValues
+    } = values;
+    const previousItems = data.scheduleItems || [];
+    const targetScheduleItem = previousItems.find((item) => item.id === values.scheduleItemId);
+    const progressStatus = scheduleStatus || targetScheduleItem?.status || 'Nao iniciado';
+    const progressPercentual = progressStatus === 'Concluida'
+      ? 100
+      : Math.min(100, Math.max(0, Number(schedulePercentual) || 0));
+
+    if (targetScheduleItem?.parentId && progressStatus === 'Em andamento' && progressPercentual <= 0) {
+      setScheduleError('Informe um percentual maior que zero para status Em andamento.');
+      return null;
+    }
+
+    const progressPatch = targetScheduleItem?.parentId
+      ? { status: progressStatus, percentual: progressPercentual }
+      : null;
+    const rawItems = progressPatch
+      ? previousItems.map((item) => (
+          item.id === targetScheduleItem.id
+            ? { ...item, ...progressPatch, updatedAt: new Date().toISOString() }
+            : item
+        ))
+      : previousItems;
+    const nextItems = progressPatch ? deriveScheduleStages(rawItems) : previousItems;
+    const nextProjectPercentual = progressPatch ? calculateScheduleProgress(nextItems) : activeWork.percentual;
+    const nextProjectStatus = progressPatch
+      ? getEffectiveWorkStatus({ ...activeWork, percentual: nextProjectPercentual })
+      : activeWork.status;
     const nextLog = {
       ...logValues,
       visitDate: logValues.visitDate || new Date().toISOString().slice(0, 10),
@@ -7588,8 +7618,25 @@ function App() {
               updatedAt: nowIso,
             }));
       }
+      if (progressPatch && supabaseConfigured && session) {
+        const stageUpdates = getDerivedStageUpdates(previousItems, nextItems);
+        await updateChild('scheduleItems', targetScheduleItem.id, progressPatch);
+        await Promise.all(stageUpdates.map(({ id, patch }) => updateChild('scheduleItems', id, patch)));
+        await updateProject(activeWork.id, {
+          percentual: nextProjectPercentual,
+          status: nextProjectStatus,
+        });
+      }
       setData((current) => ({
         ...current,
+        scheduleItems: progressPatch ? nextItems : current.scheduleItems,
+        works: progressPatch
+          ? current.works.map((work) => (
+              work.id === activeWork.id
+                ? { ...work, percentual: nextProjectPercentual, status: nextProjectStatus }
+                : work
+            ))
+          : current.works,
         scheduleLogs: nextLog.id
           ? current.scheduleLogs.map((log) => (log.id === saved.id ? saved : log))
           : [saved, ...current.scheduleLogs],
