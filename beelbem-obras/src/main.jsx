@@ -3213,7 +3213,7 @@ function Schedule({
 
   return (
     <>
-      <PageTitle eyebrow="Cronograma" title="Cronograma inteligente" subtitle="Etapas, subitens e diario de campo especificos desta obra." onBack={() => setScreen('workPanel')}>
+      <PageTitle eyebrow="Cronograma" title="Cronograma" subtitle="Etapas, subitens e diario de campo especificos desta obra." onBack={() => setScreen('workPanel')}>
         <ActionButton Icon={Plus} onClick={() => setItemModal({ itemType: 'stage' })}>Adicionar etapa</ActionButton>
       </PageTitle>
       <section className="schedule-toolbar">
