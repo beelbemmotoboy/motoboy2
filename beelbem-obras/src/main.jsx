@@ -1712,6 +1712,8 @@ function WorkPanel({ obra, data, setScreen }) {
     ['Fotos', Camera, 'photos'],
     ['Cronograma', CalendarDays, 'schedule'],
     ['Etapas', Layers3, 'stages'],
+    ['Categorias', FolderKanban, 'serviceCategories'],
+    ['Empreiteiros', HardHat, 'contractors'],
     ['PLS Caixa', FileCheck2, 'pls'],
     ['Insumos', PackageCheck, 'supplies'],
     ['Ferramentas', Wrench, 'tools'],
