@@ -67,6 +67,7 @@ import {
   fetchObrasNotifications,
   fetchObrasSubscriptions,
   fetchObrasUsers,
+  fetchNeighborhoods,
   fetchSignupRequests,
   fetchServiceCategories,
   getSession,
@@ -75,6 +76,7 @@ import {
   insertScheduleItemChecklistResults,
   insertChild,
   insertChecklistPhoto,
+  insertNeighborhood,
   insertPhotoThumbnail,
   insertObrasNotification,
   insertObrasUser,
@@ -183,6 +185,30 @@ const neighborhoodCatalog = {
     { id: 'sul', nome: 'Setor Sul' },
   ],
 };
+
+function buildNeighborhoodSlug(name) {
+  return normalizeSearch(name)
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    || 'bairro';
+}
+
+function getNeighborhoodOptions(cityId, customNeighborhoods = []) {
+  const byId = new Map();
+  (neighborhoodCatalog[cityId] || []).forEach((neighborhood) => {
+    byId.set(neighborhood.id, { ...neighborhood, cidadeId: cityId, source: 'catalog' });
+  });
+  (customNeighborhoods || [])
+    .filter((neighborhood) => neighborhood.ativo !== false && neighborhood.cidadeId === cityId)
+    .forEach((neighborhood) => {
+      byId.set(neighborhood.id, { ...neighborhood, source: 'custom' });
+    });
+  return Array.from(byId.values()).sort((a, b) => a.nome.localeCompare(b.nome));
+}
+
+function getAllNeighborhoodOptions(customNeighborhoods = []) {
+  return cityCatalog.flatMap((city) => getNeighborhoodOptions(city.id, customNeighborhoods));
+}
 
 const projectCollections = ['stages', 'scheduleItems', 'scheduleLogs', 'photos', 'plsItems', 'issues', 'supplies', 'tools', 'checklist', 'checklistResults', 'checklistPhotos', 'rdoReports', 'documents', 'contractorAssignments'];
 const emptyProjectCollections = Object.fromEntries(projectCollections.map((collection) => [collection, []]));
@@ -339,6 +365,7 @@ const initialData = {
     { id: 'cat-eletrica', nome: 'Eletrica', descricao: 'Instalacoes eletricas brutas e finais.', ativo: true },
     { id: 'cat-acabamento', nome: 'Acabamento', descricao: 'Revestimentos, pintura, forro e limpeza final.', ativo: true },
   ],
+  neighborhoods: [],
   contractors: [],
   contractorAssignments: [],
 };
@@ -347,6 +374,7 @@ const remoteInitialData = {
   ...initialData,
   works: [],
   serviceCategories: [],
+  neighborhoods: [],
   contractors: [],
   ...emptyProjectCollections,
 };
@@ -779,6 +807,131 @@ function SelectField({ label, name, value, options, disabled = false }) {
         ))}
       </select>
     </label>
+  );
+}
+
+function NeighborhoodField({
+  cityId,
+  value = '',
+  neighborhoods = [],
+  disabled = false,
+  onAddNeighborhood,
+}) {
+  const options = getNeighborhoodOptions(cityId, neighborhoods);
+  const optionKey = options.map((option) => option.id).join('|');
+  const [selectedId, setSelectedId] = useState(value || options[0]?.id || '');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const availableIds = new Set(options.map((option) => option.id));
+    setSelectedId((current) => {
+      if (current && availableIds.has(current)) return current;
+      if (value && availableIds.has(value)) return value;
+      return options[0]?.id || '';
+    });
+  }, [cityId, value, optionKey]);
+
+  async function saveNeighborhood(name) {
+    if (!onAddNeighborhood) return;
+    setSaving(true);
+    setError('');
+    try {
+      const saved = await onAddNeighborhood({ cidadeId: cityId, nome: name });
+      if (saved?.id) setSelectedId(saved.id);
+      setModalOpen(false);
+    } catch (saveError) {
+      setError(saveError.message || 'Nao foi possivel cadastrar o bairro.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <label className="field neighborhood-field">
+        <span>Bairro</span>
+        <div className="select-with-action">
+          <select name="bairroId" value={selectedId} onChange={(event) => setSelectedId(event.target.value)} disabled={disabled}>
+            {options.map((neighborhood) => (
+              <option value={neighborhood.id} key={neighborhood.id}>{neighborhood.nome}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="inline-add-button"
+            onClick={() => {
+              setError('');
+              setModalOpen(true);
+            }}
+            disabled={disabled || !cityId}
+          >
+            <Plus size={18} aria-hidden="true" />
+            <span>Bairro</span>
+          </button>
+        </div>
+      </label>
+      {modalOpen ? (
+        <NeighborhoodModal
+          city={cityCatalog.find((city) => city.id === cityId) || cityCatalog[0]}
+          saving={saving}
+          error={error}
+          onClose={() => {
+            if (!saving) setModalOpen(false);
+          }}
+          onSave={saveNeighborhood}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function NeighborhoodModal({ city, saving, error, onClose, onSave }) {
+  const [name, setName] = useState('');
+
+  function submit() {
+    const nome = name.trim();
+    if (!nome) return;
+    onSave(nome);
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="photo-modal neighborhood-modal" role="dialog" aria-modal="true" aria-labelledby="neighborhood-modal-title">
+        <div className="modal-head">
+          <div>
+            <span>Cadastrar bairro</span>
+            <h2 id="neighborhood-modal-title">{city?.nome || 'Cidade'}</h2>
+          </div>
+          <IconButton label="Fechar" Icon={X} onClick={onClose} />
+        </div>
+        {error ? <p className="auth-message error">{error}</p> : null}
+        <div className="form-grid modal-fields">
+          <label className="field">
+            <span>Nome do bairro</span>
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  submit();
+                }
+              }}
+              disabled={saving}
+              autoFocus
+            />
+          </label>
+        </div>
+        <div className="form-actions">
+          <ActionButton Icon={Save} onClick={submit} disabled={saving || !name.trim()}>
+            {saving ? 'Salvando...' : 'Salvar bairro'}
+          </ActionButton>
+          <ActionButton Icon={XCircle} variant="ghost" onClick={onClose} disabled={saving}>Cancelar</ActionButton>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -1270,20 +1423,21 @@ function Dashboard({ data, setScreen }) {
   );
 }
 
-function getCitySummary(works) {
+function getCitySummary(works, customNeighborhoods = []) {
   return cityCatalog.map((city) => {
     const local = works.filter((work) => work.cidadeId === city.id);
+    const neighborhoods = getNeighborhoodOptions(city.id, customNeighborhoods);
     return {
       ...city,
       obras: local.length,
-      bairros: new Set(local.map((work) => work.bairroId)).size || (neighborhoodCatalog[city.id] || []).length,
+      bairros: new Set(local.map((work) => work.bairroId)).size || neighborhoods.length,
       atrasadas: local.filter((work) => getEffectiveWorkStatus(work) === 'Atrasada').length,
     };
   });
 }
 
-function getNeighborhoodSummary(works, city) {
-  return (neighborhoodCatalog[city?.id] || neighborhoodCatalog['rio-verde']).map((bairro) => {
+function getNeighborhoodSummary(works, city, customNeighborhoods = []) {
+  return getNeighborhoodOptions(city?.id || 'rio-verde', customNeighborhoods).map((bairro) => {
     const local = works.filter((work) => work.bairroId === bairro.id);
     return {
       ...bairro,
@@ -1294,10 +1448,10 @@ function getNeighborhoodSummary(works, city) {
   });
 }
 
-function Cities({ works, openCity }) {
+function Cities({ works, neighborhoods = [], openCity }) {
   const [query, setQuery] = useState('');
   const normalizedQuery = normalizeSearch(query);
-  const cities = getCitySummary(works);
+  const cities = getCitySummary(works, neighborhoods);
   const filteredCities = normalizedQuery
     ? cities.filter((city) => normalizeSearch(city.nome).includes(normalizedQuery))
     : cities;
@@ -1330,10 +1484,10 @@ function Cities({ works, openCity }) {
   );
 }
 
-function Neighborhoods({ works, selectedCity, openNeighborhood, setScreen }) {
+function Neighborhoods({ works, selectedCity, neighborhoods: customNeighborhoods = [], openNeighborhood, setScreen }) {
   const [query, setQuery] = useState('');
   const normalizedQuery = normalizeSearch(query);
-  const neighborhoods = getNeighborhoodSummary(works, selectedCity);
+  const neighborhoods = getNeighborhoodSummary(works, selectedCity, customNeighborhoods);
   const filteredNeighborhoods = normalizedQuery
     ? neighborhoods.filter((bairro) => normalizeSearch(bairro.nome).includes(normalizedQuery))
     : neighborhoods;
@@ -1412,7 +1566,7 @@ function Works({ selectedCity, selectedNeighborhood, works, openWork, setScreen 
   );
 }
 
-function NewWork({ createWork, setScreen, selectedCity, onProjectAnalyzed, works = [] }) {
+function NewWork({ createWork, setScreen, selectedCity, onProjectAnalyzed, works = [], neighborhoods = [], onAddNeighborhood }) {
   const [cityId, setCityId] = useState(selectedCity?.id || cityCatalog[0].id);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
@@ -1421,7 +1575,6 @@ function NewWork({ createWork, setScreen, selectedCity, onProjectAnalyzed, works
   const imageInputRef = useRef(null);
   const cameraInputRef = useRef(null);
   const manualFormRef = useRef(null);
-  const neighborhoods = neighborhoodCatalog[cityId] || [];
 
   function submit(event) {
     event.preventDefault();
@@ -1451,7 +1604,7 @@ function NewWork({ createWork, setScreen, selectedCity, onProjectAnalyzed, works
     }
 
     const formCity = cityCatalog.find((city) => city.id === cityId) || selectedCity;
-    onProjectAnalyzed(buildAiProjectDraft(result, formCity));
+    onProjectAnalyzed(buildAiProjectDraft(result, formCity, neighborhoods));
     setScreen('extractedData');
   }
 
@@ -1502,14 +1655,11 @@ function NewWork({ createWork, setScreen, selectedCity, onProjectAnalyzed, works
             ))}
           </select>
         </label>
-        <label className="field">
-          <span>Bairro</span>
-          <select name="bairroId" key={cityId} defaultValue={neighborhoods[0]?.id || ''}>
-            {neighborhoods.map((bairro) => (
-              <option value={bairro.id} key={bairro.id}>{bairro.nome}</option>
-            ))}
-          </select>
-        </label>
+        <NeighborhoodField
+          cityId={cityId}
+          neighborhoods={neighborhoods}
+          onAddNeighborhood={onAddNeighborhood}
+        />
         <Field label="Endereco" name="endereco" wide required />
         <Field label="Quadra" name="quadra" />
         <Field label="Lote" name="lote" />
@@ -1594,10 +1744,9 @@ function AiAnalysisLoader({ fileName }) {
   );
 }
 
-function ExtractedData({ createWork, setScreen, draft, works = [] }) {
+function ExtractedData({ createWork, setScreen, draft, works = [], neighborhoods = [], onAddNeighborhood }) {
   const initialCityId = draft?.cidadeId || cityCatalog[0].id;
   const [cityId, setCityId] = useState(initialCityId);
-  const neighborhoods = neighborhoodCatalog[cityId] || [];
 
   if (!draft) {
     return (
@@ -1634,12 +1783,12 @@ function ExtractedData({ createWork, setScreen, draft, works = [] }) {
             {cityCatalog.map((city) => <option value={city.id} key={city.id}>{city.nome}</option>)}
           </select>
         </label>
-        <label className="field">
-          <span>Bairro</span>
-          <select name="bairroId" key={cityId} defaultValue={cityId === draft.cidadeId ? draft.bairroId : neighborhoods[0]?.id || ''}>
-            {neighborhoods.map((neighborhood) => <option value={neighborhood.id} key={neighborhood.id}>{neighborhood.nome}</option>)}
-          </select>
-        </label>
+        <NeighborhoodField
+          cityId={cityId}
+          value={cityId === draft.cidadeId ? draft.bairroId : ''}
+          neighborhoods={neighborhoods}
+          onAddNeighborhood={onAddNeighborhood}
+        />
         <Field label="Endereco" name="endereco" value={draft.endereco} wide required />
         <Field label="Quadra" name="quadra" value={draft.quadra} />
         <Field label="Lote" name="lote" value={draft.lote} />
@@ -5825,14 +5974,14 @@ function Profile({ currentUser, saving, error, message, onSave }) {
   );
 }
 
-function resolveLocation(values) {
+function resolveLocation(values, customNeighborhoods = []) {
   const city = cityCatalog.find((item) => item.id === values.cidadeId) || cityCatalog[0];
-  const allNeighborhoods = Object.values(neighborhoodCatalog).flat();
-  const neighborhood = allNeighborhoods.find((item) => item.id === values.bairroId) || neighborhoodCatalog[city.id][0];
+  const allNeighborhoods = getAllNeighborhoodOptions(customNeighborhoods);
+  const neighborhood = allNeighborhoods.find((item) => item.id === values.bairroId) || getNeighborhoodOptions(city.id, customNeighborhoods)[0];
   return { city, neighborhood };
 }
 
-function WorkProfile({ activeWork, saving, error, message, canEdit, canDelete, onSave, onDelete, setScreen }) {
+function WorkProfile({ activeWork, saving, error, message, canEdit, canDelete, neighborhoods: customNeighborhoods = [], onAddNeighborhood, onSave, onDelete, setScreen }) {
   const initialCityId = activeWork?.cidadeId || cityCatalog.find((city) => normalizeSearch(city.nome) === normalizeSearch(activeWork?.cidade))?.id || cityCatalog[0].id;
   const [cityId, setCityId] = useState(initialCityId);
 
@@ -5844,7 +5993,7 @@ function WorkProfile({ activeWork, saving, error, message, canEdit, canDelete, o
     return <EmptyNotice Icon={Building2} title="Obra nao selecionada" text="Selecione uma obra para editar os dados cadastrais." />;
   }
 
-  const neighborhoods = neighborhoodCatalog[cityId] || [];
+  const neighborhoods = getNeighborhoodOptions(cityId, customNeighborhoods);
   const currentNeighborhood = neighborhoods.find((neighborhood) => neighborhood.id === activeWork.bairroId)
     || neighborhoods.find((neighborhood) => normalizeSearch(neighborhood.nome) === normalizeSearch(activeWork.bairro));
   const neighborhoodId = currentNeighborhood?.id
@@ -5907,14 +6056,13 @@ function WorkProfile({ activeWork, saving, error, message, canEdit, canDelete, o
             ))}
           </select>
         </label>
-        <label className="field">
-          <span>Bairro</span>
-          <select name="bairroId" key={cityId} defaultValue={neighborhoodId} disabled={!canEdit || saving}>
-            {neighborhoods.map((neighborhood) => (
-              <option value={neighborhood.id} key={neighborhood.id}>{neighborhood.nome}</option>
-            ))}
-          </select>
-        </label>
+        <NeighborhoodField
+          cityId={cityId}
+          value={neighborhoodId}
+          neighborhoods={customNeighborhoods}
+          disabled={!canEdit || saving}
+          onAddNeighborhood={onAddNeighborhood}
+        />
         <Field label="Endereco" name="endereco" value={activeWork.endereco || ''} wide required disabled={!canEdit || saving} />
         <Field label="Quadra" name="quadra" value={activeWork.quadra || ''} disabled={!canEdit || saving} />
         <Field label="Lote" name="lote" value={activeWork.lote || ''} disabled={!canEdit || saving} />
@@ -5934,14 +6082,14 @@ function WorkProfile({ activeWork, saving, error, message, canEdit, canDelete, o
   );
 }
 
-function buildAiProjectDraft(result, selectedCity) {
+function buildAiProjectDraft(result, selectedCity, customNeighborhoods = []) {
   const values = result.valores || {};
   const requestedCity = normalizeSearch(values.cidade);
   const city = cityCatalog.find((item) => {
     const catalogName = normalizeSearch(item.nome);
     return requestedCity && (requestedCity === catalogName || requestedCity.includes(catalogName));
   }) || selectedCity || cityCatalog[0];
-  const neighborhoods = neighborhoodCatalog[city.id] || [];
+  const neighborhoods = getNeighborhoodOptions(city.id, customNeighborhoods);
   const requestedNeighborhood = normalizeSearch(values.bairro);
   const neighborhood = neighborhoods.find((item) => {
     const catalogName = normalizeSearch(item.nome);
@@ -6490,23 +6638,26 @@ function App() {
       setData((current) => ({
         ...current,
         serviceCategories: initialData.serviceCategories,
+        neighborhoods: initialData.neighborhoods,
         contractors: initialData.contractors,
       }));
       return;
     }
 
     try {
-      const [serviceCategories, contractors] = await Promise.all([
+      const [serviceCategories, neighborhoods, contractors] = await Promise.all([
         fetchServiceCategories({ includeInactive: true }),
+        fetchNeighborhoods({ includeInactive: true }),
         fetchContractors({ includeInactive: true }),
       ]);
       setData((current) => ({
         ...current,
         serviceCategories,
+        neighborhoods,
         contractors,
       }));
     } catch (error) {
-      setDataError(error.message || 'Nao foi possivel carregar categorias e empreiteiros.');
+      setDataError(error.message || 'Nao foi possivel carregar catalogos do Obras.');
     }
   }
 
@@ -6520,6 +6671,7 @@ function App() {
         setData((current) => ({
           ...remoteInitialData,
           serviceCategories: current.serviceCategories,
+          neighborhoods: current.neighborhoods,
           contractors: current.contractors,
         }));
         setSelectedWorkId('');
@@ -6539,6 +6691,7 @@ function App() {
       setData((current) => ({
         ...remoteInitialData,
         serviceCategories: current.serviceCategories,
+        neighborhoods: current.neighborhoods,
         contractors: current.contractors,
         works,
       }));
@@ -6887,7 +7040,7 @@ function App() {
 
   async function createWork(values) {
     setDataError('');
-    const { city, neighborhood } = resolveLocation(values);
+    const { city, neighborhood } = resolveLocation(values, data.neighborhoods || []);
     const scheduleSourceProjectId = String(values.scheduleSourceProjectId || DEFAULT_SCHEDULE_SOURCE);
     let nextWork = {
       id: makeId('obra'),
@@ -6960,7 +7113,7 @@ function App() {
     setWorkProfileError('');
     setWorkProfileMessage('');
 
-    const { city, neighborhood } = resolveLocation(values);
+    const { city, neighborhood } = resolveLocation(values, data.neighborhoods || []);
     const patch = {
       nome: values.nome || activeWork.nome,
       cliente: values.cliente || activeWork.cliente,
@@ -8606,6 +8759,36 @@ function App() {
     }
   }
 
+  async function saveNeighborhood(values) {
+    const nome = String(values.nome || '').trim();
+    const cidadeId = String(values.cidadeId || '').trim();
+    if (!nome) throw new Error('Informe o nome do bairro.');
+    if (!cidadeId) throw new Error('Selecione a cidade antes de cadastrar o bairro.');
+
+    const slug = buildNeighborhoodSlug(nome);
+    const existing = getNeighborhoodOptions(cidadeId, data.neighborhoods || [])
+      .find((neighborhood) => buildNeighborhoodSlug(neighborhood.nome) === slug);
+    if (existing) return existing;
+
+    let saved = {
+      id: makeId('bairro'),
+      cidadeId,
+      nome,
+      slug,
+      ativo: true,
+    };
+
+    if (supabaseConfigured && session) {
+      saved = await insertNeighborhood(saved);
+    }
+
+    setData((current) => ({
+      ...current,
+      neighborhoods: [...(current.neighborhoods || []), saved].sort((a, b) => a.nome.localeCompare(b.nome)),
+    }));
+    return saved;
+  }
+
   async function toggleServiceCategory(category) {
     if (!category?.id) return null;
     return saveServiceCategory({ ...category, ativo: category.ativo === false });
@@ -8834,9 +9017,9 @@ function App() {
       case 'dashboard':
         return <Dashboard data={cityData} setScreen={setScreen} />;
       case 'cities':
-        return <Cities works={data.works} openCity={(city) => void handleCityChange(city.id, 'neighborhoods')} />;
+        return <Cities works={data.works} neighborhoods={data.neighborhoods || []} openCity={(city) => void handleCityChange(city.id, 'neighborhoods')} />;
       case 'neighborhoods':
-        return <Neighborhoods works={cityWorks} selectedCity={selectedCity} openNeighborhood={(bairro) => { setSelectedNeighborhood(bairro); setScreen('works'); }} setScreen={setScreen} />;
+        return <Neighborhoods works={cityWorks} neighborhoods={data.neighborhoods || []} selectedCity={selectedCity} openNeighborhood={(bairro) => { setSelectedNeighborhood(bairro); setScreen('works'); }} setScreen={setScreen} />;
       case 'works':
         return <Works selectedCity={selectedCity} selectedNeighborhood={selectedNeighborhood} works={cityWorks} openWork={(work) => {
           setSelectedWorkId(work.id);
@@ -8848,9 +9031,9 @@ function App() {
           setScreen('workPanel');
         }} setScreen={setScreen} />;
       case 'newWork':
-        return <NewWork createWork={createWork} setScreen={setScreen} selectedCity={selectedCity} works={data.works} onProjectAnalyzed={setAiProjectDraft} />;
+        return <NewWork createWork={createWork} setScreen={setScreen} selectedCity={selectedCity} works={data.works} neighborhoods={data.neighborhoods || []} onAddNeighborhood={saveNeighborhood} onProjectAnalyzed={setAiProjectDraft} />;
       case 'extractedData':
-        return <ExtractedData createWork={createWork} setScreen={setScreen} draft={aiProjectDraft} works={data.works} />;
+        return <ExtractedData createWork={createWork} setScreen={setScreen} draft={aiProjectDraft} works={data.works} neighborhoods={data.neighborhoods || []} onAddNeighborhood={saveNeighborhood} />;
       case 'workPanel':
         return <WorkPanel obra={activeWork} data={cityData} setScreen={setScreen} />;
       case 'stages':
@@ -9050,6 +9233,8 @@ function App() {
             message={workProfileMessage}
             canEdit={canEditWorkProfile}
             canDelete={canDeleteWorkProfile}
+            neighborhoods={data.neighborhoods || []}
+            onAddNeighborhood={saveNeighborhood}
             onSave={saveWorkProfile}
             onDelete={deleteActiveWork}
             setScreen={setScreen}

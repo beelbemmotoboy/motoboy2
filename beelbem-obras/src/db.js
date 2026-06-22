@@ -16,6 +16,7 @@ const pushSubscriptionsTable = 'obras_push_subscriptions';
 const serviceCategoriesTable = 'obras_service_categories';
 const contractorsTable = 'obras_contractors';
 const checklistPhotosTable = 'obras_checklist_photos';
+const neighborhoodsTable = 'obras_neighborhoods';
 
 export const supabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 export const usingLegacySupabaseConfig = Boolean(
@@ -303,6 +304,28 @@ export function serviceCategoryFromDb(row) {
     ativo: row.ativo !== false,
     createdAt: row.created_at || '',
     updatedAt: row.updated_at || '',
+  };
+}
+
+export function neighborhoodFromDb(row) {
+  return {
+    id: row.id,
+    accountId: row.account_id || '',
+    cidadeId: row.cidade_id || '',
+    nome: row.nome || '',
+    slug: row.slug || '',
+    ativo: row.ativo !== false,
+    createdAt: row.created_at || '',
+    updatedAt: row.updated_at || '',
+  };
+}
+
+function neighborhoodToDb(values) {
+  return {
+    cidade_id: String(values.cidadeId || '').trim(),
+    nome: String(values.nome || '').trim(),
+    slug: String(values.slug || '').trim(),
+    ativo: values.ativo !== false,
   };
 }
 
@@ -973,6 +996,30 @@ export async function fetchServiceCategories({ includeInactive = true } = {}) {
   const { data, error } = await query;
   if (error) throw error;
   return (data || []).map(serviceCategoryFromDb);
+}
+
+export async function fetchNeighborhoods({ includeInactive = true } = {}) {
+  let query = supabase
+    .from(neighborhoodsTable)
+    .select('*')
+    .order('nome', { ascending: true });
+
+  if (!includeInactive) query = query.eq('ativo', true);
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data || []).map(neighborhoodFromDb);
+}
+
+export async function insertNeighborhood(values) {
+  const { data, error } = await supabase
+    .from(neighborhoodsTable)
+    .insert(neighborhoodToDb(values))
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return neighborhoodFromDb(data);
 }
 
 export async function insertServiceCategory(values) {

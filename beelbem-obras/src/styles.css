@@ -1788,6 +1788,36 @@ button.metric-card {
   grid-column: 1 / -1;
 }
 
+.select-with-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.select-with-action select {
+  width: 100%;
+}
+
+.inline-add-button {
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 46px;
+  padding: 0 12px;
+  color: #1d4ed8;
+  background: #eff6ff;
+  font-weight: 900;
+}
+
+.inline-add-button:disabled {
+  color: #94a3b8;
+  cursor: not-allowed;
+  background: #f8fafc;
+}
+
 .form-actions {
   margin-top: 18px;
 }
