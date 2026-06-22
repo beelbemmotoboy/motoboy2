@@ -8417,6 +8417,7 @@ function App() {
     const activeAssignment = data.contractorAssignments.find((item) => (
       item.scheduleItemId === values.scheduleItemId && item.ativo !== false
     ));
+    const isFirstContractorAssignment = !activeAssignment;
 
     setScheduleSaving(true);
     setScheduleError('');
@@ -8477,7 +8478,7 @@ function App() {
 
       const contractor = data.contractors.find((item) => item.id === saved.contractorId);
       const subitem = data.scheduleItems.find((item) => item.id === saved.scheduleItemId);
-      if (contractor && subitem) {
+      if (!isFirstContractorAssignment && contractor && subitem) {
         void notifyCompany({
           projectId: activeWork.id,
           type: 'subitem_updated',
