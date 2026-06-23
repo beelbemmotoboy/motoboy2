@@ -3226,6 +3226,7 @@ function Schedule({
   return (
     <>
       <PageTitle eyebrow="Cronograma" title="Cronograma" subtitle="Etapas, subitens e diario de campo especificos desta obra." onBack={() => setScreen('workPanel')}>
+        <ActionButton Icon={CalendarDays} variant="secondary" onClick={() => setScreen('contractScheduleBuilder')}>Criar cronograma</ActionButton>
         <ActionButton Icon={Plus} onClick={() => setItemModal({ itemType: 'stage' })}>Adicionar etapa</ActionButton>
       </PageTitle>
       <section className="schedule-toolbar">
@@ -9101,7 +9102,7 @@ function App() {
 
   async function saveContractSchedulePlan({ contractorId = '', stages = [] }) {
     if (!activeWork?.id) {
-      setScheduleError('Selecione uma obra antes de criar o cronograma.');
+      setScheduleError('Selecione uma obra antes de salvar o cronograma.');
       return null;
     }
     if (!stages.length) {
@@ -9115,60 +9116,95 @@ function App() {
 
     try {
       const now = new Date().toISOString();
-      const rawItems = [...previousItems];
+      const rawItems = previousItems.map((item) => ({ ...item }));
       const savedAssignments = [];
-      const rootSortOrders = previousItems
-        .filter((item) => !item.parentId)
-        .map((item) => Number(item.sortOrder) || 0);
-      let nextStageSortOrder = rootSortOrders.length ? Math.max(...rootSortOrders) + 1 : 0;
+      const activeAssignmentsBySubitem = new Map();
+      data.contractorAssignments
+        .filter((item) => item.ativo !== false)
+        .forEach((item) => {
+          activeAssignmentsBySubitem.set(item.scheduleItemId, item);
+        });
 
-      for (const stage of stages) {
-        const stageItem = {
-          id: makeId('etapa-cronograma'),
+      function upsertRawItem(item) {
+        const index = rawItems.findIndex((current) => current.id === item.id);
+        if (index >= 0) {
+          rawItems[index] = item;
+        } else {
+          rawItems.push(item);
+        }
+      }
+
+      for (const [stageIndex, stage] of stages.entries()) {
+        const existingStage = previousItems.find((item) => item.id === (stage.sourceId || stage.id));
+        const stagePatch = {
           parentId: '',
           nome: String(stage.nome || '').trim() || 'Novo item',
           itemType: 'stage',
           visible: true,
-          sortOrder: nextStageSortOrder,
-          createdAt: now,
-          updatedAt: now,
+          sortOrder: stageIndex,
         };
-        nextStageSortOrder += 1;
 
-        const savedStage = supabaseConfigured && session
-          ? await insertChild('scheduleItems', activeWork.id, stageItem)
-          : stageItem;
-        rawItems.push(savedStage);
+        let savedStage;
+        if (existingStage) {
+          if (supabaseConfigured && session) {
+            await updateChild('scheduleItems', existingStage.id, stagePatch);
+          }
+          savedStage = { ...existingStage, ...stagePatch, updatedAt: now };
+        } else {
+          const stageItem = {
+            ...stagePatch,
+            id: makeId('etapa-cronograma'),
+            createdAt: now,
+            updatedAt: now,
+          };
+          savedStage = supabaseConfigured && session
+            ? await insertChild('scheduleItems', activeWork.id, stageItem)
+            : stageItem;
+        }
+        upsertRawItem(savedStage);
 
         for (const [subitemIndex, subitem] of (stage.subitems || []).entries()) {
           const value = normalizeMoneyValue(subitem.valorMaoObra);
-          const subitemItem = {
-            id: makeId('subitem'),
+          const existingSubitem = previousItems.find((item) => item.id === (subitem.sourceId || subitem.id));
+          const subitemPatch = {
             parentId: savedStage.id,
             nome: String(subitem.nome || '').trim() || 'Novo subitem',
             itemType: 'task',
             inicioPrevisto: subitem.inicioPrevisto || '',
             fimPrevisto: subitem.fimPrevisto || '',
-            inicioReal: '',
-            fimReal: '',
-            status: 'Nao iniciado',
-            percentual: 0,
             valorMaoObra: value,
-            categoriaServicoId: '',
             sortOrder: subitemIndex,
             visible: true,
-            createdAt: now,
-            updatedAt: now,
           };
 
-          const savedSubitem = supabaseConfigured && session
-            ? await insertChild('scheduleItems', activeWork.id, subitemItem)
-            : subitemItem;
-          rawItems.push(savedSubitem);
+          let savedSubitem;
+          if (existingSubitem) {
+            if (supabaseConfigured && session) {
+              await updateChild('scheduleItems', existingSubitem.id, subitemPatch);
+            }
+            savedSubitem = { ...existingSubitem, ...subitemPatch, updatedAt: now };
+          } else {
+            const subitemItem = {
+              ...subitemPatch,
+              id: makeId('subitem'),
+              inicioReal: '',
+              fimReal: '',
+              status: 'Nao iniciado',
+              percentual: 0,
+              categoriaServicoId: '',
+              createdAt: now,
+              updatedAt: now,
+            };
+            savedSubitem = supabaseConfigured && session
+              ? await insertChild('scheduleItems', activeWork.id, subitemItem)
+              : subitemItem;
+          }
+          upsertRawItem(savedSubitem);
 
           if (contractorId && value > 0) {
+            const activeAssignment = activeAssignmentsBySubitem.get(savedSubitem.id);
             const assignment = {
-              id: makeId('empreita-subitem'),
+              id: activeAssignment?.id || '',
               projectId: activeWork.id,
               scheduleItemId: savedSubitem.id,
               contractorId,
@@ -9181,9 +9217,21 @@ function App() {
               createdAt: now,
               updatedAt: now,
             };
-            const savedAssignment = supabaseConfigured && session
-              ? await insertChild('contractorAssignments', activeWork.id, assignment)
-              : assignment;
+            let savedAssignment;
+            if (activeAssignment?.id) {
+              if (supabaseConfigured && session) {
+                await updateChild('contractorAssignments', activeAssignment.id, assignment);
+              }
+              savedAssignment = { ...activeAssignment, ...assignment, updatedAt: now };
+            } else {
+              const localAssignment = {
+                ...assignment,
+                id: makeId('empreita-subitem'),
+              };
+              savedAssignment = supabaseConfigured && session
+                ? await insertChild('contractorAssignments', activeWork.id, localAssignment)
+                : localAssignment;
+            }
             savedAssignments.push(savedAssignment);
           }
         }
@@ -9193,15 +9241,22 @@ function App() {
       await persistScheduleDerivations(previousItems, nextItems);
 
       if (savedAssignments.length) {
+        const savedById = new Map(savedAssignments.map((item) => [item.id, item]));
+        const savedBySubitem = new Map(savedAssignments.map((item) => [item.scheduleItemId, item]));
         setData((current) => ({
           ...current,
-          contractorAssignments: [...savedAssignments, ...current.contractorAssignments],
+          contractorAssignments: [
+            ...current.contractorAssignments.filter((item) => (
+              !savedById.has(item.id) && !savedBySubitem.has(item.scheduleItemId)
+            )),
+            ...savedAssignments,
+          ],
         }));
       }
 
       return { items: nextItems, assignments: savedAssignments };
     } catch (error) {
-      setScheduleError(error.message || 'Nao foi possivel criar o cronograma.');
+      setScheduleError(error.message || 'Nao foi possivel salvar o cronograma.');
       return null;
     } finally {
       setScheduleSaving(false);
@@ -9329,7 +9384,9 @@ function App() {
       case 'contractScheduleBuilder':
         return (
           <ContractScheduleBuilder
+            items={data.scheduleItems || []}
             contractors={data.contractors || []}
+            contractorAssignments={data.contractorAssignments || []}
             saving={scheduleSaving}
             error={scheduleError}
             onSavePlan={saveContractSchedulePlan}

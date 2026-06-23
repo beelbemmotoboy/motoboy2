@@ -34,6 +34,11 @@ function formatCurrency(value) {
   return currencyFormatter.format(Number(value) || 0);
 }
 
+function formatMoneyInput(value) {
+  const number = normalizeMoneyValue(value);
+  return number > 0 ? currencyMaskFormatter.format(number) : '';
+}
+
 function parseIsoDate(value) {
   if (!value) return null;
   const [year, month, day] = String(value).split('-').map(Number);
@@ -72,22 +77,42 @@ function addBusinessDays(startDate, days) {
   return toIsoDate(date);
 }
 
-function createSubitem() {
+function businessDaysBetween(startDate, endDate) {
+  const start = parseIsoDate(startDate);
+  const end = parseIsoDate(endDate);
+  if (!start || !end || end < start) return '';
+
+  let days = 0;
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    if (!isWeekend(cursor)) days += 1;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return String(days);
+}
+
+function createSubitem(overrides = {}) {
   return {
     id: makeDraftId('subitem'),
+    sourceId: '',
+    isNew: true,
     nome: '',
     inicioPrevisto: '',
     diasTrabalhados: '',
     fimPrevisto: '',
     valorEmpreita: '',
+    ...overrides,
   };
 }
 
-function createStage() {
+function createStage(overrides = {}) {
   return {
     id: makeDraftId('item'),
+    sourceId: '',
+    isNew: true,
     nome: '',
     subitems: [createSubitem()],
+    ...overrides,
   };
 }
 
@@ -101,8 +126,53 @@ function EmptyBuilderNotice({ Icon = Sparkles, title, text }) {
   );
 }
 
+function buildDraftFromItems(items = [], contractorAssignments = []) {
+  const visibleItems = items.filter((item) => item.visible !== false);
+  const activeAssignmentsBySubitem = new Map();
+  contractorAssignments
+    .filter((assignment) => assignment.ativo !== false)
+    .forEach((assignment) => {
+      activeAssignmentsBySubitem.set(assignment.scheduleItemId, assignment);
+    });
+
+  const stages = visibleItems
+    .filter((item) => !item.parentId)
+    .sort((a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0))
+    .map((stage) => {
+      const children = visibleItems
+        .filter((item) => item.parentId === stage.id)
+        .sort((a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0))
+        .map((item) => {
+          const assignment = activeAssignmentsBySubitem.get(item.id);
+          const value = normalizeMoneyValue(item.valorMaoObra) || normalizeMoneyValue(assignment?.valorContratado);
+          return createSubitem({
+            id: item.id,
+            sourceId: item.id,
+            isNew: false,
+            nome: item.nome || '',
+            inicioPrevisto: item.inicioPrevisto || '',
+            diasTrabalhados: businessDaysBetween(item.inicioPrevisto, item.fimPrevisto),
+            fimPrevisto: item.fimPrevisto || '',
+            valorEmpreita: formatMoneyInput(value),
+          });
+        });
+
+      return createStage({
+        id: stage.id,
+        sourceId: stage.id,
+        isNew: false,
+        nome: stage.nome || '',
+        subitems: children,
+      });
+    });
+
+  return stages.length ? stages : [createStage()];
+}
+
 export default function ContractScheduleBuilder({
+  items = [],
   contractors = [],
+  contractorAssignments = [],
   saving,
   error,
   onSavePlan,
@@ -114,16 +184,20 @@ export default function ContractScheduleBuilder({
       .sort((a, b) => a.nome.localeCompare(b.nome)),
     [contractors],
   );
-  const [contractorId, setContractorId] = useState(activeContractors[0]?.id || '');
-  const [stages, setStages] = useState([createStage()]);
+  const draftFromSchedule = useMemo(
+    () => buildDraftFromItems(items, contractorAssignments),
+    [items, contractorAssignments],
+  );
+  const [contractorId, setContractorId] = useState('');
+  const [stages, setStages] = useState(draftFromSchedule);
   const [formError, setFormError] = useState('');
   const [message, setMessage] = useState('');
 
   useEffect(() => {
-    if (!contractorId && activeContractors[0]?.id) {
-      setContractorId(activeContractors[0].id);
-    }
-  }, [activeContractors, contractorId]);
+    setStages(draftFromSchedule);
+    setFormError('');
+    setMessage('');
+  }, [draftFromSchedule]);
 
   const totalValue = stages.reduce((stageTotal, stage) => (
     stageTotal + stage.subitems.reduce((subTotal, subitem) => (
@@ -193,12 +267,18 @@ export default function ContractScheduleBuilder({
     const cleanedStages = stages.map((stage) => ({
       ...stage,
       nome: stage.nome.trim(),
-      subitems: stage.subitems.map((subitem) => ({
-        ...subitem,
-        nome: subitem.nome.trim(),
-        diasTrabalhados: Math.floor(Number(subitem.diasTrabalhados) || 0),
-        valorMaoObra: normalizeMoneyValue(subitem.valorEmpreita),
-      })),
+      subitems: stage.subitems.map((subitem) => {
+        const diasTrabalhados = Math.floor(Number(subitem.diasTrabalhados) || 0);
+        return {
+          ...subitem,
+          nome: subitem.nome.trim(),
+          diasTrabalhados,
+          fimPrevisto: subitem.inicioPrevisto && diasTrabalhados > 0
+            ? addBusinessDays(subitem.inicioPrevisto, diasTrabalhados)
+            : subitem.fimPrevisto || '',
+          valorMaoObra: normalizeMoneyValue(subitem.valorEmpreita),
+        };
+      }),
     }));
 
     const missingStage = cleanedStages.find((stage) => !stage.nome);
@@ -209,14 +289,20 @@ export default function ContractScheduleBuilder({
 
     const missingSubitem = cleanedStages
       .flatMap((stage) => stage.subitems.map((subitem) => ({ stage, subitem })))
-      .find(({ subitem }) => !subitem.nome || !subitem.inicioPrevisto || subitem.diasTrabalhados <= 0);
+      .find(({ subitem }) => !subitem.nome);
     if (missingSubitem) {
-      setFormError('Informe nome, inicio e dias trabalhados de todos os subitens.');
+      setFormError('Informe o nome de todos os subitens.');
       return;
     }
 
-    if (totalValue > 0 && !contractorId) {
-      setFormError('Selecione um empreiteiro para salvar os valores de empreita.');
+    const invalidDates = cleanedStages
+      .flatMap((stage) => stage.subitems.map((subitem) => ({ stage, subitem })))
+      .find(({ subitem }) => (
+        (subitem.inicioPrevisto && subitem.diasTrabalhados <= 0)
+        || (!subitem.inicioPrevisto && subitem.diasTrabalhados > 0)
+      ));
+    if (invalidDates) {
+      setFormError('Informe inicio e dias trabalhados juntos para calcular o fim do subitem.');
       return;
     }
 
@@ -226,9 +312,8 @@ export default function ContractScheduleBuilder({
     });
 
     if (saved) {
-      setStages([createStage()]);
       setFormError('');
-      setMessage('Cronograma criado.');
+      setMessage('Cronograma salvo.');
     }
   }
 
@@ -237,13 +322,13 @@ export default function ContractScheduleBuilder({
       <header className="page-title">
         <div>
           <div className="title-row">
-            <button className="icon-button" type="button" aria-label="Voltar" title="Voltar" onClick={() => setScreen('contractWork')}>
+            <button className="icon-button" type="button" aria-label="Voltar" title="Voltar" onClick={() => setScreen('schedule')}>
               <ChevronLeft size={22} aria-hidden="true" />
             </button>
-            <span>Empreita</span>
+            <span>Cronograma</span>
           </div>
           <h1>Criar cronograma</h1>
-          <p>Cadastre itens, subitens, dias trabalhados e valor de empreita em uma unica tela.</p>
+          <p>Edite os mesmos itens do cronograma em uma tela rapida, com dias uteis e valor de empreita.</p>
         </div>
         <div className="title-actions">
           <button className="action-button secondary" type="button" onClick={() => setScreen('contractors')}>
@@ -256,9 +341,9 @@ export default function ContractScheduleBuilder({
       <form className="contract-work" onSubmit={submit}>
         <section className="contract-work-toolbar">
           <label className="field">
-            <span>Empreiteiro</span>
+            <span>Empreiteiro opcional</span>
             <select value={contractorId} onChange={(event) => setContractorId(event.target.value)}>
-              <option value="">Sem empreiteiro</option>
+              <option value="">Salvar apenas valores no cronograma</option>
               {activeContractors.map((contractor) => (
                 <option value={contractor.id} key={contractor.id}>{contractor.nome}</option>
               ))}
@@ -314,7 +399,13 @@ export default function ContractScheduleBuilder({
                             <Plus size={17} aria-hidden="true" />
                             Subitem
                           </button>
-                          <button className="danger" type="button" onClick={() => removeStage(stage.id)}>
+                          <button
+                            className="danger"
+                            type="button"
+                            disabled={!stage.isNew}
+                            title={stage.isNew ? 'Remover item novo' : 'Remova itens existentes pela tela Cronograma'}
+                            onClick={() => removeStage(stage.id)}
+                          >
                             <Trash2 size={17} aria-hidden="true" />
                             Remover
                           </button>
@@ -361,7 +452,13 @@ export default function ContractScheduleBuilder({
                           />
                         </td>
                         <td>
-                          <button className="danger compact-button" type="button" onClick={() => removeSubitem(stage.id, subitem.id)}>
+                          <button
+                            className="danger compact-button"
+                            type="button"
+                            disabled={!subitem.isNew}
+                            title={subitem.isNew ? 'Remover subitem novo' : 'Remova subitens existentes pela tela Cronograma'}
+                            onClick={() => removeSubitem(stage.id, subitem.id)}
+                          >
                             <Trash2 size={17} aria-hidden="true" />
                             Remover
                           </button>
