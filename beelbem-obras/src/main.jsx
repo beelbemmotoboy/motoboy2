@@ -1384,7 +1384,7 @@ function Dashboard({ data, setScreen }) {
   const pendingPls = data.works.filter((work) => !['aprovado', 'enviado'].includes(normalizeSearch(work.pls))).length;
   const metrics = [
     { label: 'Cidades', value: cityCount, Icon: MapPinned, tone: 'info', onIconClick: () => setScreen('cities'), iconLabel: 'Abrir cadastro e visualizacao de cidades' },
-    { label: 'Andamento', value: data.works.filter((work) => getEffectiveWorkStatus(work) === 'Em andamento').length, Icon: Clock3, tone: 'warning', onIconClick: () => setScreen('works'), iconLabel: 'Abrir obras em andamento' },
+    { label: 'Obras', value: data.works.filter((work) => getEffectiveWorkStatus(work) === 'Em andamento').length, Icon: Clock3, tone: 'warning', onIconClick: () => setScreen('works'), iconLabel: 'Abrir obras em andamento' },
     { label: 'Atrasadas', value: data.works.filter((work) => getEffectiveWorkStatus(work) === 'Atrasada').length, Icon: AlertTriangle, tone: 'danger', onIconClick: () => setScreen('works'), iconLabel: 'Abrir obras atrasadas' },
     { label: 'PLS', value: pendingPls, Icon: FileCheck2, tone: 'danger', onIconClick: () => setScreen('pls'), iconLabel: 'Abrir PLS Caixa' },
     { label: 'Pendencias', value: openIssues, Icon: ClipboardCheck, tone: 'danger', onIconClick: () => setScreen('issues'), iconLabel: 'Abrir pendencias' },
