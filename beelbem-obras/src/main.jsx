@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import ContractWork from './ContractWork.jsx';
 import { Contractors, ServiceCategories } from './catalogScreens.jsx';
 import {
   AlertTriangle,
@@ -224,6 +225,7 @@ const projectScreenRequirements = {
   photos: { collections: ['scheduleItems', 'photos'], signPhotoUrls: true, normalizeSchedule: false },
   pls: { collections: ['plsItems'], signPhotoUrls: false },
   schedule: { collections: ['scheduleItems', 'scheduleLogs', 'checklist', 'checklistResults', 'contractorAssignments'], signPhotoUrls: false, normalizeSchedule: true },
+  contractWork: { collections: ['scheduleItems', 'contractorAssignments'], signPhotoUrls: false, normalizeSchedule: true },
   issues: { collections: ['issues'], signPhotoUrls: false },
   supplies: { collections: ['supplies'], signPhotoUrls: false },
   tools: { collections: ['tools'], signPhotoUrls: false },
@@ -487,7 +489,7 @@ const localObrasUsers = [
 const workPanelRoutes = [
   { id: 'photos', label: 'Fotos', Icon: Camera },
   { id: 'pls', label: 'PLS', Icon: FileCheck2 },
-  { id: 'stages', label: 'Etapas', Icon: Layers3 },
+  { id: 'contractWork', label: 'Empreita', Icon: HardHat },
   { id: 'schedule', label: 'Cronograma', Icon: CalendarDays },
   { id: 'issues', label: 'Mais', Icon: Menu },
 ];
@@ -1872,7 +1874,7 @@ function WorkPanel({ obra, data, setScreen }) {
   const cards = [
     ['Fotos', Camera, 'photos'],
     ['Cronograma', CalendarDays, 'schedule'],
-    ['Etapas', Layers3, 'stages'],
+    ['Empreita', HardHat, 'contractWork'],
     ['PLS Caixa', FileCheck2, 'pls'],
     ['Insumos', PackageCheck, 'supplies'],
     ['Ferramentas', Wrench, 'tools'],
@@ -8997,6 +8999,102 @@ function App() {
     }
   }
 
+  async function saveContractorAssignmentsBulk({ contractorId, assignments = [] }) {
+    if (!activeWork?.id) {
+      setScheduleError('Selecione uma obra antes de vincular empreiteiro.');
+      return null;
+    }
+    if (!contractorId) {
+      setScheduleError('Selecione um empreiteiro.');
+      return null;
+    }
+    if (!assignments.length) {
+      setScheduleError('Selecione pelo menos um subitem.');
+      return null;
+    }
+
+    setScheduleSaving(true);
+    setScheduleError('');
+
+    try {
+      const now = new Date().toISOString();
+      const activeAssignmentsBySubitem = new Map();
+      data.contractorAssignments
+        .filter((item) => item.ativo !== false)
+        .forEach((item) => {
+          activeAssignmentsBySubitem.set(item.scheduleItemId, item);
+        });
+
+      const savedAssignments = [];
+      for (const assignment of assignments) {
+        const activeAssignment = activeAssignmentsBySubitem.get(assignment.scheduleItemId);
+        const normalized = {
+          id: assignment.id || activeAssignment?.id || '',
+          scheduleItemId: assignment.scheduleItemId,
+          contractorId,
+          dataInicio: assignment.dataInicio || '',
+          dataFim: assignment.dataFim || '',
+          valorContratado: normalizeMoneyValue(assignment.valorContratado),
+          formaPagamento: String(assignment.formaPagamento || '').trim(),
+          observacoes: String(assignment.observacoes || '').trim(),
+          ativo: true,
+        };
+
+        let saved;
+        if (normalized.id) {
+          if (supabaseConfigured && session) {
+            await updateChild('contractorAssignments', normalized.id, normalized);
+          }
+          saved = { ...activeAssignment, ...normalized, updatedAt: now };
+        } else {
+          const localAssignment = {
+            ...normalized,
+            id: makeId('empreita-subitem'),
+            projectId: activeWork.id,
+            createdAt: now,
+            updatedAt: now,
+          };
+          saved = supabaseConfigured && session
+            ? await insertChild('contractorAssignments', activeWork.id, localAssignment)
+            : localAssignment;
+        }
+
+        const scheduleItem = data.scheduleItems.find((item) => item.id === saved.scheduleItemId);
+        if (scheduleItem && normalizeMoneyValue(scheduleItem.valorMaoObra) !== saved.valorContratado) {
+          if (supabaseConfigured && session) {
+            await updateChild('scheduleItems', saved.scheduleItemId, { valorMaoObra: saved.valorContratado });
+          }
+        }
+
+        savedAssignments.push({ ...saved, updatedAt: saved.updatedAt || now });
+      }
+
+      const savedById = new Map(savedAssignments.map((item) => [item.id, item]));
+      const savedBySubitem = new Map(savedAssignments.map((item) => [item.scheduleItemId, item]));
+
+      setData((current) => ({
+        ...current,
+        contractorAssignments: [
+          ...current.contractorAssignments.filter((item) => (
+            !savedById.has(item.id) && !savedBySubitem.has(item.scheduleItemId)
+          )),
+          ...savedAssignments,
+        ],
+        scheduleItems: current.scheduleItems.map((item) => {
+          const saved = savedBySubitem.get(item.id);
+          return saved ? { ...item, valorMaoObra: saved.valorContratado, updatedAt: now } : item;
+        }),
+      }));
+
+      return savedAssignments;
+    } catch (error) {
+      setScheduleError(error.message || 'Nao foi possivel salvar a empreita.');
+      return null;
+    } finally {
+      setScheduleSaving(false);
+    }
+  }
+
   function renderScreen() {
     const publicScreens = ['login', 'signup'];
 
@@ -9024,7 +9122,7 @@ function App() {
       );
     }
 
-    const projectScreens = ['workPanel', 'stages', 'stageDetail', 'photos', 'pls', 'schedule', 'issues', 'supplies', 'tools', 'checklist', 'notifications', 'documents', 'standards', 'stageLibrary', 'workProfile'];
+    const projectScreens = ['workPanel', 'stages', 'stageDetail', 'photos', 'pls', 'schedule', 'contractWork', 'issues', 'supplies', 'tools', 'checklist', 'notifications', 'documents', 'standards', 'stageLibrary', 'workProfile'];
     if (!activeWork && projectScreens.includes(screen)) {
       return (
         <>
@@ -9100,6 +9198,18 @@ function App() {
             issues={data.issues}
             addPhoto={addPhoto}
             addIssue={addIssue}
+            setScreen={setScreen}
+          />
+        );
+      case 'contractWork':
+        return (
+          <ContractWork
+            items={data.scheduleItems}
+            contractors={data.contractors || []}
+            contractorAssignments={data.contractorAssignments || []}
+            saving={scheduleSaving}
+            error={scheduleError}
+            onSaveAssignments={saveContractorAssignmentsBulk}
             setScreen={setScreen}
           />
         );

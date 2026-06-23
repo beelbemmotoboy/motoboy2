@@ -749,6 +749,104 @@ button.metric-card {
   padding: 15px;
 }
 
+.contract-work {
+  display: grid;
+  gap: 16px;
+}
+
+.contract-work-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto;
+  gap: 12px;
+  align-items: end;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 14px;
+  background: #fff;
+}
+
+.contract-work-total {
+  display: grid;
+  gap: 4px;
+  min-width: 180px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  padding: 12px 14px;
+  color: #1e40af;
+  background: #eff6ff;
+}
+
+.contract-work-total span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.contract-work-total strong {
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.contract-work-table {
+  overflow-x: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.contract-work-table table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+}
+
+.contract-work-table th,
+.contract-work-table td {
+  border-bottom: 1px solid #e5e7eb;
+  padding: 12px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.contract-work-table th {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  background: #f8fafc;
+}
+
+.contract-work-table td {
+  color: #334155;
+  font-size: 14px;
+}
+
+.contract-work-table tr.selected td {
+  background: #eff6ff;
+}
+
+.contract-work-table input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+}
+
+.contract-work-table input[type="number"] {
+  width: 150px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  padding: 10px;
+  color: #0f172a;
+  font: inherit;
+  font-weight: 800;
+}
+
+.contract-work-stage-row td {
+  color: #1d4ed8;
+  font-weight: 900;
+  background: #eef6ff;
+}
+
 .city-card span,
 .item-card span,
 .profile-card span,
@@ -4266,6 +4364,14 @@ body.gantt-resizing * {
   .title-actions .action-button,
   .form-actions .action-button {
     flex: 1 1 220px;
+  }
+
+  .contract-work-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .contract-work-total {
+    min-width: 0;
   }
 
   .item-grid,
