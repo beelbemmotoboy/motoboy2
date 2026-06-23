@@ -1139,7 +1139,6 @@ function Shell({ screen, setScreen, children, activeWork, selectedCity, cities, 
           </div>
           <button className="topbar-notifications" type="button" onClick={() => setScreen('notifications')} title="Atividades de hoje" aria-label="Abrir atividades de hoje">
             <Bell size={19} aria-hidden="true" />
-            <span>Atividades</span>
           </button>
         </header>
 

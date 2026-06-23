@@ -435,14 +435,8 @@ button {
 }
 
 .topbar-notifications {
-  width: auto;
-  min-width: 108px;
-  display: inline-flex;
-  gap: 6px;
-  padding: 0 12px;
   color: #1d4ed8;
   background: #dbeafe;
-  font-weight: 900;
 }
 
 .mobile-drawer-backdrop {
