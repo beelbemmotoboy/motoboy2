@@ -1006,6 +1006,12 @@ function calculateScheduleStagePayments(children) {
   }, { total: 0, executed: 0 });
 }
 
+function calculateSchedulePayments(items = []) {
+  return calculateScheduleStagePayments(
+    items.filter((item) => item.parentId && item.visible !== false),
+  );
+}
+
 function deriveScheduleStages(items) {
   const nextItems = items.map((item) => ({ ...item }));
   const stages = nextItems.filter((item) => !item.parentId);
@@ -1862,6 +1868,7 @@ function buildLastScheduleUpdate(data, fallbackLabel = '') {
 
 function WorkPanel({ obra, data, setScreen }) {
   const lastUpdate = buildLastScheduleUpdate(data, obra.proximaEtapa);
+  const laborPayments = calculateSchedulePayments(data.scheduleItems);
   const cards = [
     ['Fotos', Camera, 'photos'],
     ['Cronograma', CalendarDays, 'schedule'],
@@ -1891,6 +1898,8 @@ function WorkPanel({ obra, data, setScreen }) {
           <span>Executado</span>
           <strong>{obra.percentual}%</strong>
           <ProgressBar value={obra.percentual} />
+          <small>Total mao de obra: {formatCurrency(laborPayments.total)}</small>
+          <small>Total executado: {formatCurrency(laborPayments.executed)}</small>
         </div>
       </section>
       <section className="module-grid work-panel-grid">
