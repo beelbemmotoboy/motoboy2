@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, ChevronLeft, HardHat, Plus, Save, Sparkles, Trash2 } from 'lucide-react';
+import { CalendarDays, ChevronLeft, Plus, Save, Sparkles, Trash2 } from 'lucide-react';
 
 const currencyFormatter = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -171,24 +171,16 @@ function buildDraftFromItems(items = [], contractorAssignments = []) {
 
 export default function ContractScheduleBuilder({
   items = [],
-  contractors = [],
   contractorAssignments = [],
   saving,
   error,
   onSavePlan,
   setScreen,
 }) {
-  const activeContractors = useMemo(
-    () => contractors
-      .filter((contractor) => contractor.ativo !== false)
-      .sort((a, b) => a.nome.localeCompare(b.nome)),
-    [contractors],
-  );
   const draftFromSchedule = useMemo(
     () => buildDraftFromItems(items, contractorAssignments),
     [items, contractorAssignments],
   );
-  const [contractorId, setContractorId] = useState('');
   const [stages, setStages] = useState(draftFromSchedule);
   const [formError, setFormError] = useState('');
   const [message, setMessage] = useState('');
@@ -204,6 +196,7 @@ export default function ContractScheduleBuilder({
       subTotal + normalizeMoneyValue(subitem.valorEmpreita)
     ), 0)
   ), 0);
+  const subitemCount = stages.reduce((total, stage) => total + stage.subitems.length, 0);
 
   function updateStage(stageId, patch) {
     setStages((current) => current.map((stage) => (
@@ -307,7 +300,7 @@ export default function ContractScheduleBuilder({
     }
 
     const saved = await onSavePlan({
-      contractorId,
+      contractorId: '',
       stages: cleanedStages,
     });
 
@@ -331,43 +324,26 @@ export default function ContractScheduleBuilder({
           <p>Edite os mesmos itens do cronograma em uma tela rapida, com dias uteis e valor de empreita.</p>
         </div>
         <div className="title-actions">
-          <button className="action-button secondary" type="button" onClick={() => setScreen('contractors')}>
-            <HardHat size={20} aria-hidden="true" />
-            <span>Empreiteiros</span>
-          </button>
-        </div>
-      </header>
-
-      <form className="contract-work" onSubmit={submit}>
-        <section className="contract-work-toolbar">
-          <label className="field">
-            <span>Empreiteiro opcional</span>
-            <select value={contractorId} onChange={(event) => setContractorId(event.target.value)}>
-              <option value="">Salvar apenas valores no cronograma</option>
-              {activeContractors.map((contractor) => (
-                <option value={contractor.id} key={contractor.id}>{contractor.nome}</option>
-              ))}
-            </select>
-          </label>
-          <div className="contract-work-total">
-            <span>Total da empreita</span>
-            <strong>{formatCurrency(totalValue)}</strong>
-          </div>
-          <button className="action-button primary" type="submit" disabled={saving}>
-            <Save size={20} aria-hidden="true" />
-            <span>{saving ? 'Salvando...' : 'Salvar cronograma'}</span>
-          </button>
-        </section>
-
-        {error ? <p className="auth-message error">{error}</p> : null}
-        {formError ? <p className="auth-message error">{formError}</p> : null}
-        {message ? <p className="auth-message success">{message}</p> : null}
-
-        <section className="contract-schedule-actions">
           <button className="action-button secondary" type="button" onClick={addStage}>
             <Plus size={20} aria-hidden="true" />
             <span>Adicionar item</span>
           </button>
+          <button className="action-button primary" type="submit" form="contract-schedule-builder-form" disabled={saving}>
+            <Save size={20} aria-hidden="true" />
+            <span>{saving ? 'Salvando...' : 'Salvar cronograma'}</span>
+          </button>
+        </div>
+      </header>
+
+      <form id="contract-schedule-builder-form" className="contract-work contract-schedule-builder" onSubmit={submit}>
+        {error ? <p className="auth-message error">{error}</p> : null}
+        {formError ? <p className="auth-message error">{formError}</p> : null}
+        {message ? <p className="auth-message success">{message}</p> : null}
+
+        <section className="contract-schedule-summary" aria-label="Resumo do cronograma">
+          <span>{stages.length} itens</span>
+          <span>{subitemCount} subitens</span>
+          <span>Total mao de obra <strong>{formatCurrency(totalValue)}</strong></span>
         </section>
 
         {stages.length ? (

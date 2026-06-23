@@ -802,7 +802,7 @@ button.metric-card {
 }
 
 .contract-schedule-table table {
-  min-width: 920px;
+  min-width: 980px;
 }
 
 .contract-work-table th,
@@ -881,6 +881,25 @@ button.metric-card {
   background: #f8fafc;
 }
 
+.contract-schedule-builder {
+  gap: 12px;
+}
+
+.contract-schedule-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  align-items: center;
+  color: #475569;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.contract-schedule-summary strong {
+  color: #0f766e;
+  font-weight: 900;
+}
+
 .contract-work-table input:disabled {
   cursor: not-allowed;
   color: #64748b;
@@ -923,6 +942,57 @@ button.metric-card {
 .compact-button.danger {
   border-color: #fecaca;
   color: #991b1b;
+}
+
+.contract-schedule-builder .contract-work-table {
+  border-radius: 7px;
+}
+
+.contract-schedule-builder .contract-work-table th,
+.contract-schedule-builder .contract-work-table td {
+  padding: 10px 12px;
+}
+
+.contract-schedule-builder .contract-schedule-table input[type="text"],
+.contract-schedule-builder .contract-schedule-table input[type="date"],
+.contract-schedule-builder .contract-schedule-table input[type="number"] {
+  min-width: 90px;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  padding: 5px 0;
+  background: transparent;
+  font-weight: 700;
+}
+
+.contract-schedule-builder .contract-schedule-table input[type="text"]:focus,
+.contract-schedule-builder .contract-schedule-table input[type="date"]:focus,
+.contract-schedule-builder .contract-schedule-table input[type="number"]:focus {
+  outline: 0;
+  border-bottom-color: #2563eb;
+  background: #f8fafc;
+}
+
+.contract-schedule-builder .contract-schedule-table input[readonly] {
+  color: #475569;
+  background: transparent;
+}
+
+.contract-schedule-builder .contract-schedule-table td:first-child input {
+  min-width: 190px;
+}
+
+.contract-schedule-builder .contract-schedule-stage-row input[type="text"] {
+  min-width: 220px;
+  color: #1d4ed8;
+  font-weight: 900;
+}
+
+.contract-schedule-builder .contract-schedule-stage-row button,
+.contract-schedule-builder .compact-button {
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 13px;
 }
 
 .city-card span,
