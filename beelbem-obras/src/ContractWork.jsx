@@ -204,6 +204,10 @@ export default function ContractWork({
           <p>Selecione o empreiteiro, os subitens do cronograma e o valor contratado.</p>
         </div>
         <div className="title-actions">
+          <button className="action-button secondary" type="button" onClick={() => setScreen('contractScheduleBuilder')}>
+            <CalendarDays size={20} aria-hidden="true" />
+            <span>Criar cronograma</span>
+          </button>
           <button className="action-button primary" type="button" onClick={() => setScreen('contractors')}>
             <HardHat size={20} aria-hidden="true" />
             <span>Empreiteiros</span>
