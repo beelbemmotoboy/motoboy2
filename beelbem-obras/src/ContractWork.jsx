@@ -5,6 +5,10 @@ const currencyFormatter = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
   currency: 'BRL',
 });
+const currencyMaskFormatter = new Intl.NumberFormat('pt-BR', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
 
 function normalizeMoneyValue(value) {
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
@@ -22,7 +26,13 @@ function formatCurrency(value) {
 
 function formatMoneyInput(value) {
   const number = normalizeMoneyValue(value);
-  return number > 0 ? String(number) : '';
+  return number > 0 ? currencyMaskFormatter.format(number) : '';
+}
+
+function maskMoneyInput(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!digits) return '';
+  return currencyMaskFormatter.format(Number(digits) / 100);
 }
 
 function EmptyContractNotice({ Icon = Sparkles, title, text }) {
@@ -75,6 +85,10 @@ export default function ContractWork({
       });
     return next;
   }, [contractorAssignments]);
+  const contractorsById = useMemo(
+    () => new Map(contractors.map((contractor) => [contractor.id, contractor])),
+    [contractors],
+  );
   const rowsByStage = useMemo(() => stages.map((stage) => ({
     stage,
     children: visibleItems
@@ -122,7 +136,7 @@ export default function ContractWork({
   }
 
   function updateValue(itemId, value) {
-    setValues((current) => ({ ...current, [itemId]: value }));
+    setValues((current) => ({ ...current, [itemId]: maskMoneyInput(value) }));
     setSelectedItems((current) => new Set(current).add(itemId));
     setFormError('');
   }
@@ -241,24 +255,34 @@ export default function ContractWork({
                         <td colSpan="3">{stage.nome}</td>
                       </tr>
                       {children.map((item) => {
-                        const checked = selectedItems.has(item.id);
+                        const assignment = assignmentsBySubitem.get(item.id);
+                        const lockedByOtherContractor = Boolean(
+                          assignment?.contractorId && assignment.contractorId !== contractorId,
+                        );
+                        const checked = selectedItems.has(item.id) || lockedByOtherContractor;
+                        const assignedContractor = lockedByOtherContractor
+                          ? contractorsById.get(assignment.contractorId)
+                          : null;
                         return (
-                          <tr className={checked ? 'selected' : ''} key={item.id}>
+                          <tr className={`${checked ? 'selected' : ''} ${lockedByOtherContractor ? 'locked' : ''}`} key={item.id}>
                             <td>
                               <input
                                 type="checkbox"
                                 checked={checked}
+                                disabled={lockedByOtherContractor}
                                 onChange={() => toggleSubitem(item.id)}
                                 aria-label={`Selecionar ${item.nome}`}
                               />
                             </td>
-                            <td>{item.nome}</td>
+                            <td>
+                              <span>{item.nome}</span>
+                              {assignedContractor ? <small>Vinculado a {assignedContractor.nome}</small> : null}
+                            </td>
                             <td>
                               <input
-                                type="number"
-                                min="0"
-                                step="0.01"
+                                type="text"
                                 inputMode="decimal"
+                                disabled={lockedByOtherContractor}
                                 value={values[item.id] || ''}
                                 onChange={(event) => updateValue(item.id, event.target.value)}
                                 placeholder="0,00"

@@ -6282,8 +6282,10 @@ function App() {
       const target = event.target;
       const isGanttSurface = target instanceof Element
         && target.closest('.gantt-backdrop, .gantt-scroll, .gantt-chart');
+      const isContractWorkTable = target instanceof Element
+        && target.closest('.contract-work-table');
 
-      if (isGanttSurface) return;
+      if (isGanttSurface || isContractWorkTable) return;
 
       tracking = true;
       startX = touch.clientX;
