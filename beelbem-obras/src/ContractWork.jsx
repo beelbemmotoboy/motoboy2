@@ -25,12 +25,6 @@ function formatMoneyInput(value) {
   return number > 0 ? String(number) : '';
 }
 
-function scheduleDateLabel(value) {
-  if (!value) return '-';
-  const [year, month, day] = String(value).split('-');
-  return year && month && day ? `${day}/${month}/${year}` : value;
-}
-
 function EmptyContractNotice({ Icon = Sparkles, title, text }) {
   return (
     <section className="empty-notice">
@@ -236,11 +230,7 @@ export default function ContractWork({
                 <thead>
                   <tr>
                     <th>Selecionar</th>
-                    <th>Etapa</th>
                     <th>Subitem</th>
-                    <th>Inicio</th>
-                    <th>Fim</th>
-                    <th>Status</th>
                     <th>Valor da empreita</th>
                   </tr>
                 </thead>
@@ -248,7 +238,7 @@ export default function ContractWork({
                   {rowsByStage.map(({ stage, children }) => (
                     <React.Fragment key={stage.id}>
                       <tr className="contract-work-stage-row">
-                        <td colSpan="7">{stage.nome}</td>
+                        <td colSpan="3">{stage.nome}</td>
                       </tr>
                       {children.map((item) => {
                         const checked = selectedItems.has(item.id);
@@ -262,11 +252,7 @@ export default function ContractWork({
                                 aria-label={`Selecionar ${item.nome}`}
                               />
                             </td>
-                            <td>{stage.nome}</td>
                             <td>{item.nome}</td>
-                            <td>{scheduleDateLabel(item.inicioPrevisto)}</td>
-                            <td>{scheduleDateLabel(item.fimPrevisto)}</td>
-                            <td>{item.status || 'Nao iniciado'}</td>
                             <td>
                               <input
                                 type="number"
