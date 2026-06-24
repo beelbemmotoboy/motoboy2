@@ -182,11 +182,13 @@ export default function ContractScheduleBuilder({
     [items, contractorAssignments],
   );
   const [stages, setStages] = useState(draftFromSchedule);
+  const [removedItemIds, setRemovedItemIds] = useState([]);
   const [formError, setFormError] = useState('');
   const [message, setMessage] = useState('');
 
   useEffect(() => {
     setStages(draftFromSchedule);
+    setRemovedItemIds([]);
     setFormError('');
     setMessage('');
   }, [draftFromSchedule]);
@@ -230,10 +232,19 @@ export default function ContractScheduleBuilder({
   }
 
   function removeStage(stageId) {
-    setStages((current) => {
-      const next = current.filter((stage) => stage.id !== stageId);
-      return next.length ? next : [createStage()];
-    });
+    const removedStage = stages.find((stage) => stage.id === stageId);
+    if (removedStage) {
+      const removedIds = [
+        removedStage.sourceId,
+        ...removedStage.subitems.map((subitem) => subitem.sourceId),
+      ].filter(Boolean);
+      if (removedIds.length) {
+        setRemovedItemIds((ids) => [...new Set([...ids, ...removedIds])]);
+      }
+    }
+    setStages((current) => current.filter((stage) => stage.id !== stageId));
+    setFormError('');
+    setMessage('');
   }
 
   function addSubitem(stageId) {
@@ -245,11 +256,19 @@ export default function ContractScheduleBuilder({
   }
 
   function removeSubitem(stageId, subitemId) {
+    const removedSubitem = stages
+      .find((stage) => stage.id === stageId)
+      ?.subitems.find((subitem) => subitem.id === subitemId);
+    if (removedSubitem?.sourceId) {
+      setRemovedItemIds((ids) => [...new Set([...ids, removedSubitem.sourceId])]);
+    }
     setStages((current) => current.map((stage) => {
       if (stage.id !== stageId) return stage;
       const subitems = stage.subitems.filter((subitem) => subitem.id !== subitemId);
-      return { ...stage, subitems: subitems.length ? subitems : [createSubitem()] };
+      return { ...stage, subitems };
     }));
+    setFormError('');
+    setMessage('');
   }
 
   async function submit(event) {
@@ -302,6 +321,7 @@ export default function ContractScheduleBuilder({
     const saved = await onSavePlan({
       contractorId: '',
       stages: cleanedStages,
+      removedItemIds,
     });
 
     if (saved) {
@@ -377,8 +397,7 @@ export default function ContractScheduleBuilder({
                             className="danger"
                             type="button"
                             aria-label="Remover item"
-                            disabled={!stage.isNew}
-                            title={stage.isNew ? 'Remover item novo' : 'Remova itens existentes pela tela Cronograma'}
+                            title="Remover item"
                             onClick={() => removeStage(stage.id)}
                           >
                             <Trash2 size={17} aria-hidden="true" />
@@ -430,8 +449,7 @@ export default function ContractScheduleBuilder({
                             className="danger compact-button"
                             type="button"
                             aria-label="Remover subitem"
-                            disabled={!subitem.isNew}
-                            title={subitem.isNew ? 'Remover subitem novo' : 'Remova subitens existentes pela tela Cronograma'}
+                            title="Remover subitem"
                             onClick={() => removeSubitem(stage.id, subitem.id)}
                           >
                             <Trash2 size={17} aria-hidden="true" />

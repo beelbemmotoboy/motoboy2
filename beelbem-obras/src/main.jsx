@@ -9100,12 +9100,12 @@ function App() {
     }
   }
 
-  async function saveContractSchedulePlan({ contractorId = '', stages = [] }) {
+  async function saveContractSchedulePlan({ contractorId = '', stages = [], removedItemIds = [] }) {
     if (!activeWork?.id) {
       setScheduleError('Selecione uma obra antes de salvar o cronograma.');
       return null;
     }
-    if (!stages.length) {
+    if (!stages.length && !removedItemIds.length) {
       setScheduleError('Adicione pelo menos um item ao cronograma.');
       return null;
     }
@@ -9132,6 +9132,23 @@ function App() {
         } else {
           rawItems.push(item);
         }
+      }
+
+      const removedIds = new Set(removedItemIds.filter(Boolean));
+      previousItems
+        .filter((item) => removedIds.has(item.parentId))
+        .forEach((item) => removedIds.add(item.id));
+      if (removedIds.size) {
+        if (supabaseConfigured && session) {
+          await Promise.all([...removedIds].map((itemId) => (
+            updateChild('scheduleItems', itemId, { visible: false })
+          )));
+        }
+        rawItems.forEach((item, index) => {
+          if (removedIds.has(item.id)) {
+            rawItems[index] = { ...item, visible: false, updatedAt: now };
+          }
+        });
       }
 
       for (const [stageIndex, stage] of stages.entries()) {
