@@ -948,13 +948,20 @@ button.metric-card {
   border-radius: 7px;
 }
 
+.contract-schedule-builder .contract-schedule-table table {
+  min-width: 0;
+  table-layout: auto;
+}
+
 .contract-schedule-builder .contract-work-table th,
 .contract-schedule-builder .contract-work-table td {
-  padding: 10px 12px;
+  padding: 9px 10px;
 }
 
 .contract-schedule-builder .contract-work-table th {
+  font-size: 11px;
   font-weight: 600;
+  white-space: normal;
 }
 
 .contract-schedule-builder .contract-work-table td {
@@ -964,7 +971,7 @@ button.metric-card {
 .contract-schedule-builder .contract-schedule-table input[type="text"],
 .contract-schedule-builder .contract-schedule-table input[type="date"],
 .contract-schedule-builder .contract-schedule-table input[type="number"] {
-  min-width: 90px;
+  min-width: 0;
   border: 0;
   border-bottom: 1px solid transparent;
   border-radius: 0;
@@ -989,21 +996,31 @@ button.metric-card {
 }
 
 .contract-schedule-builder .contract-schedule-table td:first-child input {
-  min-width: 190px;
+  min-width: 150px;
 }
 
 .contract-schedule-builder .contract-schedule-stage-row input[type="text"] {
-  min-width: 220px;
+  min-width: 180px;
   color: #1d4ed8;
   font-weight: 600;
 }
 
 .contract-schedule-builder .contract-schedule-stage-row button,
 .contract-schedule-builder .compact-button {
+  width: 36px;
+  min-width: 36px;
   min-height: 34px;
-  padding: 7px 10px;
+  justify-content: center;
+  padding: 7px;
   font-size: 13px;
   font-weight: 500;
+}
+
+.contract-schedule-builder .icon-only-action {
+  width: 52px;
+  min-width: 52px;
+  justify-content: center;
+  padding-inline: 0;
 }
 
 .city-card span,

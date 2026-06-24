@@ -324,9 +324,8 @@ export default function ContractScheduleBuilder({
           <p>Edite os mesmos itens do cronograma em uma tela rapida, com dias uteis e valor de empreita.</p>
         </div>
         <div className="title-actions">
-          <button className="action-button secondary" type="button" onClick={addStage}>
+          <button className="action-button secondary icon-only-action" type="button" aria-label="Adicionar item" title="Adicionar item" onClick={addStage}>
             <Plus size={20} aria-hidden="true" />
-            <span>Adicionar item</span>
           </button>
           <button className="action-button primary" type="submit" form="contract-schedule-builder-form" disabled={saving}>
             <Save size={20} aria-hidden="true" />
@@ -371,19 +370,18 @@ export default function ContractScheduleBuilder({
                             onChange={(event) => updateStage(stage.id, { nome: event.target.value })}
                             placeholder="Nome do item"
                           />
-                          <button type="button" onClick={() => addSubitem(stage.id)}>
+                          <button type="button" aria-label="Adicionar subitem" title="Adicionar subitem" onClick={() => addSubitem(stage.id)}>
                             <Plus size={17} aria-hidden="true" />
-                            Subitem
                           </button>
                           <button
                             className="danger"
                             type="button"
+                            aria-label="Remover item"
                             disabled={!stage.isNew}
                             title={stage.isNew ? 'Remover item novo' : 'Remova itens existentes pela tela Cronograma'}
                             onClick={() => removeStage(stage.id)}
                           >
                             <Trash2 size={17} aria-hidden="true" />
-                            Remover
                           </button>
                         </div>
                       </td>
@@ -431,12 +429,12 @@ export default function ContractScheduleBuilder({
                           <button
                             className="danger compact-button"
                             type="button"
+                            aria-label="Remover subitem"
                             disabled={!subitem.isNew}
                             title={subitem.isNew ? 'Remover subitem novo' : 'Remova subitens existentes pela tela Cronograma'}
                             onClick={() => removeSubitem(stage.id, subitem.id)}
                           >
                             <Trash2 size={17} aria-hidden="true" />
-                            Remover
                           </button>
                         </td>
                       </tr>
