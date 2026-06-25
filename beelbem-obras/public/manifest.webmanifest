@@ -7,7 +7,7 @@
   "display": "standalone",
   "background_color": "#f7f8fb",
   "theme_color": "#1d4ed8",
-  "orientation": "portrait",
+  "orientation": "any",
   "icons": [
     {
       "src": "beelbem-obras.svg",
