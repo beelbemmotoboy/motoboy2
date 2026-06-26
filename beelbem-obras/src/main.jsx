@@ -5571,6 +5571,7 @@ function Reports({ data, activeWork, account, works = [], saving, error, message
   const [workQuery, setWorkQuery] = useState('');
   const [startDate, setStartDate] = useState(todayIso());
   const [endDate, setEndDate] = useState(todayIso());
+  const [viewingReport, setViewingReport] = useState(null);
   const [pdfLoading, setPdfLoading] = useState(false);
   const formRef = useRef(null);
   const range = normalizeDateRange(startDate, endDate);
@@ -5622,6 +5623,21 @@ function Reports({ data, activeWork, account, works = [], saving, error, message
         campos: values,
         ...extraPayload,
       },
+    };
+  }
+
+  function reportFields(report) {
+    const fields = report?.payload?.campos || {};
+    return {
+      titulo: report?.titulo || fields.titulo || '',
+      clima: report?.clima || fields.clima || '',
+      equipe: report?.equipe || fields.equipe || '',
+      resumo: report?.resumo || fields.resumo || '',
+      servicosExecutados: report?.servicosExecutados || fields.servicosExecutados || '',
+      materiais: report?.materiais || fields.materiais || '',
+      ferramentas: report?.ferramentas || fields.ferramentas || '',
+      ocorrencias: report?.ocorrencias || fields.ocorrencias || '',
+      fotosCount: report?.fotosCount ?? fields.fotosCountDisplay ?? report?.payload?.photos?.length ?? 0,
     };
   }
 
@@ -5756,6 +5772,7 @@ function Reports({ data, activeWork, account, works = [], saving, error, message
                 onClick={() => {
                   setStartDate(normalizeDateKey(report.startDate || report.reportDate));
                   setEndDate(normalizeDateKey(report.endDate || report.reportDate));
+                  setViewingReport(report);
                 }}
               >
                 <FileText size={18} aria-hidden="true" />
@@ -5775,7 +5792,59 @@ function Reports({ data, activeWork, account, works = [], saving, error, message
           )) : <p>Nenhum RDO salvo para esta obra.</p>}
         </aside>
       </section>
+      {viewingReport ? (
+        <RdoPreviewModal
+          report={viewingReport}
+          activeWork={activeWork}
+          account={account}
+          fields={reportFields(viewingReport)}
+          onClose={() => setViewingReport(null)}
+        />
+      ) : null}
     </>
+  );
+}
+
+function RdoPreviewModal({ report, activeWork, account, fields, onClose }) {
+  const period = formatDateRangeBr(report.startDate || report.reportDate, report.endDate || report.reportDate);
+  const rows = [
+    ['Clima', fields.clima],
+    ['Fotos do periodo', `${fields.fotosCount || 0} foto(s)`],
+    ['Equipe / mao de obra', fields.equipe],
+    ['Resumo do periodo', fields.resumo],
+    ['Servicos executados', fields.servicosExecutados],
+    ['Materiais', fields.materiais],
+    ['Ferramentas / equipamentos', fields.ferramentas],
+    ['Ocorrencias / pendencias', fields.ocorrencias],
+  ].filter(([, value]) => String(value || '').trim());
+
+  return (
+    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+      <section className="photo-modal rdo-preview-modal" role="dialog" aria-modal="true" aria-labelledby="rdo-preview-title" onClick={(event) => event.stopPropagation()}>
+        <div className="modal-head">
+          <div>
+            <span>RDO salvo</span>
+            <h2 id="rdo-preview-title">{fields.titulo || report.titulo || 'Relatorio diario de obra'}</h2>
+            <p>{activeWork?.nome || 'Obra'} - {period}</p>
+          </div>
+          <IconButton label="Fechar" Icon={X} onClick={onClose} />
+        </div>
+        <section className="rdo-preview-summary">
+          <span>{account?.nome || 'Empresa'}</span>
+          <span>{activeWork?.cliente || 'Cliente nao informado'}</span>
+          <span>{activeWork?.endereco || 'Endereco nao informado'}</span>
+          <span>{report.updatedAt ? `Atualizado em ${formatDateTime(report.updatedAt)}` : `Criado em ${formatDateTime(report.createdAt)}`}</span>
+        </section>
+        <section className="rdo-preview-grid">
+          {rows.map(([label, value]) => (
+            <article className="rdo-preview-field" key={label}>
+              <span>{label}</span>
+              <p>{value}</p>
+            </article>
+          ))}
+        </section>
+      </section>
+    </div>
   );
 }
 

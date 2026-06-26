@@ -1262,6 +1262,51 @@ button.metric-card {
   font-weight: 700;
 }
 
+.rdo-preview-modal {
+  width: min(860px, 100%);
+}
+
+.rdo-preview-summary {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  margin-bottom: 14px;
+  padding: 12px;
+  color: #475569;
+  background: #f8fafc;
+}
+
+.rdo-preview-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.rdo-preview-field {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fff;
+}
+
+.rdo-preview-field span {
+  display: block;
+  margin-bottom: 6px;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.rdo-preview-field p {
+  margin: 0;
+  color: #1f2937;
+  font-size: 15px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
 .notifications-summary {
   display: flex;
   flex-wrap: wrap;
