@@ -5555,12 +5555,24 @@ function buildRdoDraft({ data, activeWork, startDate, endDate, savedReport }) {
   return savedReport ? { ...generated, ...savedReport, payload: generated.payload } : generated;
 }
 
-function Reports({ data, activeWork, account, saving, error, message, setScreen, onSaveRdo, onDeleteRdo, onLoadRdoPhotos }) {
+function Reports({ data, activeWork, account, works = [], saving, error, message, setScreen, onSelectWork, onSaveRdo, onDeleteRdo, onLoadRdoPhotos }) {
+  const [workQuery, setWorkQuery] = useState('');
   const [startDate, setStartDate] = useState(todayIso());
   const [endDate, setEndDate] = useState(todayIso());
   const [pdfLoading, setPdfLoading] = useState(false);
   const formRef = useRef(null);
   const range = normalizeDateRange(startDate, endDate);
+  const filteredWorks = useMemo(() => {
+    const normalizedQuery = normalizeSearch(workQuery);
+    return works.filter((work) => {
+      if (!normalizedQuery) return true;
+      const searchable = Object.values(work || {})
+        .filter((value) => ['string', 'number'].includes(typeof value))
+        .map((value) => String(value))
+        .join(' ');
+      return normalizeSearch(searchable).includes(normalizedQuery);
+    });
+  }, [works, workQuery]);
   const savedReports = (data.rdoReports || [])
     .slice()
     .sort((a, b) => String(b.startDate || b.reportDate).localeCompare(String(a.startDate || a.reportDate)));
@@ -5644,6 +5656,38 @@ function Reports({ data, activeWork, account, saving, error, message, setScreen,
           {pdfLoading ? 'Gerando PDF...' : 'Gerar PDF'}
         </ActionButton>
       </PageTitle>
+      <section className="rdo-work-picker">
+        <label className="field rdo-work-search">
+          <span>Busca obra</span>
+          <span className="search-control">
+            <Search size={18} aria-hidden="true" />
+            <input
+              type="search"
+              value={workQuery}
+              placeholder="Buscar por lote, quadra, numero, cliente ou rua"
+              onChange={(event) => setWorkQuery(event.target.value)}
+            />
+          </span>
+        </label>
+        <section className="work-list rdo-work-list">
+          {filteredWorks.map((obra) => (
+            <button
+              className={`work-card work-card-${getWorkCardTone(obra)} ${obra.id === activeWork?.id ? 'active' : ''}`}
+              type="button"
+              key={obra.id}
+              onClick={() => onSelectWork?.(obra)}
+              aria-label={`Selecionar ${obra.nome} para o RDO`}
+            >
+              <strong>{getFirstName(obra.cliente || obra.nome)}</strong>
+              <span>{obra.endereco || obra.nome}</span>
+              <span>{[obra.quadra ? `Quadra ${obra.quadra}` : '', obra.lote ? `Lote ${obra.lote}` : '', obra.numero ? `Numero ${obra.numero}` : ''].filter(Boolean).join(' - ')}</span>
+              <b>{obra.percentual}%</b>
+              <ProgressBar value={obra.percentual} />
+            </button>
+          ))}
+          {!filteredWorks.length ? <EmptyNotice title="Nenhuma obra encontrada" text="Ajuste a busca para selecionar a obra do relatorio." /> : null}
+        </section>
+      </section>
       <section className="report-summary rdo-summary">
         <strong>{activeWork?.nome || 'Obra selecionada'}</strong>
         <span>{account?.nome || 'Empresa'} - {activeWork?.cliente || 'Cliente'} - {activeWork?.endereco || 'Endereco nao informado'}</span>
@@ -6455,6 +6499,22 @@ function App() {
   const canManageCompanyAccount = !supabaseConfigured || platformAdmin || ['owner', 'admin'].includes(currentObrasUser?.role);
   const canEditWorkProfile = !supabaseConfigured || ['owner', 'admin', 'engenheiro'].includes(currentObrasUser?.role);
   const canDeleteWorkProfile = !supabaseConfigured || ['owner', 'admin'].includes(currentObrasUser?.role);
+
+  function selectWork(work, nextScreen = 'workPanel') {
+    if (!work?.id) return;
+    const city = cityCatalog.find((item) => item.id === work.cidadeId) || selectedCity;
+    const neighborhood = (data.neighborhoods || []).find((item) => item.id === work.bairroId) || null;
+
+    setSelectedCity(city);
+    setSelectedNeighborhood(neighborhood);
+    setSelectedWorkId(work.id);
+    if (projectDataProjectId !== work.id) {
+      setProjectDataProjectId('');
+      setLoadedProjectCollections([]);
+      setPhotoUrlsProjectId('');
+    }
+    setScreen(nextScreen);
+  }
 
   function hasLoadedProjectRequirement(projectId, requirement) {
     if (!supabaseConfigured || !session || !requirement.collections.length) return true;
@@ -9307,7 +9367,7 @@ function App() {
       );
     }
 
-    const projectScreens = ['workPanel', 'stages', 'stageDetail', 'photos', 'pls', 'schedule', 'contractWork', 'contractScheduleBuilder', 'issues', 'supplies', 'tools', 'checklist', 'notifications', 'documents', 'standards', 'stageLibrary', 'workProfile'];
+    const projectScreens = ['workPanel', 'stages', 'stageDetail', 'photos', 'pls', 'schedule', 'contractWork', 'contractScheduleBuilder', 'issues', 'supplies', 'tools', 'checklist', 'notifications', 'documents', 'standards', 'stageLibrary', 'reports', 'workProfile'];
     if (!activeWork && projectScreens.includes(screen)) {
       return (
         <>
@@ -9359,15 +9419,7 @@ function App() {
       case 'neighborhoods':
         return <Neighborhoods works={cityWorks} neighborhoods={data.neighborhoods || []} selectedCity={selectedCity} openNeighborhood={(bairro) => { setSelectedNeighborhood(bairro); setScreen('works'); }} setScreen={setScreen} />;
       case 'works':
-        return <Works selectedCity={selectedCity} selectedNeighborhood={selectedNeighborhood} works={cityWorks} openWork={(work) => {
-          setSelectedWorkId(work.id);
-          if (projectDataProjectId !== work.id) {
-            setProjectDataProjectId('');
-            setLoadedProjectCollections([]);
-            setPhotoUrlsProjectId('');
-          }
-          setScreen('workPanel');
-        }} setScreen={setScreen} />;
+        return <Works selectedCity={selectedCity} selectedNeighborhood={selectedNeighborhood} works={cityWorks} openWork={selectWork} setScreen={setScreen} />;
       case 'newWork':
         return <NewWork createWork={createWork} setScreen={setScreen} selectedCity={selectedCity} works={data.works} neighborhoods={data.neighborhoods || []} onAddNeighborhood={saveNeighborhood} onProjectAnalyzed={setAiProjectDraft} />;
       case 'extractedData':
@@ -9577,10 +9629,12 @@ function App() {
             data={data}
             activeWork={activeWork}
             account={currentObrasAccount}
+            works={data.works}
             saving={rdoSaving}
             error={rdoError}
             message={rdoMessage}
             setScreen={setScreen}
+            onSelectWork={(work) => selectWork(work, 'reports')}
             onSaveRdo={saveRdoReport}
             onDeleteRdo={deleteRdoReport}
             onLoadRdoPhotos={loadRdoPhotosWithUrls}

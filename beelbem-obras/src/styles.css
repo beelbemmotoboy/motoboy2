@@ -1140,6 +1140,37 @@ button.metric-card {
   gap: 8px;
 }
 
+.rdo-work-picker {
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  display: grid;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding: 16px;
+  background: #fff;
+}
+
+.rdo-work-search {
+  margin: 0;
+}
+
+.rdo-work-search .search-control {
+  width: 100%;
+}
+
+.rdo-work-list {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+
+.rdo-work-list .work-card {
+  min-height: 126px;
+}
+
+.rdo-work-list .work-card.active {
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
+}
+
 .rdo-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 280px;
