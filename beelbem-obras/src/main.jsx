@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   BarChart3,
   Bell,
+  BellOff,
   Bot,
   Building2,
   CalendarDays,
@@ -56,6 +57,7 @@ import {
 import {
   bootstrapObrasOwner,
   claimObrasUser,
+  deactivateObrasPushSubscription,
   deleteChild,
   deleteDocumentRecord,
   deleteProject,
@@ -109,7 +111,7 @@ import {
   uploadPhotoFile,
 } from './db.js';
 import { getBestPhotoUrl, prepareAvatarUpload, prepareLogoUpload, preparePhotoUpload } from './photoFunctions.js';
-import { enableObrasPushNotifications, getPushSupportStatus, showObrasBrowserNotification } from './pushNotifications.js';
+import { disableObrasPushNotifications, enableObrasPushNotifications, getPushSupportStatus, showObrasBrowserNotification } from './pushNotifications.js';
 import {
   DEFAULT_SCHEDULE_SOURCE,
   buildScheduleCopyPlan,
@@ -121,6 +123,7 @@ import obrasLogo from './assets/beelbem-obras-logo.jpg';
 import './styles.css';
 
 const STORAGE_KEY = 'beelbem-obras-local-v1';
+const PUSH_SILENCED_KEY = 'beelbem-obras-push-silenced';
 const MAX_CHECKLIST_PHOTOS_PER_ITEM = 20;
 
 const statusClasses = {
@@ -2131,7 +2134,9 @@ function Notifications({
   notifications = [],
   pushSupport,
   pushMessage,
+  pushSilenced,
   onEnablePush,
+  onDisablePush,
   setScreen,
 }) {
   const [activityDate, setActivityDate] = useState(todayIso());
@@ -2173,13 +2178,15 @@ function Notifications({
     ? allActivities
     : allActivities.filter((activity) => activity.user === userFilter);
   const activityUsers = new Set(activities.map((activity) => activity.user).filter(Boolean));
-  const canEnablePush = pushSupport !== 'unsupported' && pushSupport !== 'granted';
+  const canEnablePush = pushSupport !== 'unsupported' && (pushSupport !== 'granted' || pushSilenced);
+  const canDisablePush = pushSupport === 'granted' && !pushSilenced;
   const pushStatusText = {
     granted: 'Push ativo neste navegador',
     denied: 'Permissao de push bloqueada no navegador',
     default: 'Push ainda nao ativado neste navegador',
     unsupported: 'Este navegador nao suporta push',
   }[pushSupport] || 'Status do push desconhecido';
+  const effectivePushText = pushSilenced ? 'Push silenciado neste navegador' : pushStatusText;
 
   return (
     <>
@@ -2221,11 +2228,16 @@ function Notifications({
       <section className="push-permission-card">
         <div>
           <strong>Notificacoes push</strong>
-          <span>{pushMessage || pushStatusText}</span>
+          <span>{pushMessage || effectivePushText}</span>
         </div>
         {canEnablePush ? (
           <button type="button" onClick={onEnablePush}>
-            <Bell size={18} aria-hidden="true" /> Ativar push
+            <Bell size={18} aria-hidden="true" /> {pushSilenced ? 'Reativar push' : 'Ativar push'}
+          </button>
+        ) : null}
+        {canDisablePush ? (
+          <button className="secondary" type="button" onClick={onDisablePush}>
+            <BellOff size={18} aria-hidden="true" /> Silenciar push
           </button>
         ) : null}
       </section>
@@ -6224,6 +6236,9 @@ function App() {
   const [pushSupport, setPushSupport] = useState(() => (
     typeof window === 'undefined' ? 'unsupported' : getPushSupportStatus()
   ));
+  const [pushSilenced, setPushSilenced] = useState(() => (
+    typeof window !== 'undefined' && window.localStorage.getItem(PUSH_SILENCED_KEY) === '1'
+  ));
   const [pushMessage, setPushMessage] = useState('');
   const [accountsLoading, setAccountsLoading] = useState(false);
   const [accountsSaving, setAccountsSaving] = useState(false);
@@ -6556,7 +6571,7 @@ function App() {
         .slice(0, 100);
     });
 
-    if (showBrowser && notification.actorUserId !== session?.user?.id) {
+    if (showBrowser && !pushSilenced && notification.actorUserId !== session?.user?.id) {
       void showObrasBrowserNotification(notification).catch(() => {});
     }
   }
@@ -6597,6 +6612,8 @@ function App() {
     setPushMessage('Solicitando permissao de notificacao...');
     try {
       const result = await enableObrasPushNotifications(upsertObrasPushSubscription);
+      window.localStorage.removeItem(PUSH_SILENCED_KEY);
+      setPushSilenced(false);
       setPushSupport(getPushSupportStatus());
       setPushMessage(
         result.mode === 'push'
@@ -6606,6 +6623,25 @@ function App() {
     } catch (error) {
       setPushSupport(getPushSupportStatus());
       setPushMessage(error.message || 'Nao foi possivel ativar notificacoes push.');
+    }
+  }
+
+  async function disablePushForCurrentUser() {
+    if (!supabaseConfigured || !session) {
+      setPushMessage('Entre no Obras para silenciar notificacoes push.');
+      return;
+    }
+
+    setPushMessage('Silenciando notificacoes neste navegador...');
+    try {
+      await disableObrasPushNotifications(deactivateObrasPushSubscription);
+      window.localStorage.setItem(PUSH_SILENCED_KEY, '1');
+      setPushSilenced(true);
+      setPushSupport(getPushSupportStatus());
+      setPushMessage('Push silenciado neste navegador.');
+    } catch (error) {
+      setPushSupport(getPushSupportStatus());
+      setPushMessage(error.message || 'Nao foi possivel silenciar notificacoes push.');
     }
   }
 
@@ -9606,7 +9642,9 @@ function App() {
             notifications={obrasNotifications}
             pushSupport={pushSupport}
             pushMessage={pushMessage}
+            pushSilenced={pushSilenced}
             onEnablePush={enablePushForCurrentUser}
+            onDisablePush={disablePushForCurrentUser}
             setScreen={setScreen}
           />
         );

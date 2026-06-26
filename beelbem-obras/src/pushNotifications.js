@@ -62,6 +62,29 @@ export async function enableObrasPushNotifications(saveSubscription) {
   return { mode: 'push', permission };
 }
 
+export async function disableObrasPushNotifications(deactivateSubscription) {
+  if (!('serviceWorker' in navigator)) {
+    return { mode: 'unsupported' };
+  }
+
+  const registration = await navigator.serviceWorker.getRegistration();
+  const subscription = registration?.pushManager
+    ? await registration.pushManager.getSubscription()
+    : null;
+
+  if (!subscription) {
+    return { mode: 'none' };
+  }
+
+  const { endpoint } = subscription;
+  await subscription.unsubscribe();
+  if (endpoint && deactivateSubscription) {
+    await deactivateSubscription(endpoint);
+  }
+
+  return { mode: 'disabled', endpoint };
+}
+
 export async function showObrasBrowserNotification(notification) {
   if (!notification || !('Notification' in window) || Notification.permission !== 'granted') return false;
 

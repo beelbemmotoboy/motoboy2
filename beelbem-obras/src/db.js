@@ -949,6 +949,20 @@ export async function upsertObrasPushSubscription(subscription) {
   return data;
 }
 
+export async function deactivateObrasPushSubscription(endpoint) {
+  if (!endpoint) return null;
+
+  const { data, error } = await supabase
+    .from(pushSubscriptionsTable)
+    .update({ active: false })
+    .eq('endpoint', endpoint)
+    .select('*')
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
 export async function sendObrasPushNotification(notificationId) {
   if (!notificationId) return null;
   const { data, error } = await supabase.functions.invoke('send-obras-push', {

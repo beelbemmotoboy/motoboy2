@@ -1321,9 +1321,9 @@ button.metric-card {
 .push-permission-card {
   border: 1px solid #dbeafe;
   border-radius: 10px;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   margin: -4px 0 18px;
   padding: 14px;
@@ -1358,6 +1358,12 @@ button.metric-card {
   color: #fff;
   background: #2563eb;
   font-weight: 900;
+}
+
+.push-permission-card button.secondary {
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  background: #eff6ff;
 }
 
 .notification-list {
@@ -4751,7 +4757,7 @@ body.gantt-resizing * {
 
   .push-permission-card {
     align-items: stretch;
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
   .push-permission-card button {
