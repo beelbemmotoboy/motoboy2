@@ -5600,7 +5600,7 @@ function buildRdoDraft({ data, activeWork, startDate, endDate, savedReport }) {
   return savedReport ? { ...generated, ...savedReport, payload: generated.payload } : generated;
 }
 
-function Reports({ data, activeWork, account, works = [], saving, error, message, setScreen, onSelectWork, onSaveRdo, onDeleteRdo, onLoadRdoPhotos, onLoadRdoChecklistPhotos }) {
+function Reports({ data, activeWork, account, works = [], saving, error, message, setScreen, onSelectWork, onSaveRdo, onDeleteRdo, onLoadRdoPhotos, onLoadRdoChecklistPhotos, onPdfError }) {
   const [workQuery, setWorkQuery] = useState('');
   const [startDate, setStartDate] = useState(todayIso());
   const [endDate, setEndDate] = useState(todayIso());
@@ -5681,6 +5681,7 @@ function Reports({ data, activeWork, account, works = [], saving, error, message
 
   async function downloadPdf(reportOverride = null) {
     if (!formRef.current || pdfLoading) return;
+    onPdfError?.('');
     setPdfLoading(true);
     try {
       const reportStart = normalizeDateKey(reportOverride?.startDate || reportOverride?.reportDate || range.startDate);
@@ -5752,6 +5753,9 @@ function Reports({ data, activeWork, account, works = [], saving, error, message
         account: pdfAccount,
         project: activeWork,
       });
+    } catch (pdfError) {
+      console.error('Nao foi possivel gerar o PDF do RDO.', pdfError);
+      onPdfError?.(pdfError.message || 'Nao foi possivel gerar o PDF do RDO.');
     } finally {
       setPdfLoading(false);
     }
@@ -9889,6 +9893,7 @@ function App() {
             onDeleteRdo={deleteRdoReport}
             onLoadRdoPhotos={loadRdoPhotosWithUrls}
             onLoadRdoChecklistPhotos={loadRdoChecklistPhotosWithUrls}
+            onPdfError={setRdoError}
           />
         );
       case 'workProfile':

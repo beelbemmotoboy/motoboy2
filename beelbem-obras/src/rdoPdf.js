@@ -4,6 +4,7 @@ const MARGIN = 38;
 const HEADER_BOTTOM = 92;
 const FOOTER_TOP = PAGE_HEIGHT - 34;
 const CONTENT_WIDTH = PAGE_WIDTH - (MARGIN * 2);
+const IMAGE_LOAD_TIMEOUT_MS = 8000;
 
 const BLUE = [30, 64, 175];
 const DARK_BLUE = [15, 45, 120];
@@ -355,14 +356,29 @@ class PdfDocument {
 async function imageToJpegDataUrl(url, maxWidth = 720, maxHeight = 520) {
   if (!url) return '';
   let objectUrl = '';
+  const controller = new AbortController();
+  const fetchTimeout = window.setTimeout(() => controller.abort(), IMAGE_LOAD_TIMEOUT_MS);
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      cache: 'force-cache',
+      signal: controller.signal,
+    });
     if (!response.ok) throw new Error(`Imagem indisponivel (${response.status}).`);
     objectUrl = URL.createObjectURL(await response.blob());
     const image = await new Promise((resolve, reject) => {
       const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = reject;
+      const imageTimeout = window.setTimeout(
+        () => reject(new Error('Tempo limite ao processar imagem.')),
+        IMAGE_LOAD_TIMEOUT_MS,
+      );
+      img.onload = () => {
+        window.clearTimeout(imageTimeout);
+        resolve(img);
+      };
+      img.onerror = () => {
+        window.clearTimeout(imageTimeout);
+        reject(new Error('Nao foi possivel processar a imagem.'));
+      };
       img.src = objectUrl;
     });
     const scale = Math.min(1, maxWidth / image.naturalWidth, maxHeight / image.naturalHeight);
@@ -379,8 +395,27 @@ async function imageToJpegDataUrl(url, maxWidth = 720, maxHeight = 520) {
       height: canvas.height,
     };
   } finally {
+    window.clearTimeout(fetchTimeout);
+    controller.abort();
     if (objectUrl) URL.revokeObjectURL(objectUrl);
   }
+}
+
+async function preloadReportImages(report) {
+  const urls = new Set([
+    ...collectPhotos(report).map(bestPhotoUrl),
+    ...(report.payload?.checklistPhotos || []).map(bestPhotoUrl),
+  ].filter(Boolean));
+
+  const entries = await Promise.all([...urls].map(async (url) => {
+    try {
+      return [url, await imageToJpegDataUrl(url)];
+    } catch {
+      return [url, ''];
+    }
+  }));
+
+  return new Map(entries);
 }
 
 function downloadBlob(blob, fileName) {
@@ -570,7 +605,7 @@ async function companyHeader(account) {
   };
 }
 
-async function renderPhotoPages(doc, report) {
+async function renderPhotoPages(doc, report, preparedImages) {
   const groupsByDate = groupPhotosByDateAndSchedule(report);
   if (!groupsByDate.length) return;
 
@@ -594,12 +629,7 @@ async function renderPhotoPages(doc, report) {
         const x = MARGIN + (column * (cardWidth + gap));
         const y = doc.y;
         const imageUrl = bestPhotoUrl(photo);
-        let imageData = '';
-        try {
-          imageData = await imageToJpegDataUrl(imageUrl);
-        } catch {
-          imageData = '';
-        }
+        const imageData = preparedImages.get(imageUrl) || '';
         doc.photoBox(imageData, x, y, cardWidth, imageHeight);
         doc.wrappedText(x, y + imageHeight + 13, photo.fileName || photo.observacao || 'Registro fotografico', cardWidth, 7.6, false, 2, MUTED);
         column += 1;
@@ -614,7 +644,7 @@ async function renderPhotoPages(doc, report) {
   }
 }
 
-async function renderChecklistPhotoPages(doc, report) {
+async function renderChecklistPhotoPages(doc, report, preparedImages) {
   const groups = checklistPhotoGroups(report);
   if (!groups.length) return;
 
@@ -636,12 +666,7 @@ async function renderChecklistPhotoPages(doc, report) {
       if (column === 0) doc.ensure(cardHeight + 8);
       const x = MARGIN + (column * (cardWidth + gap));
       const y = doc.y;
-      let imageData = '';
-      try {
-        imageData = await imageToJpegDataUrl(bestPhotoUrl(photo));
-      } catch {
-        imageData = '';
-      }
+      const imageData = preparedImages.get(bestPhotoUrl(photo)) || '';
       doc.photoBox(imageData, x, y, cardWidth, imageHeight);
       doc.text(x, y + imageHeight + 13, formatDate(photo.createdAt), 7.6, false, MUTED);
       column += 1;
@@ -656,7 +681,11 @@ async function renderChecklistPhotoPages(doc, report) {
 }
 
 export async function generateRdoPdf({ report, account, project }) {
-  const doc = new PdfDocument(await companyHeader(account));
+  const [headerInfo, preparedImages] = await Promise.all([
+    companyHeader(account),
+    preloadReportImages(report),
+  ]);
+  const doc = new PdfDocument(headerInfo);
   const period = dateRangeLabel(report.startDate || report.reportDate, report.endDate || report.reportDate);
   const title = report.titulo || `RDO - ${project?.nome || 'Obra'} - ${period}`;
 
@@ -690,8 +719,8 @@ export async function generateRdoPdf({ report, account, project }) {
   doc.section('Imagens');
   doc.table(['Data', 'Descricao'], buildImageRows(report), [110, CONTENT_WIDTH - 110]);
 
-  await renderPhotoPages(doc, report);
-  await renderChecklistPhotoPages(doc, report);
+  await renderPhotoPages(doc, report, preparedImages);
+  await renderChecklistPhotoPages(doc, report, preparedImages);
 
   doc.section('Assinatura');
   doc.signature('Responsavel');
