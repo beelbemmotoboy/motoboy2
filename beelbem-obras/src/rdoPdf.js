@@ -354,26 +354,33 @@ class PdfDocument {
 
 async function imageToJpegDataUrl(url, maxWidth = 720, maxHeight = 520) {
   if (!url) return '';
-  const image = await new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = url;
-  });
-  const scale = Math.min(1, maxWidth / image.naturalWidth, maxHeight / image.naturalHeight);
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-  const context = canvas.getContext('2d');
-  context.fillStyle = '#ffffff';
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  context.drawImage(image, 0, 0, canvas.width, canvas.height);
-  return {
-    dataUrl: canvas.toDataURL('image/jpeg', 0.78),
-    width: canvas.width,
-    height: canvas.height,
-  };
+  let objectUrl = '';
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Imagem indisponivel (${response.status}).`);
+    objectUrl = URL.createObjectURL(await response.blob());
+    const image = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = objectUrl;
+    });
+    const scale = Math.min(1, maxWidth / image.naturalWidth, maxHeight / image.naturalHeight);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext('2d');
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return {
+      dataUrl: canvas.toDataURL('image/jpeg', 0.78),
+      width: canvas.width,
+      height: canvas.height,
+    };
+  } finally {
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+  }
 }
 
 function downloadBlob(blob, fileName) {

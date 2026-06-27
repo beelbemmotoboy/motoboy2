@@ -74,6 +74,7 @@ import {
   fetchNeighborhoods,
   fetchSignupRequests,
   fetchServiceCategories,
+  getObrasAccountLogoUrl,
   getSession,
   ensureProjectSchedule,
   insertContractor,
@@ -5734,10 +5735,21 @@ function Reports({ data, activeWork, account, works = [], saving, error, message
             checklistPhotos,
           });
       report.fotosCount = periodPhotos.length;
+      let pdfAccount = account;
+      if (account?.logoStoragePath && supabaseConfigured && session) {
+        try {
+          pdfAccount = {
+            ...account,
+            logoUrl: await getObrasAccountLogoUrl(account.logoStoragePath),
+          };
+        } catch {
+          pdfAccount = account;
+        }
+      }
       const { generateRdoPdf } = await import('./rdoPdf.js');
       await generateRdoPdf({
         report,
-        account,
+        account: pdfAccount,
         project: activeWork,
       });
     } finally {

@@ -984,6 +984,11 @@ export async function fetchObrasAccounts({ signLogos = false } = {}) {
   return signLogos ? Promise.all(accounts.map(withSignedObrasAccountLogo)) : accounts;
 }
 
+export async function getObrasAccountLogoUrl(storagePath) {
+  if (!storagePath) return '';
+  return createSignedAccountLogoUrl(storagePath);
+}
+
 export async function updateObrasAccount(accountId, patch) {
   const dbPatch = obrasAccountPatchToDb(patch);
   if (!Object.keys(dbPatch).length) return null;
