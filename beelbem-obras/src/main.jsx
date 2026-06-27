@@ -5600,7 +5600,7 @@ function buildRdoDraft({ data, activeWork, startDate, endDate, savedReport }) {
   return savedReport ? { ...generated, ...savedReport, payload: generated.payload } : generated;
 }
 
-function Reports({ data, activeWork, account, works = [], saving, error, message, setScreen, onSelectWork, onSaveRdo, onDeleteRdo, onLoadRdoPhotos, onLoadRdoChecklistPhotos, onPdfError }) {
+function Reports({ data, activeWork, account, works = [], saving, error, message, authenticated, setScreen, onSelectWork, onSaveRdo, onDeleteRdo, onLoadRdoPhotos, onLoadRdoChecklistPhotos, onPdfError }) {
   const [workQuery, setWorkQuery] = useState('');
   const [startDate, setStartDate] = useState(todayIso());
   const [endDate, setEndDate] = useState(todayIso());
@@ -5737,7 +5737,7 @@ function Reports({ data, activeWork, account, works = [], saving, error, message
           });
       report.fotosCount = periodPhotos.length;
       let pdfAccount = account;
-      if (account?.logoStoragePath && supabaseConfigured && session) {
+      if (account?.logoStoragePath && supabaseConfigured && authenticated) {
         try {
           pdfAccount = {
             ...account,
@@ -9887,6 +9887,7 @@ function App() {
             saving={rdoSaving}
             error={rdoError}
             message={rdoMessage}
+            authenticated={Boolean(session)}
             setScreen={setScreen}
             onSelectWork={(work) => selectWork(work, 'reports')}
             onSaveRdo={saveRdoReport}
