@@ -1197,14 +1197,16 @@ export async function fetchCommercialPlans({ includeInactive = false } = {}) {
 }
 
 export async function insertSignupRequest(values) {
-  const { data, error } = await supabase
+  const payload = signupRequestToDb(values);
+  const { error } = await supabase
     .from('obras_signup_requests')
-    .insert(signupRequestToDb(values))
-    .select('*')
-    .single();
+    .insert(payload);
 
   if (error) throw error;
-  return signupRequestFromDb(data);
+  return signupRequestFromDb({
+    ...payload,
+    status: 'novo',
+  });
 }
 
 export async function fetchSignupRequests() {

@@ -122,6 +122,7 @@ import { buildLocalScheduleItems, defaultScheduleBlueprint } from './scheduleBlu
 import loginBackground from './assets/login-background.jpg';
 import obrasLogo from './assets/beelbem-obras-logo.jpg';
 import './styles.css';
+import './signup.css';
 
 const STORAGE_KEY = 'beelbem-obras-local-v1';
 const PUSH_SILENCED_KEY = 'beelbem-obras-push-silenced';
@@ -1250,6 +1251,8 @@ function LoginScreen({ onLogin, authError, authLoading, dbAvailable, onOpenSignu
 
 function SignupRequestScreen({ dbAvailable, onBack }) {
   const [plans, setPlans] = useState(localCommercialPlans);
+  const [selectedPlanId, setSelectedPlanId] = useState('empresa-campo');
+  const [accountType, setAccountType] = useState('empresa');
   const [loading, setLoading] = useState(Boolean(dbAvailable));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -1265,7 +1268,14 @@ function SignupRequestScreen({ dbAvailable, onBack }) {
     let mounted = true;
     fetchCommercialPlans()
       .then((items) => {
-        if (mounted) setPlans(items.length ? items : localCommercialPlans);
+        if (!mounted) return;
+        const nextPlans = items.length ? items : localCommercialPlans;
+        setPlans(nextPlans);
+        setSelectedPlanId((current) => (
+          nextPlans.some((plan) => plan.id === current)
+            ? current
+            : nextPlans.find((plan) => plan.tipo === 'empresa')?.id || nextPlans[0]?.id || ''
+        ));
       })
       .catch((requestError) => {
         if (mounted) setError(requestError.message || 'Nao foi possivel carregar os planos.');
@@ -1279,6 +1289,11 @@ function SignupRequestScreen({ dbAvailable, onBack }) {
     };
   }, [dbAvailable]);
 
+  function selectPlan(plan) {
+    setSelectedPlanId(plan.id);
+    setAccountType(plan.tipo === 'engenheiro' ? 'engenheiro' : 'empresa');
+  }
+
   async function submit(event) {
     event.preventDefault();
     setError('');
@@ -1286,7 +1301,7 @@ function SignupRequestScreen({ dbAvailable, onBack }) {
 
     const form = event.currentTarget;
     const values = {
-      accountType: form.elements.accountType.value,
+      accountType,
       nomeResponsavel: form.elements.nomeResponsavel.value.trim(),
       empresa: form.elements.empresa.value.trim(),
       documento: form.elements.documento.value.trim(),
@@ -1294,12 +1309,22 @@ function SignupRequestScreen({ dbAvailable, onBack }) {
       telefone: form.elements.telefone.value.trim(),
       cidade: form.elements.cidade.value.trim(),
       estado: form.elements.estado.value.trim(),
-      planId: form.elements.planId.value,
+      planId: selectedPlanId,
       observacoes: form.elements.observacoes.value.trim(),
     };
 
     if (!values.nomeResponsavel || !values.email || !values.telefone || !values.cidade) {
       setError('Preencha nome, e-mail, telefone e cidade.');
+      return;
+    }
+
+    if (values.accountType === 'empresa' && !values.empresa) {
+      setError('Informe o nome da empresa ou escritorio.');
+      return;
+    }
+
+    if (!values.planId || !plans.some((plan) => plan.id === values.planId)) {
+      setError('Selecione um plano para continuar.');
       return;
     }
 
@@ -1318,16 +1343,37 @@ function SignupRequestScreen({ dbAvailable, onBack }) {
         ? 'Solicitacao enviada. Ela ja aparece no painel de assinaturas para analise.'
         : 'Solicitacao registrada no modo local. Configure o Supabase para salvar online.');
     } catch (requestError) {
-      setError(requestError.message || 'Nao foi possivel enviar a solicitacao.');
+      const messageText = String(requestError.message || '');
+      setError(
+        requestError.code === '42501' || /row-level security|permission denied/i.test(messageText)
+          ? 'O cadastro publico ainda nao esta autorizado no banco. Atualize a pagina e tente novamente.'
+          : requestError.code === '23503'
+            ? 'O plano selecionado nao esta mais disponivel. Escolha outro plano.'
+            : messageText || 'Nao foi possivel enviar a solicitacao.',
+      );
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <main className="signup-page">
+    <main className="signup-page" style={{ '--signup-logo': `url("${obrasLogo}")` }}>
       <section className="signup-panel">
-        <PageTitle eyebrow="Assinatura" title="Solicitar acesso ao Beelbem Obras" subtitle="Cadastro unico para empresas e engenheiros interessados no sistema." onBack={onBack} />
+        <header className="signup-hero">
+          <button className="signup-back" type="button" onClick={onBack} aria-label="Voltar ao login">
+            <ChevronLeft size={24} aria-hidden="true" />
+          </button>
+          <div className="signup-brand-logo" role="img" aria-label="Beelbem Obras" />
+          <div className="signup-hero-copy">
+            <span>Assinatura Beelbem Obras</span>
+            <h1>Organize suas obras em um único sistema</h1>
+            <p>Escolha o plano e envie os dados de contato. A equipe Beelbem analisará a solicitação e retornará com os próximos passos.</p>
+          </div>
+          <div className="signup-trust">
+            <ShieldCheck size={24} aria-hidden="true" />
+            <span>Dados enviados com segurança</span>
+          </div>
+        </header>
         {error ? (
           <section className="warning-strip">
             <AlertTriangle size={22} aria-hidden="true" />
@@ -1340,29 +1386,70 @@ function SignupRequestScreen({ dbAvailable, onBack }) {
             <span>{message}</span>
           </section>
         ) : null}
-        <section className="plan-grid">
-          {plans.map((plan) => (
-            <article className="plan-card" key={plan.id}>
-              <span>{plan.tipo}</span>
-              <strong>{plan.nome}</strong>
-              <p>{plan.descricao}</p>
-              <b>{formatCurrency(plan.valorMensal)} / mes</b>
-              <small>{plan.limiteObras ? `${plan.limiteObras} obras` : 'Obras ilimitadas'} - {plan.limiteUsuarios ? `${plan.limiteUsuarios} usuarios` : 'Usuarios ilimitados'}</small>
-            </article>
-          ))}
+        <section className="signup-plans" aria-labelledby="signup-plans-title">
+          <div className="signup-section-heading">
+            <span>1</span>
+            <div>
+              <h2 id="signup-plans-title">Escolha o plano</h2>
+              <p>Você poderá ajustar o plano antes da ativação.</p>
+            </div>
+          </div>
+          <div className="signup-plan-grid">
+            {plans.map((plan) => {
+              const selected = selectedPlanId === plan.id;
+              return (
+                <button
+                  className={`signup-plan-option${selected ? ' selected' : ''}`}
+                  type="button"
+                  key={plan.id}
+                  aria-pressed={selected}
+                  onClick={() => selectPlan(plan)}
+                >
+                  <span className="signup-plan-type">{plan.tipo}</span>
+                  <strong>{plan.nome}</strong>
+                  <p>{plan.descricao}</p>
+                  <b>{formatCurrency(plan.valorMensal)} <small>/ mês</small></b>
+                  <span className="signup-plan-limits">
+                    {plan.limiteObras ? `${plan.limiteObras} obras` : 'Obras ilimitadas'}
+                    {' · '}
+                    {plan.limiteUsuarios ? `${plan.limiteUsuarios} usuários` : 'Usuários ilimitados'}
+                  </span>
+                  <span className="signup-plan-action">
+                    <CheckCircle2 size={18} aria-hidden="true" />
+                    {selected ? 'Plano selecionado' : 'Selecionar plano'}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </section>
-        <form className="commercial-form" onSubmit={submit}>
-          <div className="form-grid">
+        <form className="commercial-form signup-form" onSubmit={submit}>
+          <div className="signup-section-heading">
+            <span>2</span>
+            <div>
+              <h2>Dados para contato</h2>
+              <p>Preencha as informações do responsável pela assinatura.</p>
+            </div>
+          </div>
+          <div className="form-grid signup-form-grid">
             <label className="field">
               <span>Tipo de cadastro</span>
-              <select name="accountType" defaultValue="empresa">
+              <select name="accountType" value={accountType} onChange={(event) => setAccountType(event.target.value)}>
                 <option value="empresa">Empresa</option>
                 <option value="engenheiro">Engenheiro</option>
               </select>
             </label>
             <label className="field">
               <span>Plano desejado</span>
-              <select name="planId" defaultValue={plans[1]?.id || plans[0]?.id || ''} disabled={loading}>
+              <select
+                name="planId"
+                value={selectedPlanId}
+                disabled={loading}
+                onChange={(event) => {
+                  const plan = plans.find((item) => item.id === event.target.value);
+                  if (plan) selectPlan(plan);
+                }}
+              >
                 {plans.map((plan) => (
                   <option value={plan.id} key={plan.id}>{plan.nome}</option>
                 ))}
@@ -1380,11 +1467,13 @@ function SignupRequestScreen({ dbAvailable, onBack }) {
               <textarea name="observacoes" rows={4} placeholder="Informe quantidade de obras, equipe e necessidade principal." />
             </label>
           </div>
-          <div className="form-actions">
+          <div className="form-actions signup-form-actions">
             <ActionButton Icon={Save} type="submit" disabled={saving || loading}>
               {saving ? 'Enviando...' : 'Enviar solicitacao'}
             </ActionButton>
-            <ActionButton Icon={LogIn} variant="ghost" onClick={onBack} disabled={saving}>Voltar ao login</ActionButton>
+            <button className="signup-login-link" type="button" onClick={onBack} disabled={saving}>
+              Já possui acesso? Voltar ao login
+            </button>
           </div>
         </form>
       </section>
