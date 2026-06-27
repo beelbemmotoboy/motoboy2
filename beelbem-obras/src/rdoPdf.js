@@ -1,7 +1,7 @@
 const PAGE_WIDTH = 595.28;
 const PAGE_HEIGHT = 841.89;
 const MARGIN = 38;
-const HEADER_BOTTOM = 76;
+const HEADER_BOTTOM = 92;
 const FOOTER_TOP = PAGE_HEIGHT - 34;
 const CONTENT_WIDTH = PAGE_WIDTH - (MARGIN * 2);
 
@@ -167,20 +167,20 @@ class PdfDocument {
 
   reportHeader() {
     const { companyName, companyAddress, companyContact, generatedAt, logoImage } = this.headerInfo;
-    const textX = logoImage ? MARGIN + 70 : MARGIN;
+    const textX = logoImage ? MARGIN + 106 : MARGIN;
     this.fillRect(0, 0, PAGE_WIDTH, HEADER_BOTTOM - 10, HEADER_BG);
     if (logoImage) {
-      const maxWidth = 58;
-      const maxHeight = 44;
+      const maxWidth = 92;
+      const maxHeight = 58;
       const fit = Math.min(maxWidth / logoImage.width, maxHeight / logoImage.height);
       const width = Math.max(1, logoImage.width * fit);
       const height = Math.max(1, logoImage.height * fit);
-      this.addImage(logoImage, MARGIN, 11 + ((maxHeight - height) / 2), width, height);
+      this.addImage(logoImage, MARGIN, 10 + ((maxHeight - height) / 2), width, height);
     }
-    this.text(textX, 24, companyName || 'Empresa nao informada', 10.5, true, TEXT);
-    this.text(textX, 40, companyAddress || 'Endereco da empresa nao informado', 8.5, false, MUTED);
-    this.text(textX, 54, companyContact || 'Contato da empresa nao informado', 8.5, false, MUTED);
-    this.textRight(PAGE_WIDTH - MARGIN, 30, generatedAt || todayLabel(), 8.5, false, MUTED);
+    this.text(textX, 25, companyName || 'Empresa nao informada', 10.5, true, TEXT);
+    this.text(textX, 43, companyAddress || 'Endereco da empresa nao informado', 8.5, false, MUTED);
+    this.text(textX, 59, companyContact || 'Contato da empresa nao informado', 8.5, false, MUTED);
+    this.textRight(PAGE_WIDTH - MARGIN, 74, generatedAt || todayLabel(), 8.5, false, MUTED);
     this.line(MARGIN, HEADER_BOTTOM - 10, PAGE_WIDTH - MARGIN, HEADER_BOTTOM - 10, LIGHT_BORDER);
   }
 
@@ -455,8 +455,6 @@ function buildProjectData({ report, account, project }) {
   const elapsedDays = bounds.start ? dayDiff(bounds.start, report.endDate || report.reportDate) : null;
   const remainingDays = totalDays === null || elapsedDays === null ? null : Math.max(0, totalDays - elapsedDays);
   return [
-    { label: 'Periodo (de)', value: formatDate(report.startDate || report.reportDate) },
-    { label: 'Periodo (ate)', value: formatDate(report.endDate || report.reportDate) },
     { label: 'Proprietario', value: project?.cliente || 'Nao informado' },
     { label: 'CEP', value: project?.cep || 'Nao informado' },
     { label: 'Endereco', value: project?.endereco || 'Nao informado', bold: false },
@@ -469,9 +467,6 @@ function buildProjectData({ report, account, project }) {
     { label: 'Prazo (dias)', value: totalDays === null ? '-' : String(totalDays) },
     { label: 'Tempo decorrido', value: elapsedDays === null ? '-' : String(elapsedDays) },
     { label: 'Saldo prazo', value: remainingDays === null ? '-' : String(remainingDays) },
-    { label: 'Responsavel', value: project?.responsavel || account?.responsavel || 'Nao informado' },
-    { label: 'Resp. tecnico', value: project?.responsavelTecnico || project?.responsavel || 'Nao informado' },
-    { label: 'ART no', value: project?.art || 'Nao informado' },
     { label: 'Observacoes', value: project?.observacoes || report.resumo || 'Sem observacoes', bold: false },
   ];
 }
