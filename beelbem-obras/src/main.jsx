@@ -8095,7 +8095,6 @@ function App() {
     });
     setPhotoSaving(false);
     setPhotoDraftStage(null);
-    setScreen('photos');
   }
 
   async function deletePhoto(photo) {
