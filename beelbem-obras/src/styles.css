@@ -406,6 +406,22 @@ button {
   font-weight: 900;
 }
 
+.topbar-work-context {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.topbar-client {
+  max-width: min(52vw, 520px);
+  overflow: hidden;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .menu-button,
 .icon-button,
 .topbar-logout,

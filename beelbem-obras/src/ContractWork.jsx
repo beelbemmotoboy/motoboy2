@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, ChevronLeft, HardHat, Save, Sparkles } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { CalendarDays, ChevronLeft, Download, ExternalLink, FilePlus2, FileText, HardHat, Save, Sparkles, Trash2 } from 'lucide-react';
+import './contract-work.css';
 
 const currencyFormatter = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -29,6 +30,13 @@ function formatMoneyInput(value) {
   return number > 0 ? currencyMaskFormatter.format(number) : '';
 }
 
+function formatFileSize(value) {
+  const bytes = Number(value || 0);
+  if (!bytes) return 'Tamanho não informado';
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1).replace('.', ',')} MB`;
+}
+
 function maskMoneyInput(value) {
   const digits = String(value || '').replace(/\D/g, '');
   if (!digits) return '';
@@ -49,11 +57,18 @@ export default function ContractWork({
   items = [],
   contractors = [],
   contractorAssignments = [],
+  documents = [],
   saving,
   error,
+  documentSaving,
+  deletingDocumentId,
+  documentError,
   onSaveAssignments,
+  onSaveDocument,
+  onDeleteDocument,
   setScreen,
 }) {
+  const contractFileRef = useRef(null);
   const activeContractors = useMemo(
     () => contractors
       .filter((contractor) => contractor.ativo !== false)
@@ -88,6 +103,12 @@ export default function ContractWork({
   const contractorsById = useMemo(
     () => new Map(contractors.map((contractor) => [contractor.id, contractor])),
     [contractors],
+  );
+  const contractDocuments = useMemo(
+    () => documents
+      .filter((document) => document.tipo === 'Contratos Mao de Obra')
+      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)),
+    [documents],
   );
   const rowsByStage = useMemo(() => stages.map((stage) => ({
     stage,
@@ -181,6 +202,39 @@ export default function ContractWork({
     }
   }
 
+  function addContract(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !contractorId || !onSaveDocument) return;
+    const contractor = contractorsById.get(contractorId);
+    onSaveDocument({
+      tipo: 'Contratos Mao de Obra',
+      titulo: `Contrato - ${contractor?.nome || 'Empreiteiro'}`,
+      descricao: file.name || '',
+      contractorId,
+      folder: 'Contratos',
+      file,
+    });
+  }
+
+  async function downloadContract(document) {
+    if (!document.documentUrl) return;
+    try {
+      const response = await fetch(document.documentUrl);
+      if (!response.ok) throw new Error('Arquivo indisponível.');
+      const objectUrl = URL.createObjectURL(await response.blob());
+      const link = window.document.createElement('a');
+      link.href = objectUrl;
+      link.download = document.fileName || 'contrato';
+      window.document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch {
+      setFormError('Não foi possível baixar o contrato.');
+    }
+  }
+
   const selectedTotal = subitemRows
     .filter(({ item }) => selectedItems.has(item.id))
     .reduce((total, { item }) => total + normalizeMoneyValue(values[item.id]), 0);
@@ -227,11 +281,28 @@ export default function ContractWork({
               <Save size={20} aria-hidden="true" />
               <span>{saving ? 'Salvando...' : 'Salvar empreita'}</span>
             </button>
+            <input
+              ref={contractFileRef}
+              className="contract-file-input"
+              type="file"
+              accept=".pdf,.doc,.docx,.odt,image/*"
+              onChange={addContract}
+            />
+            <button
+              className="action-button secondary"
+              type="button"
+              disabled={documentSaving || !contractorId}
+              onClick={() => contractFileRef.current?.click()}
+            >
+              <FilePlus2 size={20} aria-hidden="true" />
+              <span>{documentSaving ? 'Enviando...' : 'Adicionar contrato'}</span>
+            </button>
           </section>
 
           {error ? <p className="auth-message error">{error}</p> : null}
           {formError ? <p className="auth-message error">{formError}</p> : null}
           {message ? <p className="auth-message success">{message}</p> : null}
+          {documentError ? <p className="auth-message error">{documentError}</p> : null}
 
           {subitemRows.length ? (
             <section className="contract-work-table" aria-label="Cronograma da empreita">
@@ -294,6 +365,74 @@ export default function ContractWork({
           ) : (
             <EmptyContractNotice Icon={CalendarDays} title="Cronograma sem subitens" text="Cadastre subitens no cronograma para montar a empreita." />
           )}
+
+          <section className="contract-documents" aria-labelledby="contract-documents-title">
+            <header>
+              <div>
+                <span>Documentos da obra</span>
+                <h2 id="contract-documents-title">Contratos dos empreiteiros</h2>
+              </div>
+              <small>{contractDocuments.length} contrato{contractDocuments.length === 1 ? '' : 's'}</small>
+            </header>
+            {contractDocuments.length ? (
+              <div className="contract-document-list">
+                {contractDocuments.map((document) => {
+                  const contractor = contractorsById.get(document.contractorId);
+                  return (
+                    <article className="contract-document-row" key={document.id}>
+                      <FileText size={24} aria-hidden="true" />
+                      <div>
+                        {document.documentUrl ? (
+                          <a href={document.documentUrl} target="_blank" rel="noreferrer">
+                            {document.titulo}
+                          </a>
+                        ) : (
+                          <span>{document.titulo}</span>
+                        )}
+                        <small>
+                          {contractor?.nome || 'Empreiteiro não informado'}
+                          {' · '}
+                          {document.fileName || 'Arquivo sem nome'}
+                          {' · '}
+                          {formatFileSize(document.fileSize)}
+                        </small>
+                      </div>
+                      <div className="contract-document-actions">
+                        {document.documentUrl ? (
+                          <>
+                            <a href={document.documentUrl} target="_blank" rel="noreferrer" title="Visualizar contrato">
+                              <ExternalLink size={18} aria-hidden="true" />
+                              <span>Visualizar</span>
+                            </a>
+                            <button type="button" onClick={() => downloadContract(document)} title="Baixar contrato">
+                              <Download size={18} aria-hidden="true" />
+                              <span>Baixar</span>
+                            </button>
+                          </>
+                        ) : null}
+                        <button
+                          type="button"
+                          className="danger"
+                          disabled={documentSaving || deletingDocumentId === document.id}
+                          onClick={() => onDeleteDocument?.(document)}
+                          title="Excluir contrato"
+                        >
+                          <Trash2 size={18} aria-hidden="true" />
+                          <span>{deletingDocumentId === document.id ? 'Excluindo...' : 'Excluir'}</span>
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <EmptyContractNotice
+                Icon={FileText}
+                title="Nenhum contrato adicionado"
+                text="Selecione o empreiteiro e use o botão Adicionar contrato."
+              />
+            )}
+          </section>
         </form>
       )}
     </>

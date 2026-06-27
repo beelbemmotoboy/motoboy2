@@ -231,7 +231,7 @@ const projectScreenRequirements = {
   photos: { collections: ['scheduleItems', 'photos'], signPhotoUrls: true, normalizeSchedule: false },
   pls: { collections: ['plsItems'], signPhotoUrls: false },
   schedule: { collections: ['scheduleItems', 'scheduleLogs', 'checklist', 'checklistResults', 'contractorAssignments'], signPhotoUrls: false, normalizeSchedule: true },
-  contractWork: { collections: ['scheduleItems', 'contractorAssignments'], signPhotoUrls: false, normalizeSchedule: true },
+  contractWork: { collections: ['scheduleItems', 'contractorAssignments', 'documents'], signPhotoUrls: false, normalizeSchedule: true },
   contractScheduleBuilder: { collections: ['scheduleItems', 'contractorAssignments'], signPhotoUrls: false, normalizeSchedule: true },
   issues: { collections: ['issues'], signPhotoUrls: false },
   supplies: { collections: ['supplies'], signPhotoUrls: false },
@@ -1141,7 +1141,12 @@ function Shell({ screen, setScreen, children, activeWork, selectedCity, cities, 
           <div className="topbar-title">
             <div className="topbar-identity">
               <strong>{currentUserName}</strong>
-              {activeWork?.nome ? <span className="topbar-work">{activeWork.nome}</span> : null}
+              {activeWork ? (
+                <div className="topbar-work-context">
+                  <span className="topbar-work">{activeWork.endereco || activeWork.nome}</span>
+                  {activeWork.cliente ? <span className="topbar-client">{activeWork.cliente}</span> : null}
+                </div>
+              ) : null}
             </div>
             <label className="topbar-city">
               <MapPinned size={15} aria-hidden="true" />
@@ -8258,6 +8263,7 @@ function App() {
       tipo: values.tipo || documentTypeOptions[0],
       titulo: String(values.titulo || file.name || 'Documento').trim(),
       descricao: String(values.descricao || '').trim(),
+      contractorId: values.contractorId || '',
     };
 
     setDocumentSaving(true);
@@ -8270,6 +8276,7 @@ function App() {
           userId: session.user.id,
           projectId: activeWork.id,
           file,
+          folder: values.folder || '',
         });
         savedDocument = await insertChild('documents', activeWork.id, { ...baseDocument, ...upload });
       } else {
@@ -9798,9 +9805,15 @@ function App() {
             items={data.scheduleItems}
             contractors={data.contractors || []}
             contractorAssignments={data.contractorAssignments || []}
+            documents={data.documents || []}
             saving={scheduleSaving}
             error={scheduleError}
+            documentSaving={documentSaving}
+            deletingDocumentId={deletingDocumentId}
+            documentError={documentError}
             onSaveAssignments={saveContractorAssignmentsBulk}
+            onSaveDocument={saveDocument}
+            onDeleteDocument={deleteDocument}
             setScreen={setScreen}
           />
         );

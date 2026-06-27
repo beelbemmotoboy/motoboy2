@@ -535,6 +535,7 @@ export const rowMappers = {
       tipo: row.tipo,
       titulo: row.titulo,
       descricao: row.descricao || '',
+      contractorId: row.contractor_id || '',
       storagePath: row.storage_path || '',
       fileName: row.file_name || '',
       mimeType: row.mime_type || '',
@@ -547,6 +548,7 @@ export const rowMappers = {
       tipo: item.tipo,
       titulo: item.titulo,
       descricao: item.descricao || null,
+      contractor_id: item.contractorId || null,
       storage_path: item.storagePath || null,
       file_name: item.fileName || null,
       mime_type: item.mimeType || null,
@@ -556,6 +558,7 @@ export const rowMappers = {
       ...(patch.tipo !== undefined ? { tipo: patch.tipo } : {}),
       ...(patch.titulo !== undefined ? { titulo: patch.titulo } : {}),
       ...(patch.descricao !== undefined ? { descricao: patch.descricao || null } : {}),
+      ...(patch.contractorId !== undefined ? { contractor_id: patch.contractorId || null } : {}),
     }),
   },
   contractorAssignments: {
@@ -1516,10 +1519,11 @@ export async function uploadObrasAccountLogo({ accountId, file, previousPath }) 
   };
 }
 
-export async function uploadObrasDocumentFile({ userId, projectId, file }) {
+export async function uploadObrasDocumentFile({ userId, projectId, file, folder = '' }) {
   const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const fileName = safeFileName(file.name || `${id}.pdf`);
-  const storagePath = `${userId}/${projectId}/${id}-${fileName}`;
+  const folderPath = String(folder || '').trim().replace(/^\/+|\/+$/g, '');
+  const storagePath = [userId, projectId, folderPath, `${id}-${fileName}`].filter(Boolean).join('/');
   const { error } = await supabase.storage.from(documentBucket).upload(storagePath, file, {
     cacheControl: '3600',
     contentType: file.type || 'application/octet-stream',
