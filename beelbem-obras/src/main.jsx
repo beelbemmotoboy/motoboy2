@@ -1417,13 +1417,9 @@ function Dashboard({ data, setScreen }) {
       <section className="quick-grid">
         {[
           ['Nova obra', Plus, 'newWork'],
-          ['Ver pendencias', AlertTriangle, 'issues'],
           ['Empresas', Landmark, 'companies'],
           ['Usuarios', UsersRound, 'users'],
-          ['Categorias', FolderKanban, 'serviceCategories'],
           ['Empreiteiros', HardHat, 'contractors'],
-          ['Assinaturas', Landmark, 'commercial'],
-          ['Ver PLS Caixa', FileCheck2, 'pls'],
           ['Relatorios', BarChart3, 'reports'],
         ].map(([label, Icon, route]) => (
           <button className="quick-card" type="button" key={label} onClick={() => setScreen(route)}>
