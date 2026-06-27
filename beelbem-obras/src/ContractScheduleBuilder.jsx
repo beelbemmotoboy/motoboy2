@@ -9,6 +9,8 @@ const currencyMaskFormatter = new Intl.NumberFormat('pt-BR', {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
+const DEFAULT_COLUMN_WIDTHS = [240, 150, 155, 150, 180, 180, 70];
+const MIN_COLUMN_WIDTHS = [160, 120, 130, 130, 150, 150, 64];
 
 function makeDraftId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -91,6 +93,18 @@ function businessDaysBetween(startDate, endDate) {
   return String(days);
 }
 
+function compareSubitemsByStartDate(left, right) {
+  const leftDate = left.inicioPrevisto || '9999-12-31';
+  const rightDate = right.inicioPrevisto || '9999-12-31';
+  const dateOrder = leftDate.localeCompare(rightDate);
+  if (dateOrder) return dateOrder;
+  return (Number(left.sortOrder) || 0) - (Number(right.sortOrder) || 0);
+}
+
+function sortSubitemsByStartDate(subitems) {
+  return [...subitems].sort(compareSubitemsByStartDate);
+}
+
 function createSubitem(overrides = {}) {
   return {
     id: makeDraftId('subitem'),
@@ -100,7 +114,9 @@ function createSubitem(overrides = {}) {
     inicioPrevisto: '',
     diasTrabalhados: '',
     fimPrevisto: '',
+    contractorId: '',
     valorEmpreita: '',
+    sortOrder: 0,
     ...overrides,
   };
 }
@@ -153,9 +169,12 @@ function buildDraftFromItems(items = [], contractorAssignments = []) {
             inicioPrevisto: item.inicioPrevisto || '',
             diasTrabalhados: businessDaysBetween(item.inicioPrevisto, item.fimPrevisto),
             fimPrevisto: item.fimPrevisto || '',
+            contractorId: assignment?.contractorId || '',
             valorEmpreita: formatMoneyInput(value),
+            sortOrder: Number(item.sortOrder) || 0,
           });
-        });
+        })
+        .sort(compareSubitemsByStartDate);
 
       return createStage({
         id: stage.id,
@@ -171,6 +190,7 @@ function buildDraftFromItems(items = [], contractorAssignments = []) {
 
 export default function ContractScheduleBuilder({
   items = [],
+  contractors = [],
   contractorAssignments = [],
   saving,
   error,
@@ -183,8 +203,23 @@ export default function ContractScheduleBuilder({
   );
   const [stages, setStages] = useState(draftFromSchedule);
   const [removedItemIds, setRemovedItemIds] = useState([]);
+  const [columnWidths, setColumnWidths] = useState(DEFAULT_COLUMN_WIDTHS);
   const [formError, setFormError] = useState('');
   const [message, setMessage] = useState('');
+  const assignedContractorIds = useMemo(
+    () => new Set(
+      contractorAssignments
+        .filter((assignment) => assignment.ativo !== false)
+        .map((assignment) => assignment.contractorId),
+    ),
+    [contractorAssignments],
+  );
+  const contractorOptions = useMemo(
+    () => contractors
+      .filter((contractor) => contractor.ativo !== false || assignedContractorIds.has(contractor.id))
+      .sort((left, right) => left.nome.localeCompare(right.nome)),
+    [contractors, assignedContractorIds],
+  );
 
   useEffect(() => {
     setStages(draftFromSchedule);
@@ -233,6 +268,9 @@ export default function ContractScheduleBuilder({
 
   function removeStage(stageId) {
     const removedStage = stages.find((stage) => stage.id === stageId);
+    if (!removedStage) return;
+    const confirmed = window.confirm(`Remover o item "${removedStage.nome || 'sem nome'}" e todos os seus subitens?`);
+    if (!confirmed) return;
     if (removedStage) {
       const removedIds = [
         removedStage.sourceId,
@@ -250,7 +288,13 @@ export default function ContractScheduleBuilder({
   function addSubitem(stageId) {
     setStages((current) => current.map((stage) => (
       stage.id === stageId
-        ? { ...stage, subitems: [...stage.subitems, createSubitem()] }
+        ? {
+            ...stage,
+            subitems: [
+              ...stage.subitems,
+              createSubitem({ sortOrder: stage.subitems.length }),
+            ],
+          }
         : stage
     )));
   }
@@ -259,6 +303,9 @@ export default function ContractScheduleBuilder({
     const removedSubitem = stages
       .find((stage) => stage.id === stageId)
       ?.subitems.find((subitem) => subitem.id === subitemId);
+    if (!removedSubitem) return;
+    const confirmed = window.confirm(`Remover o subitem "${removedSubitem.nome || 'sem nome'}"?`);
+    if (!confirmed) return;
     if (removedSubitem?.sourceId) {
       setRemovedItemIds((ids) => [...new Set([...ids, removedSubitem.sourceId])]);
     }
@@ -271,6 +318,57 @@ export default function ContractScheduleBuilder({
     setMessage('');
   }
 
+  function resizeColumn(columnIndex, width) {
+    setColumnWidths((current) => current.map((currentWidth, index) => (
+      index === columnIndex
+        ? Math.max(MIN_COLUMN_WIDTHS[index], Math.round(width))
+        : currentWidth
+    )));
+  }
+
+  function startColumnResize(columnIndex, event) {
+    event.preventDefault();
+    event.stopPropagation();
+    const handle = event.currentTarget;
+    const startX = event.clientX;
+    const startWidth = columnWidths[columnIndex];
+
+    function move(moveEvent) {
+      resizeColumn(columnIndex, startWidth + moveEvent.clientX - startX);
+    }
+
+    function stop() {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', stop);
+      handle.removeEventListener('pointercancel', stop);
+    }
+
+    handle.setPointerCapture(event.pointerId);
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', stop);
+    handle.addEventListener('pointercancel', stop);
+  }
+
+  function columnHeader(label, columnIndex) {
+    return (
+      <th>
+        <span>{label}</span>
+        <span
+          className="table-column-resizer"
+          role="separator"
+          aria-label={`Redimensionar coluna ${label}`}
+          tabIndex="0"
+          onPointerDown={(event) => startColumnResize(columnIndex, event)}
+          onKeyDown={(event) => {
+            if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+            event.preventDefault();
+            resizeColumn(columnIndex, columnWidths[columnIndex] + (event.key === 'ArrowRight' ? 12 : -12));
+          }}
+        />
+      </th>
+    );
+  }
+
   async function submit(event) {
     event.preventDefault();
     setFormError('');
@@ -279,7 +377,7 @@ export default function ContractScheduleBuilder({
     const cleanedStages = stages.map((stage) => ({
       ...stage,
       nome: stage.nome.trim(),
-      subitems: stage.subitems.map((subitem) => {
+      subitems: sortSubitemsByStartDate(stage.subitems).map((subitem) => {
         const diasTrabalhados = Math.floor(Number(subitem.diasTrabalhados) || 0);
         return {
           ...subitem,
@@ -289,6 +387,7 @@ export default function ContractScheduleBuilder({
             ? addBusinessDays(subitem.inicioPrevisto, diasTrabalhados)
             : subitem.fimPrevisto || '',
           valorMaoObra: normalizeMoneyValue(subitem.valorEmpreita),
+          contractorId: subitem.contractorId || '',
         };
       }),
     }));
@@ -318,8 +417,15 @@ export default function ContractScheduleBuilder({
       return;
     }
 
+    const invalidContractorValue = cleanedStages
+      .flatMap((stage) => stage.subitems)
+      .find((subitem) => subitem.contractorId && subitem.valorMaoObra <= 0);
+    if (invalidContractorValue) {
+      setFormError(`Informe o valor da empreita para ${invalidContractorValue.nome}.`);
+      return;
+    }
+
     const saved = await onSavePlan({
-      contractorId: '',
       stages: cleanedStages,
       removedItemIds,
     });
@@ -367,22 +473,26 @@ export default function ContractScheduleBuilder({
 
         {stages.length ? (
           <section className="contract-work-table contract-schedule-table" aria-label="Criacao do cronograma">
-            <table>
+            <table style={{ minWidth: `${columnWidths.reduce((total, width) => total + width, 0)}px` }}>
+              <colgroup>
+                {columnWidths.map((width, index) => <col style={{ width: `${width}px` }} key={`column-${index}`} />)}
+              </colgroup>
               <thead>
                 <tr>
-                  <th>Subitem</th>
-                  <th>Inicio</th>
-                  <th>Dias trabalhados</th>
-                  <th>Fim calculado</th>
-                  <th>Valor da empreita</th>
-                  <th>Acoes</th>
+                  {columnHeader('Subitem', 0)}
+                  {columnHeader('Inicio', 1)}
+                  {columnHeader('Dias trabalhados', 2)}
+                  {columnHeader('Fim calculado', 3)}
+                  {columnHeader('Empreiteiro', 4)}
+                  {columnHeader('Valor da empreita', 5)}
+                  {columnHeader('Acoes', 6)}
                 </tr>
               </thead>
               <tbody>
                 {stages.map((stage) => (
                   <React.Fragment key={stage.id}>
                     <tr className="contract-work-stage-row contract-schedule-stage-row">
-                      <td colSpan="6">
+                      <td colSpan="7">
                         <div>
                           <input
                             type="text"
@@ -405,7 +515,7 @@ export default function ContractScheduleBuilder({
                         </div>
                       </td>
                     </tr>
-                    {stage.subitems.map((subitem) => (
+                    {sortSubitemsByStartDate(stage.subitems).map((subitem) => (
                       <tr key={subitem.id}>
                         <td>
                           <input
@@ -434,6 +544,18 @@ export default function ContractScheduleBuilder({
                         </td>
                         <td>
                           <input type="date" value={subitem.fimPrevisto} readOnly />
+                        </td>
+                        <td>
+                          <select
+                            value={subitem.contractorId}
+                            onChange={(event) => updateSubitem(stage.id, subitem.id, { contractorId: event.target.value })}
+                            aria-label={`Empreiteiro de ${subitem.nome || 'subitem'}`}
+                          >
+                            <option value="">Sem empreiteiro</option>
+                            {contractorOptions.map((contractor) => (
+                              <option value={contractor.id} key={contractor.id}>{contractor.nome}</option>
+                            ))}
+                          </select>
                         </td>
                         <td>
                           <input

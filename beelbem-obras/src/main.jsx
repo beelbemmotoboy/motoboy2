@@ -9379,7 +9379,7 @@ function App() {
     }
   }
 
-  async function saveContractSchedulePlan({ contractorId = '', stages = [], removedItemIds = [] }) {
+  async function saveContractSchedulePlan({ stages = [], removedItemIds = [] }) {
     if (!activeWork?.id) {
       setScheduleError('Selecione uma obra antes de salvar o cronograma.');
       return null;
@@ -9397,6 +9397,7 @@ function App() {
       const now = new Date().toISOString();
       const rawItems = previousItems.map((item) => ({ ...item }));
       const savedAssignments = [];
+      const disabledAssignments = [];
       const activeAssignmentsBySubitem = new Map();
       data.contractorAssignments
         .filter((item) => item.ativo !== false)
@@ -9428,6 +9429,15 @@ function App() {
             rawItems[index] = { ...item, visible: false, updatedAt: now };
           }
         });
+        const removedAssignments = data.contractorAssignments.filter((assignment) => (
+          assignment.ativo !== false && removedIds.has(assignment.scheduleItemId)
+        ));
+        for (const assignment of removedAssignments) {
+          if (supabaseConfigured && session) {
+            await updateChild('contractorAssignments', assignment.id, { ativo: false });
+          }
+          disabledAssignments.push({ ...assignment, ativo: false, updatedAt: now });
+        }
       }
 
       for (const [stageIndex, stage] of stages.entries()) {
@@ -9497,13 +9507,14 @@ function App() {
           }
           upsertRawItem(savedSubitem);
 
-          if (contractorId && value > 0) {
-            const activeAssignment = activeAssignmentsBySubitem.get(savedSubitem.id);
+          const activeAssignment = activeAssignmentsBySubitem.get(savedSubitem.id);
+          const desiredContractorId = String(subitem.contractorId || '');
+          if (desiredContractorId && value > 0) {
             const assignment = {
               id: activeAssignment?.id || '',
               projectId: activeWork.id,
               scheduleItemId: savedSubitem.id,
-              contractorId,
+              contractorId: desiredContractorId,
               dataInicio: savedSubitem.inicioPrevisto,
               dataFim: savedSubitem.fimPrevisto,
               valorContratado: value,
@@ -9529,6 +9540,11 @@ function App() {
                 : localAssignment;
             }
             savedAssignments.push(savedAssignment);
+          } else if (activeAssignment?.id) {
+            if (supabaseConfigured && session) {
+              await updateChild('contractorAssignments', activeAssignment.id, { ativo: false });
+            }
+            disabledAssignments.push({ ...activeAssignment, ativo: false, updatedAt: now });
           }
         }
       }
@@ -9536,15 +9552,16 @@ function App() {
       const nextItems = deriveScheduleStages(rawItems);
       await persistScheduleDerivations(previousItems, nextItems);
 
-      if (savedAssignments.length) {
+      if (savedAssignments.length || disabledAssignments.length) {
         const savedById = new Map(savedAssignments.map((item) => [item.id, item]));
         const savedBySubitem = new Map(savedAssignments.map((item) => [item.scheduleItemId, item]));
+        const disabledById = new Map(disabledAssignments.map((item) => [item.id, item]));
         setData((current) => ({
           ...current,
           contractorAssignments: [
-            ...current.contractorAssignments.filter((item) => (
-              !savedById.has(item.id) && !savedBySubitem.has(item.scheduleItemId)
-            )),
+            ...current.contractorAssignments
+              .filter((item) => !savedById.has(item.id) && !savedBySubitem.has(item.scheduleItemId))
+              .map((item) => disabledById.get(item.id) || item),
             ...savedAssignments,
           ],
         }));

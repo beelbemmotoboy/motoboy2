@@ -961,7 +961,7 @@ button.metric-card {
 
 .contract-schedule-builder .contract-schedule-table table {
   min-width: 0;
-  table-layout: auto;
+  table-layout: fixed;
 }
 
 .contract-schedule-builder .contract-work-table th,
@@ -970,9 +970,37 @@ button.metric-card {
 }
 
 .contract-schedule-builder .contract-work-table th {
+  position: relative;
   font-size: 11px;
   font-weight: 600;
   white-space: normal;
+}
+
+.contract-schedule-builder .table-column-resizer {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  z-index: 2;
+  width: 9px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.contract-schedule-builder .table-column-resizer::after {
+  position: absolute;
+  top: 22%;
+  right: 4px;
+  width: 1px;
+  height: 56%;
+  background: #cbd5e1;
+  content: '';
+}
+
+.contract-schedule-builder .table-column-resizer:focus-visible::after,
+.contract-schedule-builder .table-column-resizer:hover::after {
+  width: 2px;
+  background: #2563eb;
 }
 
 .contract-schedule-builder .contract-work-table td {
@@ -981,7 +1009,8 @@ button.metric-card {
 
 .contract-schedule-builder .contract-schedule-table input[type="text"],
 .contract-schedule-builder .contract-schedule-table input[type="date"],
-.contract-schedule-builder .contract-schedule-table input[type="number"] {
+.contract-schedule-builder .contract-schedule-table input[type="number"],
+.contract-schedule-builder .contract-schedule-table select {
   min-width: 0;
   border: 0;
   border-bottom: 1px solid transparent;
@@ -995,7 +1024,8 @@ button.metric-card {
 
 .contract-schedule-builder .contract-schedule-table input[type="text"]:focus,
 .contract-schedule-builder .contract-schedule-table input[type="date"]:focus,
-.contract-schedule-builder .contract-schedule-table input[type="number"]:focus {
+.contract-schedule-builder .contract-schedule-table input[type="number"]:focus,
+.contract-schedule-builder .contract-schedule-table select:focus {
   outline: 0;
   border-bottom-color: #2563eb;
   background: #f8fafc;
@@ -1013,6 +1043,7 @@ button.metric-card {
 .contract-schedule-builder .contract-schedule-stage-row input[type="text"] {
   min-width: 180px;
   color: #1d4ed8;
+  font-size: 16px;
   font-weight: 600;
 }
 
