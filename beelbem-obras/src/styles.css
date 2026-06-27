@@ -1154,8 +1154,20 @@ button.metric-card {
   margin: 0;
 }
 
+.rdo-work-picker .field,
+.rdo-form .field {
+  font-weight: 400;
+}
+
 .rdo-work-search .search-control {
   width: 100%;
+}
+
+.rdo-work-search input,
+.rdo-form input,
+.rdo-form textarea,
+.rdo-form select {
+  font-weight: 400;
 }
 
 .rdo-work-list {
@@ -1166,9 +1178,17 @@ button.metric-card {
   min-height: 126px;
 }
 
+.rdo-work-list .work-card > span {
+  font-weight: 400;
+}
+
 .rdo-work-list .work-card.active {
   outline: 3px solid #2563eb;
   outline-offset: 2px;
+}
+
+.rdo-summary span {
+  font-weight: 400;
 }
 
 .rdo-layout {
@@ -1259,7 +1279,7 @@ button.metric-card {
 .rdo-history p {
   margin: 0;
   color: #64748b;
-  font-weight: 700;
+  font-weight: 400;
 }
 
 .rdo-preview-modal {
@@ -1300,7 +1320,7 @@ button.metric-card {
   margin-bottom: 6px;
   color: #1d4ed8;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 500;
   letter-spacing: 0.03em;
   text-transform: uppercase;
 }
