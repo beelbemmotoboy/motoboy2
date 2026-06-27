@@ -151,11 +151,6 @@ export default function ContractWork({
     }
 
     const selectedRows = subitemRows.filter(({ item }) => selectedItems.has(item.id));
-    if (!selectedRows.length) {
-      setFormError('Selecione pelo menos um subitem para esta empreita.');
-      return;
-    }
-
     const invalidRow = selectedRows.find(({ item }) => normalizeMoneyValue(values[item.id]) <= 0);
     if (invalidRow) {
       setFormError(`Informe o valor da empreita para ${invalidRow.item.nome}.`);

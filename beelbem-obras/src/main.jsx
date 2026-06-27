@@ -9278,22 +9278,36 @@ function App() {
       setScheduleError('Selecione um empreiteiro.');
       return null;
     }
-    if (!assignments.length) {
-      setScheduleError('Selecione pelo menos um subitem.');
-      return null;
-    }
 
     setScheduleSaving(true);
     setScheduleError('');
 
     try {
       const now = new Date().toISOString();
+      const selectedSubitemIds = new Set(assignments.map((assignment) => assignment.scheduleItemId));
+      const removedAssignments = data.contractorAssignments.filter((item) => (
+        item.ativo !== false
+        && item.contractorId === contractorId
+        && !selectedSubitemIds.has(item.scheduleItemId)
+      ));
       const activeAssignmentsBySubitem = new Map();
       data.contractorAssignments
         .filter((item) => item.ativo !== false)
         .forEach((item) => {
           activeAssignmentsBySubitem.set(item.scheduleItemId, item);
         });
+
+      const disabledAssignments = [];
+      for (const assignment of removedAssignments) {
+        if (supabaseConfigured && session) {
+          await updateChild('contractorAssignments', assignment.id, { ativo: false });
+        }
+        disabledAssignments.push({
+          ...assignment,
+          ativo: false,
+          updatedAt: now,
+        });
+      }
 
       const savedAssignments = [];
       for (const assignment of assignments) {
@@ -9341,13 +9355,14 @@ function App() {
 
       const savedById = new Map(savedAssignments.map((item) => [item.id, item]));
       const savedBySubitem = new Map(savedAssignments.map((item) => [item.scheduleItemId, item]));
+      const disabledById = new Map(disabledAssignments.map((item) => [item.id, item]));
 
       setData((current) => ({
         ...current,
         contractorAssignments: [
-          ...current.contractorAssignments.filter((item) => (
-            !savedById.has(item.id) && !savedBySubitem.has(item.scheduleItemId)
-          )),
+          ...current.contractorAssignments
+            .filter((item) => !savedById.has(item.id) && !savedBySubitem.has(item.scheduleItemId))
+            .map((item) => disabledById.get(item.id) || item),
           ...savedAssignments,
         ],
         scheduleItems: current.scheduleItems.map((item) => {
