@@ -5499,6 +5499,27 @@ function groupRdoPhotosBySchedule(photos, scheduleItems) {
   });
 }
 
+function enrichRdoChecklistPhotos(photos, scheduleItems, checklists) {
+  const itemsById = new Map((scheduleItems || []).map((item) => [item.id, item]));
+  const checklistsById = new Map((checklists || []).map((entry) => [entry.id, entry]));
+  const checklistItemsById = new Map();
+  (checklists || []).forEach((checklist) => {
+    (checklist.itens || []).forEach((item) => checklistItemsById.set(item.id, item));
+  });
+
+  return (photos || []).map((photo) => {
+    const context = getScheduleActivityContext(photo.scheduleItemId, itemsById);
+    const checklist = checklistsById.get(photo.checklistId);
+    const checklistItem = checklistItemsById.get(photo.checklistItemId);
+    return {
+      ...photo,
+      ...context,
+      checklistTitle: checklist?.titulo || 'Checklist tecnico',
+      checklistItemText: checklistItem?.texto || 'Item do checklist',
+    };
+  });
+}
+
 function buildRdoDraft({ data, activeWork, startDate, endDate, savedReport }) {
   const range = normalizeDateRange(startDate, endDate);
   const itemsById = new Map((data.scheduleItems || []).map((item) => [item.id, item]));
@@ -5513,9 +5534,20 @@ function buildRdoDraft({ data, activeWork, startDate, endDate, savedReport }) {
     normalizeSearch(issue.status) !== 'resolvida'
     || isDateInRange(issue.updatedAt || issue.createdAt || issue.prazo, range.startDate, range.endDate)
   ));
-  const checklistResults = (data.checklistResults || []).filter((result) => (
-    result.checked && isDateInRange(result.checkedAt || result.updatedAt || result.createdAt, range.startDate, range.endDate)
-  ));
+  const checklistResults = (data.checklistResults || [])
+    .filter((result) => (
+      result.checked && isDateInRange(result.checkedAt || result.updatedAt || result.createdAt, range.startDate, range.endDate)
+    ))
+    .map((result) => {
+      const checklist = checklistById.get(result.checklistId);
+      const checklistItem = checklistItemsById.get(result.checklistItemId);
+      return {
+        ...result,
+        itemLabel: scheduleItemLabel(itemsById, result.scheduleItemId),
+        checklistTitle: checklist?.titulo || 'Checklist tecnico',
+        checklistItemText: checklistItem?.texto || 'Item conferido',
+      };
+    });
   const serviceLines = logs.map((log) => {
     const label = scheduleItemLabel(itemsById, log.scheduleItemId);
     const description = log.observacoes || log.checklist || 'Registro diario da obra';
@@ -5567,7 +5599,7 @@ function buildRdoDraft({ data, activeWork, startDate, endDate, savedReport }) {
   return savedReport ? { ...generated, ...savedReport, payload: generated.payload } : generated;
 }
 
-function Reports({ data, activeWork, account, works = [], saving, error, message, setScreen, onSelectWork, onSaveRdo, onDeleteRdo, onLoadRdoPhotos }) {
+function Reports({ data, activeWork, account, works = [], saving, error, message, setScreen, onSelectWork, onSaveRdo, onDeleteRdo, onLoadRdoPhotos, onLoadRdoChecklistPhotos }) {
   const [workQuery, setWorkQuery] = useState('');
   const [startDate, setStartDate] = useState(todayIso());
   const [endDate, setEndDate] = useState(todayIso());
@@ -5646,17 +5678,61 @@ function Reports({ data, activeWork, account, works = [], saving, error, message
     onSaveRdo(buildReportFromValues(currentFormValues()));
   }
 
-  async function downloadPdf() {
+  async function downloadPdf(reportOverride = null) {
     if (!formRef.current || pdfLoading) return;
     setPdfLoading(true);
     try {
-      const signedPhotos = await onLoadRdoPhotos(range);
-      const periodPhotos = signedPhotos.filter((photo) => isDateInRange(photo.data || photo.createdAt || photo.updatedAt, range.startDate, range.endDate));
+      const reportStart = normalizeDateKey(reportOverride?.startDate || reportOverride?.reportDate || range.startDate);
+      const reportEnd = normalizeDateKey(reportOverride?.endDate || reportOverride?.reportDate || range.endDate);
+      const pdfRange = { startDate: reportStart, endDate: reportEnd };
+      const [signedPhotos, signedChecklistPhotos] = await Promise.all([
+        onLoadRdoPhotos(pdfRange),
+        onLoadRdoChecklistPhotos(pdfRange),
+      ]);
+      const periodPhotos = signedPhotos.filter((photo) => isDateInRange(photo.data || photo.createdAt || photo.updatedAt, reportStart, reportEnd));
+      const periodChecklistPhotos = signedChecklistPhotos.filter((photo) => (
+        isDateInRange(photo.createdAt || photo.updatedAt, reportStart, reportEnd)
+      ));
       const groupedPhotos = groupRdoPhotosBySchedule(periodPhotos, data.scheduleItems || []);
-      const report = buildReportFromValues(currentFormValues(), {
-        photos: periodPhotos,
-        groupedPhotos,
+      const checklistPhotos = enrichRdoChecklistPhotos(
+        periodChecklistPhotos,
+        data.scheduleItems || [],
+        data.checklist || [],
+      );
+      const pdfDraft = buildRdoDraft({
+        data,
+        activeWork,
+        startDate: reportStart,
+        endDate: reportEnd,
+        savedReport: null,
       });
+      const savedFields = reportOverride ? reportFields(reportOverride) : null;
+      const report = reportOverride
+        ? {
+            ...reportOverride,
+            titulo: savedFields.titulo,
+            clima: savedFields.clima,
+            equipe: savedFields.equipe,
+            resumo: savedFields.resumo,
+            servicosExecutados: savedFields.servicosExecutados,
+            materiais: savedFields.materiais,
+            ferramentas: savedFields.ferramentas,
+            ocorrencias: savedFields.ocorrencias,
+            startDate: reportStart,
+            endDate: reportEnd,
+            payload: {
+              ...(reportOverride.payload || {}),
+              ...pdfDraft.payload,
+              photos: periodPhotos,
+              groupedPhotos,
+              checklistPhotos,
+            },
+          }
+        : buildReportFromValues(currentFormValues(), {
+            photos: periodPhotos,
+            groupedPhotos,
+            checklistPhotos,
+          });
       report.fotosCount = periodPhotos.length;
       const { generateRdoPdf } = await import('./rdoPdf.js');
       await generateRdoPdf({
@@ -5680,7 +5756,7 @@ function Reports({ data, activeWork, account, works = [], saving, error, message
   return (
     <>
       <PageTitle eyebrow="RDO" title="Relatorio diario de obra" subtitle="Gere e grave o RDO por obra e periodo." onBack={() => setScreen('workPanel')}>
-        <ActionButton Icon={FileText} variant="secondary" onClick={downloadPdf} disabled={pdfLoading}>
+        <ActionButton Icon={FileText} variant="secondary" onClick={() => downloadPdf()} disabled={pdfLoading}>
           {pdfLoading ? 'Gerando PDF...' : 'Gerar PDF'}
         </ActionButton>
       </PageTitle>
@@ -5749,7 +5825,7 @@ function Reports({ data, activeWork, account, works = [], saving, error, message
             <ActionButton Icon={Save} type="submit" disabled={saving}>
               {saving ? 'Salvando...' : savedReport ? 'Atualizar RDO' : 'Salvar RDO'}
             </ActionButton>
-            <ActionButton Icon={FileText} variant="secondary" onClick={downloadPdf} disabled={pdfLoading}>
+            <ActionButton Icon={FileText} variant="secondary" onClick={() => downloadPdf()} disabled={pdfLoading}>
               {pdfLoading ? 'Gerando PDF...' : 'Baixar PDF'}
             </ActionButton>
           </div>
@@ -5798,6 +5874,8 @@ function Reports({ data, activeWork, account, works = [], saving, error, message
           activeWork={activeWork}
           account={account}
           fields={reportFields(viewingReport)}
+          pdfLoading={pdfLoading}
+          onDownloadPdf={() => downloadPdf(viewingReport)}
           onClose={() => setViewingReport(null)}
         />
       ) : null}
@@ -5805,7 +5883,7 @@ function Reports({ data, activeWork, account, works = [], saving, error, message
   );
 }
 
-function RdoPreviewModal({ report, activeWork, account, fields, onClose }) {
+function RdoPreviewModal({ report, activeWork, account, fields, pdfLoading, onDownloadPdf, onClose }) {
   const period = formatDateRangeBr(report.startDate || report.reportDate, report.endDate || report.reportDate);
   const rows = [
     ['Clima', fields.clima],
@@ -5827,7 +5905,12 @@ function RdoPreviewModal({ report, activeWork, account, fields, onClose }) {
             <h2 id="rdo-preview-title">{fields.titulo || report.titulo || 'Relatorio diario de obra'}</h2>
             <p>{activeWork?.nome || 'Obra'} - {period}</p>
           </div>
-          <IconButton label="Fechar" Icon={X} onClick={onClose} />
+          <div className="rdo-preview-actions">
+            <ActionButton Icon={FileText} variant="secondary" onClick={onDownloadPdf} disabled={pdfLoading}>
+              {pdfLoading ? 'Gerando...' : 'Gerar PDF'}
+            </ActionButton>
+            <IconButton label="Fechar" Icon={X} onClick={onClose} />
+          </div>
         </div>
         <section className="rdo-preview-summary">
           <span>{account?.nome || 'Empresa'}</span>
@@ -8517,6 +8600,23 @@ function App() {
     }
   }
 
+  async function loadRdoChecklistPhotosWithUrls() {
+    if (!activeWork?.id) return [];
+    if (!supabaseConfigured || !session) return data.checklistPhotos || [];
+
+    try {
+      const checklistPhotos = await fetchChecklistPhotos(activeWork.id);
+      setData((current) => ({
+        ...current,
+        checklistPhotos,
+      }));
+      return checklistPhotos;
+    } catch (error) {
+      setRdoError(error.message || 'Nao foi possivel carregar as fotos dos checklists para o PDF.');
+      return data.checklistPhotos || [];
+    }
+  }
+
   async function saveScheduleChecklistCheck(values) {
     if (!activeWork?.id || !values?.scheduleItemId || !values?.checklistId) {
       setScheduleError('Selecione um subitem com checklist antes de conferir.');
@@ -9745,6 +9845,7 @@ function App() {
             onSaveRdo={saveRdoReport}
             onDeleteRdo={deleteRdoReport}
             onLoadRdoPhotos={loadRdoPhotosWithUrls}
+            onLoadRdoChecklistPhotos={loadRdoChecklistPhotosWithUrls}
           />
         );
       case 'workProfile':

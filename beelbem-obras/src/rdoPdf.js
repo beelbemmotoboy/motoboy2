@@ -166,11 +166,20 @@ class PdfDocument {
   }
 
   reportHeader() {
-    const { companyName, companyAddress, companyContact, generatedAt } = this.headerInfo;
+    const { companyName, companyAddress, companyContact, generatedAt, logoImage } = this.headerInfo;
+    const textX = logoImage ? MARGIN + 70 : MARGIN;
     this.fillRect(0, 0, PAGE_WIDTH, HEADER_BOTTOM - 10, HEADER_BG);
-    this.text(MARGIN, 24, companyName || 'Empresa nao informada', 10.5, true, TEXT);
-    this.text(MARGIN, 40, companyAddress || 'Endereco da empresa nao informado', 8.5, false, MUTED);
-    this.text(MARGIN, 54, companyContact || 'Contato da empresa nao informado', 8.5, false, MUTED);
+    if (logoImage) {
+      const maxWidth = 58;
+      const maxHeight = 44;
+      const fit = Math.min(maxWidth / logoImage.width, maxHeight / logoImage.height);
+      const width = Math.max(1, logoImage.width * fit);
+      const height = Math.max(1, logoImage.height * fit);
+      this.addImage(logoImage, MARGIN, 11 + ((maxHeight - height) / 2), width, height);
+    }
+    this.text(textX, 24, companyName || 'Empresa nao informada', 10.5, true, TEXT);
+    this.text(textX, 40, companyAddress || 'Endereco da empresa nao informado', 8.5, false, MUTED);
+    this.text(textX, 54, companyContact || 'Contato da empresa nao informado', 8.5, false, MUTED);
     this.textRight(PAGE_WIDTH - MARGIN, 30, generatedAt || todayLabel(), 8.5, false, MUTED);
     this.line(MARGIN, HEADER_BOTTOM - 10, PAGE_WIDTH - MARGIN, HEADER_BOTTOM - 10, LIGHT_BORDER);
   }
@@ -448,10 +457,13 @@ function buildProjectData({ report, account, project }) {
   return [
     { label: 'Periodo (de)', value: formatDate(report.startDate || report.reportDate) },
     { label: 'Periodo (ate)', value: formatDate(report.endDate || report.reportDate) },
-    { label: 'Obra/servico', value: [project?.nome, project?.endereco, project?.quadra ? `Quadra ${project.quadra}` : '', project?.lote ? `Lote ${project.lote}` : '', project?.bairro, project?.cidade].filter(Boolean).join(' - ') },
     { label: 'Proprietario', value: project?.cliente || 'Nao informado' },
     { label: 'CEP', value: project?.cep || 'Nao informado' },
-    { label: 'Endereco', value: [project?.endereco, project?.bairro, project?.cidade].filter(Boolean).join(' - ') || 'Nao informado' },
+    { label: 'Endereco', value: project?.endereco || 'Nao informado', bold: false },
+    { label: 'Numero', value: project?.numero || 'Nao informado' },
+    { label: 'Quadra / lote', value: [project?.quadra ? `Quadra ${project.quadra}` : '', project?.lote ? `Lote ${project.lote}` : ''].filter(Boolean).join(' - ') || 'Nao informado' },
+    { label: 'Bairro', value: project?.bairro || 'Nao informado' },
+    { label: 'Cidade', value: project?.cidade || 'Nao informado' },
     { label: 'Inicio', value: formatDate(bounds.start || project?.inicio || '') },
     { label: 'Previsao de termino', value: formatDate(bounds.end || project?.previsaoTermino || '') },
     { label: 'Prazo (dias)', value: totalDays === null ? '-' : String(totalDays) },
@@ -513,12 +525,46 @@ function buildImageRows(report) {
   ));
 }
 
-function companyHeader(account) {
+function buildChecklistRows(report) {
+  return (report.payload?.checklistResults || [])
+    .filter((result) => result.checked !== false)
+    .map((result) => [
+      formatDate(result.checkedAt || result.updatedAt || result.createdAt),
+      result.itemLabel || result.subitemName || 'Subitem nao informado',
+      result.checklistItemText || result.checklistTitle || 'Item conferido',
+      'Conferido',
+    ]);
+}
+
+function checklistPhotoGroups(report) {
+  const grouped = new Map();
+  (report.payload?.checklistPhotos || []).forEach((photo) => {
+    const title = [
+      photo.stageName || 'Sem etapa',
+      photo.subitemName,
+      photo.checklistItemText || photo.checklistTitle,
+    ].filter(Boolean).join(' / ');
+    if (!grouped.has(title)) grouped.set(title, []);
+    grouped.get(title).push(photo);
+  });
+  return [...grouped.entries()].map(([title, photos]) => ({ title, photos }));
+}
+
+async function companyHeader(account) {
+  let logoImage = '';
+  if (account?.logoUrl) {
+    try {
+      logoImage = await imageToJpegDataUrl(account.logoUrl, 320, 160);
+    } catch {
+      logoImage = '';
+    }
+  }
   return {
     companyName: account?.nome || 'Empresa nao informada',
     companyAddress: [account?.endereco, account?.cidade].filter(Boolean).join(' - ') || 'Endereco da empresa nao informado',
     companyContact: [account?.email, account?.documento ? `CNPJ/CPF: ${account.documento}` : '', account?.telefone].filter(Boolean).join(' - ') || 'Contato da empresa nao informado',
     generatedAt: todayLabel(),
+    logoImage,
   };
 }
 
@@ -566,8 +612,49 @@ async function renderPhotoPages(doc, report) {
   }
 }
 
+async function renderChecklistPhotoPages(doc, report) {
+  const groups = checklistPhotoGroups(report);
+  if (!groups.length) return;
+
+  doc.newPage();
+  doc.title('Fotos dos checklists', `${groups.reduce((total, group) => total + group.photos.length, 0)} foto(s)`);
+
+  for (const group of groups) {
+    doc.ensure(34);
+    doc.text(MARGIN, doc.y, group.title, 10, true, DARK_BLUE);
+    doc.y += 16;
+
+    let column = 0;
+    const gap = 12;
+    const cardWidth = (CONTENT_WIDTH - gap) / 2;
+    const imageHeight = 118;
+    const cardHeight = 144;
+
+    for (const photo of group.photos) {
+      if (column === 0) doc.ensure(cardHeight + 8);
+      const x = MARGIN + (column * (cardWidth + gap));
+      const y = doc.y;
+      let imageData = '';
+      try {
+        imageData = await imageToJpegDataUrl(bestPhotoUrl(photo));
+      } catch {
+        imageData = '';
+      }
+      doc.photoBox(imageData, x, y, cardWidth, imageHeight);
+      doc.text(x, y + imageHeight + 13, formatDate(photo.createdAt), 7.6, false, MUTED);
+      column += 1;
+      if (column >= 2) {
+        column = 0;
+        doc.y += cardHeight + 8;
+      }
+    }
+    if (column !== 0) doc.y += cardHeight + 8;
+    doc.y += 4;
+  }
+}
+
 export async function generateRdoPdf({ report, account, project }) {
-  const doc = new PdfDocument(companyHeader(account));
+  const doc = new PdfDocument(await companyHeader(account));
   const period = dateRangeLabel(report.startDate || report.reportDate, report.endDate || report.reportDate);
   const title = report.titulo || `RDO - ${project?.nome || 'Obra'} - ${period}`;
 
@@ -590,6 +677,11 @@ export async function generateRdoPdf({ report, account, project }) {
   doc.section('Tarefas');
   doc.table(['Data', 'Fase/Servico', 'Descricao', 'Medicao'], buildTaskRows(report), [82, 150, 227, 60]);
 
+  if (report.payload?.checklistResults?.length) {
+    doc.section('Checklist tecnico');
+    doc.table(['Data', 'Subitem', 'Item verificado', 'Status'], buildChecklistRows(report), [78, 150, 231, 60]);
+  }
+
   doc.section('Ocorrencias');
   doc.table(['Data', 'Descricao'], buildOccurrenceRows(report), [110, CONTENT_WIDTH - 110]);
 
@@ -597,6 +689,7 @@ export async function generateRdoPdf({ report, account, project }) {
   doc.table(['Data', 'Descricao'], buildImageRows(report), [110, CONTENT_WIDTH - 110]);
 
   await renderPhotoPages(doc, report);
+  await renderChecklistPhotoPages(doc, report);
 
   doc.section('Assinatura');
   doc.signature('Responsavel');

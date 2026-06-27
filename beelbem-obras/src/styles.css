@@ -1277,6 +1277,12 @@ button.metric-card {
   background: #f8fafc;
 }
 
+.rdo-preview-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .rdo-preview-grid {
   display: grid;
   gap: 10px;
