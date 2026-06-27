@@ -1392,13 +1392,13 @@ function SignupRequestScreen({ dbAvailable, onBack }) {
   );
 }
 
-function Dashboard({ data, setScreen }) {
+function Dashboard({ data, setScreen, onOpenAllWorks }) {
   const cityCount = new Set(data.works.map((work) => work.cidadeId)).size;
   const openIssues = data.works.reduce((total, work) => total + (Number(work.pendencias) || 0), 0);
   const pendingPls = data.works.filter((work) => !['aprovado', 'enviado'].includes(normalizeSearch(work.pls))).length;
   const metrics = [
     { label: 'Cidades', value: cityCount, Icon: MapPinned, tone: 'info', onIconClick: () => setScreen('cities'), iconLabel: 'Abrir cadastro e visualizacao de cidades' },
-    { label: 'Obras', value: data.works.filter((work) => getEffectiveWorkStatus(work) === 'Em andamento').length, Icon: Clock3, tone: 'warning', onIconClick: () => setScreen('works'), iconLabel: 'Abrir obras em andamento' },
+    { label: 'Obras', value: data.works.filter((work) => getEffectiveWorkStatus(work) === 'Em andamento').length, Icon: Clock3, tone: 'warning', onIconClick: onOpenAllWorks, iconLabel: 'Pesquisar todas as obras' },
     { label: 'Atrasadas', value: data.works.filter((work) => getEffectiveWorkStatus(work) === 'Atrasada').length, Icon: AlertTriangle, tone: 'danger', onIconClick: () => setScreen('works'), iconLabel: 'Abrir obras atrasadas' },
     { label: 'PLS', value: pendingPls, Icon: FileCheck2, tone: 'danger', onIconClick: () => setScreen('pls'), iconLabel: 'Abrir PLS Caixa' },
     { label: 'Pendencias', value: openIssues, Icon: ClipboardCheck, tone: 'danger', onIconClick: () => setScreen('issues'), iconLabel: 'Abrir pendencias' },
@@ -6981,6 +6981,21 @@ function App() {
     }
   }
 
+  async function openAllWorks() {
+    setSelectedNeighborhood(null);
+    setDataLoading(true);
+    setDataError('');
+    try {
+      const works = supabaseConfigured && session ? await fetchProjects() : data.works;
+      setData((current) => ({ ...current, works }));
+      setScreen('allWorks');
+    } catch (error) {
+      setDataError(error.message || 'Nao foi possivel pesquisar todas as obras.');
+    } finally {
+      setDataLoading(false);
+    }
+  }
+
   async function loadProject(projectId, requirement = { collections: projectCollections, signPhotoUrls: true }) {
     if (!supabaseConfigured || !session) return;
     const requestedCollections = [...new Set(requirement.collections || projectCollections)];
@@ -9610,7 +9625,7 @@ function App() {
             <AlertTriangle size={22} aria-hidden="true" />
             <span>{dataError}</span>
           </section>
-          <Dashboard data={cityData} setScreen={setScreen} />
+          <Dashboard data={cityData} setScreen={setScreen} onOpenAllWorks={openAllWorks} />
         </>
       );
     }
@@ -9661,13 +9676,15 @@ function App() {
       case 'signup':
         return <SignupRequestScreen dbAvailable={supabaseConfigured} onBack={() => setScreen('login')} />;
       case 'dashboard':
-        return <Dashboard data={cityData} setScreen={setScreen} />;
+        return <Dashboard data={cityData} setScreen={setScreen} onOpenAllWorks={openAllWorks} />;
       case 'cities':
         return <Cities works={data.works} neighborhoods={data.neighborhoods || []} openCity={(city) => void handleCityChange(city.id, 'neighborhoods')} />;
       case 'neighborhoods':
         return <Neighborhoods works={cityWorks} neighborhoods={data.neighborhoods || []} selectedCity={selectedCity} openNeighborhood={(bairro) => { setSelectedNeighborhood(bairro); setScreen('works'); }} setScreen={setScreen} />;
       case 'works':
         return <Works selectedCity={selectedCity} selectedNeighborhood={selectedNeighborhood} works={cityWorks} openWork={selectWork} setScreen={setScreen} />;
+      case 'allWorks':
+        return <Works selectedCity={null} selectedNeighborhood={null} works={data.works} openWork={selectWork} setScreen={setScreen} />;
       case 'newWork':
         return <NewWork createWork={createWork} setScreen={setScreen} selectedCity={selectedCity} works={data.works} neighborhoods={data.neighborhoods || []} onAddNeighborhood={saveNeighborhood} onProjectAnalyzed={setAiProjectDraft} />;
       case 'extractedData':
