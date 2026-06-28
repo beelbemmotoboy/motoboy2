@@ -53,6 +53,33 @@ function EmptyContractNotice({ Icon = Sparkles, title, text }) {
   );
 }
 
+function StageSelectionCheckbox({
+  checked,
+  indeterminate,
+  disabled,
+  label,
+  onChange,
+}) {
+  const checkboxRef = useRef(null);
+
+  useEffect(() => {
+    if (checkboxRef.current) {
+      checkboxRef.current.indeterminate = indeterminate;
+    }
+  }, [indeterminate]);
+
+  return (
+    <input
+      ref={checkboxRef}
+      type="checkbox"
+      checked={checked}
+      disabled={disabled}
+      aria-label={label}
+      onChange={onChange}
+    />
+  );
+}
+
 export default function ContractWork({
   items = [],
   contractors = [],
@@ -158,6 +185,32 @@ export default function ContractWork({
       return next;
     });
     setFormError('');
+  }
+
+  function toggleStageSubitems(children) {
+    const selectableIds = children
+      .filter((item) => {
+        const assignment = assignmentsBySubitem.get(item.id);
+        return !assignment?.contractorId || assignment.contractorId === contractorId;
+      })
+      .map((item) => item.id);
+
+    if (!selectableIds.length) return;
+
+    setSelectedItems((current) => {
+      const next = new Set(current);
+      const allSelected = selectableIds.every((itemId) => next.has(itemId));
+      selectableIds.forEach((itemId) => {
+        if (allSelected) {
+          next.delete(itemId);
+        } else {
+          next.add(itemId);
+        }
+      });
+      return next;
+    });
+    setFormError('');
+    setMessage('');
   }
 
   function updateValue(itemId, value) {
@@ -392,21 +445,44 @@ export default function ContractWork({
                   </tr>
                 </thead>
                 <tbody>
-                  {rowsByStage.map(({ stage, children }) => (
-                    <React.Fragment key={stage.id}>
-                      <tr className="contract-work-stage-row">
-                        <td colSpan="3">{stage.nome}</td>
-                      </tr>
-                      {children.map((item) => {
-                        const assignment = assignmentsBySubitem.get(item.id);
-                        const lockedByOtherContractor = Boolean(
-                          assignment?.contractorId && assignment.contractorId !== contractorId,
-                        );
-                        const checked = selectedItems.has(item.id) || lockedByOtherContractor;
-                        const assignedContractor = lockedByOtherContractor
-                          ? contractorsById.get(assignment.contractorId)
-                          : null;
-                        return (
+                  {rowsByStage.map(({ stage, children }) => {
+                    const selectableChildren = children.filter((item) => {
+                      const assignment = assignmentsBySubitem.get(item.id);
+                      return !assignment?.contractorId || assignment.contractorId === contractorId;
+                    });
+                    const selectedChildrenCount = selectableChildren.filter((item) => (
+                      selectedItems.has(item.id)
+                    )).length;
+                    const allChildrenSelected = selectableChildren.length > 0
+                      && selectedChildrenCount === selectableChildren.length;
+                    const someChildrenSelected = selectedChildrenCount > 0 && !allChildrenSelected;
+
+                    return (
+                      <React.Fragment key={stage.id}>
+                        <tr className="contract-work-stage-row">
+                          <td colSpan="3">
+                            <label className="contract-stage-selection">
+                              <StageSelectionCheckbox
+                                checked={allChildrenSelected}
+                                indeterminate={someChildrenSelected}
+                                disabled={!selectableChildren.length}
+                                label={`Selecionar todos os subitens de ${stage.nome}`}
+                                onChange={() => toggleStageSubitems(children)}
+                              />
+                              <span>{stage.nome}</span>
+                            </label>
+                          </td>
+                        </tr>
+                        {children.map((item) => {
+                          const assignment = assignmentsBySubitem.get(item.id);
+                          const lockedByOtherContractor = Boolean(
+                            assignment?.contractorId && assignment.contractorId !== contractorId,
+                          );
+                          const checked = selectedItems.has(item.id) || lockedByOtherContractor;
+                          const assignedContractor = lockedByOtherContractor
+                            ? contractorsById.get(assignment.contractorId)
+                            : null;
+                          return (
                           <tr className={`${checked ? 'selected' : ''} ${lockedByOtherContractor ? 'locked' : ''}`} key={item.id}>
                             <td>
                               <input
@@ -432,10 +508,11 @@ export default function ContractWork({
                               />
                             </td>
                           </tr>
-                        );
-                      })}
-                    </React.Fragment>
-                  ))}
+                          );
+                        })}
+                      </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </section>
