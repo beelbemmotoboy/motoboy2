@@ -8297,8 +8297,10 @@ function App() {
         documents: [savedDocument, ...(current.documents || [])],
       }));
       onDone?.();
+      return savedDocument;
     } catch (error) {
       setDocumentError(error.message || 'Nao foi possivel salvar o documento.');
+      return null;
     } finally {
       setDocumentSaving(false);
     }

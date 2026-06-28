@@ -106,7 +106,11 @@ export default function ContractWork({
   );
   const contractDocuments = useMemo(
     () => documents
-      .filter((document) => document.tipo === 'Contratos Mao de Obra')
+      .filter((document) => (
+        document.contractorId
+        || document.tipo === 'Contratos Mao de Obra'
+        || document.storagePath?.includes('/Contratos/')
+      ))
       .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)),
     [documents],
   );
@@ -202,12 +206,14 @@ export default function ContractWork({
     }
   }
 
-  function addContract(event) {
+  async function addContract(event) {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file || !contractorId || !onSaveDocument) return;
     const contractor = contractorsById.get(contractorId);
-    onSaveDocument({
+    setMessage('');
+    setFormError('');
+    const savedDocument = await onSaveDocument({
       tipo: 'Contratos Mao de Obra',
       titulo: `Contrato - ${contractor?.nome || 'Empreiteiro'}`,
       descricao: file.name || '',
@@ -215,6 +221,9 @@ export default function ContractWork({
       folder: 'Contratos',
       file,
     });
+    if (savedDocument) {
+      setMessage('Contrato adicionado e exibido abaixo.');
+    }
   }
 
   async function downloadContract(document) {
@@ -304,68 +313,6 @@ export default function ContractWork({
           {message ? <p className="auth-message success">{message}</p> : null}
           {documentError ? <p className="auth-message error">{documentError}</p> : null}
 
-          {subitemRows.length ? (
-            <section className="contract-work-table" aria-label="Cronograma da empreita">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Selecionar</th>
-                    <th>Subitem</th>
-                    <th>Valor da empreita</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rowsByStage.map(({ stage, children }) => (
-                    <React.Fragment key={stage.id}>
-                      <tr className="contract-work-stage-row">
-                        <td colSpan="3">{stage.nome}</td>
-                      </tr>
-                      {children.map((item) => {
-                        const assignment = assignmentsBySubitem.get(item.id);
-                        const lockedByOtherContractor = Boolean(
-                          assignment?.contractorId && assignment.contractorId !== contractorId,
-                        );
-                        const checked = selectedItems.has(item.id) || lockedByOtherContractor;
-                        const assignedContractor = lockedByOtherContractor
-                          ? contractorsById.get(assignment.contractorId)
-                          : null;
-                        return (
-                          <tr className={`${checked ? 'selected' : ''} ${lockedByOtherContractor ? 'locked' : ''}`} key={item.id}>
-                            <td>
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                disabled={lockedByOtherContractor}
-                                onChange={() => toggleSubitem(item.id)}
-                                aria-label={`Selecionar ${item.nome}`}
-                              />
-                            </td>
-                            <td>
-                              <span>{item.nome}</span>
-                              {assignedContractor ? <small>Vinculado a {assignedContractor.nome}</small> : null}
-                            </td>
-                            <td>
-                              <input
-                                type="text"
-                                inputMode="decimal"
-                                disabled={lockedByOtherContractor}
-                                value={values[item.id] || ''}
-                                onChange={(event) => updateValue(item.id, event.target.value)}
-                                placeholder="0,00"
-                              />
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </React.Fragment>
-                  ))}
-                </tbody>
-              </table>
-            </section>
-          ) : (
-            <EmptyContractNotice Icon={CalendarDays} title="Cronograma sem subitens" text="Cadastre subitens no cronograma para montar a empreita." />
-          )}
-
           <section className="contract-documents" aria-labelledby="contract-documents-title">
             <header>
               <div>
@@ -433,6 +380,69 @@ export default function ContractWork({
               />
             )}
           </section>
+
+          {subitemRows.length ? (
+            <section className="contract-work-table" aria-label="Cronograma da empreita">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Selecionar</th>
+                    <th>Subitem</th>
+                    <th>Valor da empreita</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rowsByStage.map(({ stage, children }) => (
+                    <React.Fragment key={stage.id}>
+                      <tr className="contract-work-stage-row">
+                        <td colSpan="3">{stage.nome}</td>
+                      </tr>
+                      {children.map((item) => {
+                        const assignment = assignmentsBySubitem.get(item.id);
+                        const lockedByOtherContractor = Boolean(
+                          assignment?.contractorId && assignment.contractorId !== contractorId,
+                        );
+                        const checked = selectedItems.has(item.id) || lockedByOtherContractor;
+                        const assignedContractor = lockedByOtherContractor
+                          ? contractorsById.get(assignment.contractorId)
+                          : null;
+                        return (
+                          <tr className={`${checked ? 'selected' : ''} ${lockedByOtherContractor ? 'locked' : ''}`} key={item.id}>
+                            <td>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                disabled={lockedByOtherContractor}
+                                onChange={() => toggleSubitem(item.id)}
+                                aria-label={`Selecionar ${item.nome}`}
+                              />
+                            </td>
+                            <td>
+                              <span>{item.nome}</span>
+                              {assignedContractor ? <small>Vinculado a {assignedContractor.nome}</small> : null}
+                            </td>
+                            <td>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                disabled={lockedByOtherContractor}
+                                value={values[item.id] || ''}
+                                onChange={(event) => updateValue(item.id, event.target.value)}
+                                placeholder="0,00"
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          ) : (
+            <EmptyContractNotice Icon={CalendarDays} title="Cronograma sem subitens" text="Cadastre subitens no cronograma para montar a empreita." />
+          )}
+
         </form>
       )}
     </>
