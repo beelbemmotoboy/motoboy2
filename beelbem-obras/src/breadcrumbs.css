@@ -1,0 +1,39 @@
+.page-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.page-breadcrumbs nav {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.page-breadcrumbs nav button {
+  border: 0;
+  padding: 0;
+  color: #2563eb;
+  background: transparent;
+  font: inherit;
+  font-weight: 400;
+  cursor: pointer;
+}
+
+.page-breadcrumbs nav button:hover {
+  text-decoration: underline;
+}
+
+.page-breadcrumbs .breadcrumb-current {
+  color: #475569;
+  font-weight: 400;
+}
+
+.page-breadcrumbs .breadcrumb-separator {
+  color: #94a3b8;
+  font-weight: 400;
+}
