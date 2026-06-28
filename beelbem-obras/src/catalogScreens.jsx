@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   CheckCircle2,
-  ChevronLeft,
   FolderKanban,
   HardHat,
   Pencil,
@@ -11,6 +10,7 @@ import {
   X,
   XCircle,
 } from 'lucide-react';
+import Breadcrumbs from './Breadcrumbs.jsx';
 
 const statusClasses = {
   Ativo: 'completed',
@@ -64,14 +64,11 @@ function TextAreaField({ label, name, value }) {
   );
 }
 
-function PageTitle({ eyebrow, title, subtitle, children, onBack }) {
+function PageTitle({ eyebrow, title, subtitle, children, onBack, breadcrumbs = [] }) {
   return (
     <header className="page-title">
       <div>
-        <div className="title-row">
-          {onBack ? <IconButton label="Voltar" Icon={ChevronLeft} onClick={onBack} /> : null}
-          <span>{eyebrow}</span>
-        </div>
+        <Breadcrumbs items={breadcrumbs} onBack={onBack} fallbackLabel={eyebrow} />
         <h1>{title}</h1>
         {subtitle ? <p>{subtitle}</p> : null}
       </div>
@@ -90,7 +87,7 @@ function EmptyNotice({ Icon = Sparkles, title, text }) {
   );
 }
 
-export function ServiceCategories({ categories = [], saving, error, message, onSave, onToggle, setScreen }) {
+export function ServiceCategories({ categories = [], saving, error, message, onSave, onToggle, setScreen, breadcrumbs = [] }) {
   const [query, setQuery] = useState('');
   const [editingCategory, setEditingCategory] = useState(null);
   const normalizedQuery = normalizeSearch(query);
@@ -100,7 +97,7 @@ export function ServiceCategories({ categories = [], saving, error, message, onS
 
   return (
     <>
-      <PageTitle eyebrow="Categorias" title="Categorias de servico" subtitle="Classificacao tecnica usada nos subitens do cronograma." onBack={() => setScreen('dashboard')}>
+      <PageTitle eyebrow="Categorias" title="Categorias de servico" subtitle="Classificacao tecnica usada nos subitens do cronograma." onBack={() => setScreen('dashboard')} breadcrumbs={breadcrumbs}>
         <ActionButton Icon={Plus} onClick={() => setEditingCategory({ ativo: true })}>Nova categoria</ActionButton>
       </PageTitle>
       {error ? <p className="auth-message error">{error}</p> : null}
@@ -187,7 +184,7 @@ function ServiceCategoryModal({ category, saving, onClose, onSave }) {
   );
 }
 
-export function Contractors({ contractors = [], saving, error, message, onSave, onToggle, setScreen }) {
+export function Contractors({ contractors = [], saving, error, message, onSave, onToggle, setScreen, breadcrumbs = [] }) {
   const [query, setQuery] = useState('');
   const [editingContractor, setEditingContractor] = useState(null);
   const normalizedQuery = normalizeSearch(query);
@@ -197,7 +194,7 @@ export function Contractors({ contractors = [], saving, error, message, onSave, 
 
   return (
     <>
-      <PageTitle eyebrow="Empreiteiros" title="Cadastro de empreiteiros" subtitle="Prestadores vinculados aos subitens de cada obra." onBack={() => setScreen('dashboard')}>
+      <PageTitle eyebrow="Empreiteiros" title="Cadastro de empreiteiros" subtitle="Prestadores vinculados aos subitens de cada obra." onBack={() => setScreen('dashboard')} breadcrumbs={breadcrumbs}>
         <ActionButton Icon={Plus} onClick={() => setEditingContractor({ ativo: true })}>Novo empreiteiro</ActionButton>
       </PageTitle>
       {error ? <p className="auth-message error">{error}</p> : null}

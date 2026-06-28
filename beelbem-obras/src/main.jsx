@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { createRoot } from 'react-dom/client';
 import ContractScheduleBuilder from './ContractScheduleBuilder.jsx';
 import ContractWork from './ContractWork.jsx';
+import Breadcrumbs from './Breadcrumbs.jsx';
 import { Contractors, ServiceCategories } from './catalogScreens.jsx';
 import {
   AlertTriangle,
@@ -119,6 +120,7 @@ import {
   buildScheduleSourceOptions,
 } from './scheduleFunctions.js';
 import { buildLocalScheduleItems, defaultScheduleBlueprint } from './scheduleBlueprint.js';
+import { buildNavigationBreadcrumbs } from './navigationBreadcrumbs.js';
 import loginBackground from './assets/login-background.jpg';
 import obrasLogo from './assets/beelbem-obras-logo.jpg';
 import './styles.css';
@@ -586,31 +588,12 @@ function PageTitle({
 }) {
   const navigation = useContext(NavigationContext);
   const backAction = navigation?.canGoBack ? navigation.goBack : onBack;
+  const resolvedBreadcrumbs = breadcrumbs.length ? breadcrumbs : navigation?.breadcrumbs || [];
 
   return (
     <header className="page-title">
       <div>
-        <div className={breadcrumbs.length ? 'page-breadcrumbs' : 'title-row'}>
-          {backAction ? <IconButton label="Voltar" Icon={ChevronLeft} onClick={backAction} /> : null}
-          {breadcrumbs.length ? (
-            <nav aria-label="Navegação estrutural">
-              {breadcrumbs.map((breadcrumb, index) => (
-                <React.Fragment key={`${breadcrumb.label}-${index}`}>
-                  {index > 0 ? <span className="breadcrumb-separator" aria-hidden="true">/</span> : null}
-                  {breadcrumb.onClick ? (
-                    <button type="button" onClick={breadcrumb.onClick}>{breadcrumb.label}</button>
-                  ) : (
-                    <span className="breadcrumb-current" aria-current={index === breadcrumbs.length - 1 ? 'page' : undefined}>
-                      {breadcrumb.label}
-                    </span>
-                  )}
-                </React.Fragment>
-              ))}
-            </nav>
-          ) : (
-            <span>{eyebrow}</span>
-          )}
-        </div>
+        <Breadcrumbs items={resolvedBreadcrumbs} onBack={backAction} fallbackLabel={eyebrow} />
         <h1>{title}</h1>
         {subtitle ? <p>{subtitle}</p> : null}
       </div>
@@ -1651,22 +1634,6 @@ function Neighborhoods({ works, selectedCity, neighborhoods: customNeighborhoods
 function Works({ selectedCity, selectedNeighborhood, works, openWork, setScreen }) {
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('Todos');
-  const breadcrumbs = [
-    { label: 'Início', onClick: () => setScreen('dashboard') },
-    ...(selectedCity
-      ? [
-          { label: 'Cidades', onClick: () => setScreen('cities') },
-          { label: selectedCity.nome, onClick: () => setScreen('neighborhoods') },
-        ]
-      : [{ label: 'Obras' }]),
-    ...(selectedNeighborhood
-      ? [
-          { label: 'Bairros', onClick: () => setScreen('neighborhoods') },
-          { label: selectedNeighborhood.nome },
-        ]
-      : []),
-    { label: selectedCity ? 'Obras' : 'Todas as obras' },
-  ];
   const filtered = works.filter((obra) => {
     if (selectedNeighborhood && obra.bairroId !== selectedNeighborhood.id) return false;
     if (!selectedNeighborhood && selectedCity && obra.cidadeId !== selectedCity.id) return false;
@@ -1678,7 +1645,6 @@ function Works({ selectedCity, selectedNeighborhood, works, openWork, setScreen 
     <>
       <PageTitle
         eyebrow="Obras"
-        breadcrumbs={breadcrumbs}
         title={selectedNeighborhood?.nome || selectedCity?.nome || 'Todas as obras'}
         subtitle="Andamento, PLS e pendencias."
         onBack={selectedNeighborhood ? () => setScreen('neighborhoods') : undefined}
@@ -6608,13 +6574,6 @@ function App() {
     setScreenState(nextScreen);
   }, []);
 
-  const navigation = useMemo(() => ({
-    canGoBack: screenHistoryRef.current.length > 0,
-    canGoForward: screenForwardHistoryRef.current.length > 0,
-    goBack,
-    goForward,
-  }), [goBack, goForward, screen]);
-
   useEffect(() => {
     if (!supabaseConfigured) {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -6800,6 +6759,23 @@ function App() {
     () => cityWorks.find((work) => work.id === selectedWorkId) || cityWorks[0] || null,
     [cityWorks, selectedWorkId],
   );
+  const breadcrumbs = useMemo(
+    () => buildNavigationBreadcrumbs({
+      screen,
+      activeWork,
+      selectedCity,
+      selectedNeighborhood,
+      setScreen,
+    }),
+    [activeWork, screen, selectedCity, selectedNeighborhood, setScreen],
+  );
+  const navigation = useMemo(() => ({
+    canGoBack: screenHistoryRef.current.length > 0,
+    canGoForward: screenForwardHistoryRef.current.length > 0,
+    goBack,
+    goForward,
+    breadcrumbs,
+  }), [breadcrumbs, goBack, goForward, screen]);
   const cityData = useMemo(() => ({ ...data, works: cityWorks }), [data, cityWorks]);
   const cityUsers = useMemo(
     () => obrasUsers.filter((user) => !user.cidadeId || user.cidadeId === selectedCity.id),
@@ -9859,6 +9835,7 @@ function App() {
             onSaveDocument={saveDocument}
             onDeleteDocument={deleteDocument}
             setScreen={setScreen}
+            breadcrumbs={breadcrumbs}
           />
         );
       case 'contractScheduleBuilder':
@@ -9871,6 +9848,7 @@ function App() {
             error={scheduleError}
             onSavePlan={saveContractSchedulePlan}
             setScreen={setScreen}
+            breadcrumbs={breadcrumbs}
           />
         );
       case 'stageDetail':
@@ -9961,6 +9939,7 @@ function App() {
             onSave={saveServiceCategory}
             onToggle={toggleServiceCategory}
             setScreen={setScreen}
+            breadcrumbs={breadcrumbs}
           />
         );
       case 'contractors':
@@ -9973,6 +9952,7 @@ function App() {
             onSave={saveContractor}
             onToggle={toggleContractor}
             setScreen={setScreen}
+            breadcrumbs={breadcrumbs}
           />
         );
       case 'commercial':

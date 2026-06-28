@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, ChevronLeft, Download, ExternalLink, FilePlus2, FileText, HardHat, Save, Sparkles, Trash2 } from 'lucide-react';
+import { CalendarDays, Download, ExternalLink, FilePlus2, FileText, HardHat, Save, Sparkles, Trash2 } from 'lucide-react';
+import Breadcrumbs from './Breadcrumbs.jsx';
 import './contract-work.css';
 
 const currencyFormatter = new Intl.NumberFormat('pt-BR', {
@@ -94,6 +95,7 @@ export default function ContractWork({
   onSaveDocument,
   onDeleteDocument,
   setScreen,
+  breadcrumbs = [],
 }) {
   const contractFileRef = useRef(null);
   const activeContractors = useMemo(
@@ -305,12 +307,7 @@ export default function ContractWork({
     <>
       <header className="page-title">
         <div>
-          <div className="title-row">
-            <button className="icon-button" type="button" aria-label="Voltar" title="Voltar" onClick={() => setScreen('workPanel')}>
-              <ChevronLeft size={22} aria-hidden="true" />
-            </button>
-            <span>Empreita</span>
-          </div>
+          <Breadcrumbs items={breadcrumbs} onBack={() => setScreen('workPanel')} fallbackLabel="Empreita" />
           <h1>Empreita da obra</h1>
           <p>Selecione o empreiteiro, os subitens do cronograma e o valor contratado.</p>
         </div>
@@ -520,6 +517,13 @@ export default function ContractWork({
             <EmptyContractNotice Icon={CalendarDays} title="Cronograma sem subitens" text="Cadastre subitens no cronograma para montar a empreita." />
           )}
 
+          <footer className="contract-work-bottom-actions">
+            <Breadcrumbs items={breadcrumbs} onBack={() => setScreen('workPanel')} fallbackLabel="Empreita" />
+            <button className="action-button primary" type="submit" disabled={saving || !subitemRows.length}>
+              <Save size={20} aria-hidden="true" />
+              <span>{saving ? 'Salvando...' : 'Salvar empreita'}</span>
+            </button>
+          </footer>
         </form>
       )}
     </>

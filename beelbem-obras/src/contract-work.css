@@ -143,6 +143,18 @@
   color: #b91c1c;
 }
 
+.contract-work-bottom-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 20px 0 4px;
+}
+
+.contract-work-bottom-actions .action-button {
+  flex: 0 0 auto;
+}
+
 @media (max-width: 1080px) {
   .contract-work-toolbar {
     grid-template-columns: minmax(220px, 1fr) auto;
@@ -165,5 +177,14 @@
 
   .contract-document-actions > * {
     flex: 1 1 110px;
+  }
+
+  .contract-work-bottom-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .contract-work-bottom-actions .action-button {
+    width: 100%;
   }
 }

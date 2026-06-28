@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   CalendarDays,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   ClipboardCheck,
   Plus,
@@ -10,6 +9,7 @@ import {
   Sparkles,
   Trash2,
 } from 'lucide-react';
+import Breadcrumbs from './Breadcrumbs.jsx';
 import './contract-schedule-builder.css';
 
 const currencyFormatter = new Intl.NumberFormat('pt-BR', {
@@ -207,6 +207,7 @@ export default function ContractScheduleBuilder({
   error,
   onSavePlan,
   setScreen,
+  breadcrumbs = [],
 }) {
   const draftFromSchedule = useMemo(
     () => buildDraftFromItems(items, contractorAssignments),
@@ -478,12 +479,7 @@ export default function ContractScheduleBuilder({
     <>
       <header className="page-title">
         <div>
-          <div className="title-row">
-            <button className="icon-button" type="button" aria-label="Voltar" title="Voltar" onClick={() => setScreen('schedule')}>
-              <ChevronLeft size={22} aria-hidden="true" />
-            </button>
-            <span>Cronograma</span>
-          </div>
+          <Breadcrumbs items={breadcrumbs} onBack={() => setScreen('schedule')} fallbackLabel="Cronograma" />
           <h1>Criar cronograma</h1>
           <p>Edite os mesmos itens do cronograma em uma tela rapida, com dias uteis e valor de empreita.</p>
         </div>
