@@ -123,7 +123,6 @@ import loginBackground from './assets/login-background.jpg';
 import obrasLogo from './assets/beelbem-obras-logo.jpg';
 import './styles.css';
 import './signup.css';
-import './breadcrumbs.css';
 
 const STORAGE_KEY = 'beelbem-obras-local-v1';
 const PUSH_SILENCED_KEY = 'beelbem-obras-push-silenced';
@@ -576,40 +575,16 @@ function ProgressBar({ value }) {
 
 const NavigationContext = createContext(null);
 
-function PageTitle({
-  eyebrow,
-  title,
-  subtitle,
-  children,
-  onBack,
-  breadcrumbs = [],
-}) {
+function PageTitle({ eyebrow, title, subtitle, children, onBack }) {
   const navigation = useContext(NavigationContext);
   const backAction = navigation?.canGoBack ? navigation.goBack : onBack;
 
   return (
     <header className="page-title">
       <div>
-        <div className={breadcrumbs.length ? 'page-breadcrumbs' : 'title-row'}>
+        <div className="title-row">
           {backAction ? <IconButton label="Voltar" Icon={ChevronLeft} onClick={backAction} /> : null}
-          {breadcrumbs.length ? (
-            <nav aria-label="Navegação estrutural">
-              {breadcrumbs.map((breadcrumb, index) => (
-                <React.Fragment key={`${breadcrumb.label}-${index}`}>
-                  {index > 0 ? <span className="breadcrumb-separator" aria-hidden="true">/</span> : null}
-                  {breadcrumb.onClick ? (
-                    <button type="button" onClick={breadcrumb.onClick}>{breadcrumb.label}</button>
-                  ) : (
-                    <span className="breadcrumb-current" aria-current={index === breadcrumbs.length - 1 ? 'page' : undefined}>
-                      {breadcrumb.label}
-                    </span>
-                  )}
-                </React.Fragment>
-              ))}
-            </nav>
-          ) : (
-            <span>{eyebrow}</span>
-          )}
+          <span>{eyebrow}</span>
         </div>
         <h1>{title}</h1>
         {subtitle ? <p>{subtitle}</p> : null}
@@ -1651,22 +1626,6 @@ function Neighborhoods({ works, selectedCity, neighborhoods: customNeighborhoods
 function Works({ selectedCity, selectedNeighborhood, works, openWork, setScreen }) {
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('Todos');
-  const breadcrumbs = [
-    { label: 'Início', onClick: () => setScreen('dashboard') },
-    ...(selectedCity
-      ? [
-          { label: 'Cidades', onClick: () => setScreen('cities') },
-          { label: selectedCity.nome, onClick: () => setScreen('neighborhoods') },
-        ]
-      : [{ label: 'Obras' }]),
-    ...(selectedNeighborhood
-      ? [
-          { label: 'Bairros', onClick: () => setScreen('neighborhoods') },
-          { label: selectedNeighborhood.nome },
-        ]
-      : []),
-    { label: selectedCity ? 'Obras' : 'Todas as obras' },
-  ];
   const filtered = works.filter((obra) => {
     if (selectedNeighborhood && obra.bairroId !== selectedNeighborhood.id) return false;
     if (!selectedNeighborhood && selectedCity && obra.cidadeId !== selectedCity.id) return false;
@@ -1678,7 +1637,6 @@ function Works({ selectedCity, selectedNeighborhood, works, openWork, setScreen 
     <>
       <PageTitle
         eyebrow="Obras"
-        breadcrumbs={breadcrumbs}
         title={selectedNeighborhood?.nome || selectedCity?.nome || 'Todas as obras'}
         subtitle="Andamento, PLS e pendencias."
         onBack={selectedNeighborhood ? () => setScreen('neighborhoods') : undefined}
