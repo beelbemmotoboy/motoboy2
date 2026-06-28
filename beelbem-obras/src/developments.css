@@ -1,0 +1,87 @@
+.development-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.development-card {
+  min-width: 0;
+  border: 1px solid #dbe3ee;
+  border-radius: 14px;
+  padding: 20px;
+  background: #fff;
+}
+
+.development-card-head,
+.development-card footer,
+.development-cnpj-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.development-card-head svg {
+  color: #2563eb;
+}
+
+.development-card h2 {
+  margin: 16px 0 6px;
+  color: #0f172a;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.development-card p,
+.development-card > span,
+.development-card small {
+  display: block;
+  margin: 6px 0;
+  color: #475569;
+  font-weight: 400;
+}
+
+.development-card footer {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid #edf2f7;
+  color: #64748b;
+}
+
+.development-card footer button {
+  border: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px;
+  color: #2563eb;
+  background: transparent;
+}
+
+.development-modal {
+  width: min(1040px, calc(100vw - 32px));
+}
+
+.development-cnpj-panel {
+  align-items: end;
+  margin-bottom: 18px;
+}
+
+.development-cnpj-panel .field {
+  flex: 1;
+}
+
+.development-status-field .checkbox-line {
+  min-height: 50px;
+}
+
+@media (max-width: 720px) {
+  .development-cnpj-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .development-cnpj-panel .action-button {
+    width: 100%;
+  }
+}

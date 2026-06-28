@@ -21,6 +21,7 @@ const projectScreenLabels = {
 const mainScreenLabels = {
   cities: 'Cidades',
   companies: 'Empresas',
+  developments: 'Empreendimentos',
   users: 'Usuarios',
   serviceCategories: 'Categorias',
   contractors: 'Empreiteiros',

@@ -15,6 +15,7 @@ const notificationsTable = 'obras_notifications';
 const pushSubscriptionsTable = 'obras_push_subscriptions';
 const serviceCategoriesTable = 'obras_service_categories';
 const contractorsTable = 'obras_contractors';
+const developmentsTable = 'obras_developments';
 const checklistPhotosTable = 'obras_checklist_photos';
 const neighborhoodsTable = 'obras_neighborhoods';
 
@@ -56,6 +57,7 @@ const childTables = {
 export function projectFromDb(row) {
   return {
     id: row.id,
+    developmentId: row.development_id || '',
     nome: row.nome,
     cliente: row.cliente,
     endereco: row.endereco,
@@ -81,6 +83,7 @@ export function projectFromDb(row) {
 
 export function projectToDb(work) {
   return {
+    development_id: work.developmentId,
     nome: work.nome,
     cliente: work.cliente,
     endereco: work.endereco,
@@ -102,6 +105,61 @@ export function projectToDb(work) {
     responsavel: work.responsavel || null,
     observacoes: work.observacoes || null,
   };
+}
+
+export function developmentFromDb(row) {
+  return {
+    id: row.id,
+    accountId: row.account_id || '',
+    nome: row.nome || '',
+    cnpj: row.cnpj || '',
+    razaoSocial: row.razao_social || '',
+    nomeFantasia: row.nome_fantasia || '',
+    telefone: row.telefone || '',
+    email: row.email || '',
+    cep: row.cep || '',
+    logradouro: row.logradouro || '',
+    numero: row.numero || '',
+    complemento: row.complemento || '',
+    bairro: row.bairro || '',
+    municipio: row.municipio || '',
+    uf: row.uf || '',
+    ativo: row.ativo !== false,
+    createdAt: row.created_at || '',
+    updatedAt: row.updated_at || '',
+  };
+}
+
+function developmentToDb(values) {
+  return {
+    nome: String(values.nome || '').trim(),
+    cnpj: String(values.cnpj || '').replace(/\D/g, '') || null,
+    razao_social: String(values.razaoSocial || '').trim() || null,
+    nome_fantasia: String(values.nomeFantasia || '').trim() || null,
+    telefone: String(values.telefone || '').trim() || null,
+    email: String(values.email || '').trim().toLowerCase() || null,
+    cep: String(values.cep || '').replace(/\D/g, '') || null,
+    logradouro: String(values.logradouro || '').trim() || null,
+    numero: String(values.numero || '').trim() || null,
+    complemento: String(values.complemento || '').trim() || null,
+    bairro: String(values.bairro || '').trim() || null,
+    municipio: String(values.municipio || '').trim() || null,
+    uf: String(values.uf || '').trim().toUpperCase() || null,
+    ativo: values.ativo !== false,
+  };
+}
+
+function developmentPatchToDb(values) {
+  const complete = developmentToDb(values);
+  return Object.fromEntries(
+    Object.entries(complete).filter(([key]) => {
+      const sourceKey = {
+        razao_social: 'razaoSocial',
+        nome_fantasia: 'nomeFantasia',
+      }[key] || key;
+      return values[sourceKey] !== undefined;
+    }),
+  );
 }
 
 export function obrasAccountFromDb(row) {
@@ -1020,6 +1078,45 @@ export async function fetchServiceCategories({ includeInactive = true } = {}) {
   return (data || []).map(serviceCategoryFromDb);
 }
 
+export async function fetchDevelopments({ includeInactive = true } = {}) {
+  let query = supabase
+    .from(developmentsTable)
+    .select('*')
+    .order('nome', { ascending: true });
+
+  if (!includeInactive) query = query.eq('ativo', true);
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data || []).map(developmentFromDb);
+}
+
+export async function insertDevelopment(values) {
+  const { data, error } = await supabase
+    .from(developmentsTable)
+    .insert(developmentToDb(values))
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return developmentFromDb(data);
+}
+
+export async function updateDevelopment(developmentId, patch) {
+  const dbPatch = developmentPatchToDb(patch);
+  if (!Object.keys(dbPatch).length) return null;
+
+  const { data, error } = await supabase
+    .from(developmentsTable)
+    .update(dbPatch)
+    .eq('id', developmentId)
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return developmentFromDb(data);
+}
+
 export async function fetchNeighborhoods({ includeInactive = true } = {}) {
   let query = supabase
     .from(neighborhoodsTable)
@@ -1310,6 +1407,7 @@ export async function insertProject(work) {
 
 export async function updateProject(projectId, patch) {
   const dbPatch = {};
+  if (patch.developmentId !== undefined) dbPatch.development_id = patch.developmentId;
   if (patch.nome !== undefined) dbPatch.nome = patch.nome;
   if (patch.cliente !== undefined) dbPatch.cliente = patch.cliente;
   if (patch.endereco !== undefined) dbPatch.endereco = patch.endereco;

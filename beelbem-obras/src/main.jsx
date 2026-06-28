@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client';
 import ContractScheduleBuilder from './ContractScheduleBuilder.jsx';
 import ContractWork from './ContractWork.jsx';
 import Breadcrumbs from './Breadcrumbs.jsx';
+import Developments from './Developments.jsx';
+import { isValidCnpj } from './developmentFunctions.js';
 import { Contractors, ServiceCategories } from './catalogScreens.jsx';
 import {
   AlertTriangle,
@@ -68,6 +70,7 @@ import {
   fetchProjects,
   fetchCommercialPlans,
   fetchContractors,
+  fetchDevelopments,
   fetchObrasAccounts,
   fetchObrasNotifications,
   fetchObrasSubscriptions,
@@ -79,6 +82,7 @@ import {
   getSession,
   ensureProjectSchedule,
   insertContractor,
+  insertDevelopment,
   insertScheduleItemChecklistResults,
   insertChild,
   insertChecklistPhoto,
@@ -101,6 +105,7 @@ import {
   updateCurrentUserPassword,
   updateChild,
   updateContractor,
+  updateDevelopment,
   updateObrasAccount,
   updateObrasUser,
   updateProject,
@@ -256,6 +261,7 @@ const initialData = {
   works: [
     {
       id: 'casa-joao',
+      developmentId: 'development-casa-joao',
       nome: 'Casa Joao Silva',
       cliente: 'Joao Silva',
       endereco: 'Rua 12, Qd. 8, Lt. 4',
@@ -277,6 +283,7 @@ const initialData = {
     },
     {
       id: 'sobrado-lote-12',
+      developmentId: 'development-sobrado-lote-12',
       nome: 'Sobrado Lote 12',
       cliente: 'Construtora Alfa',
       endereco: 'Av. Presidente, Qd. 12',
@@ -298,6 +305,7 @@ const initialData = {
     },
     {
       id: 'obra-maria',
+      developmentId: 'development-obra-maria',
       nome: 'Obra Maria Santos',
       cliente: 'Maria Santos',
       endereco: 'Rua 4, Qd. 2, Lt. 9',
@@ -377,6 +385,11 @@ const initialData = {
     { id: 'cat-eletrica', nome: 'Eletrica', descricao: 'Instalacoes eletricas brutas e finais.', ativo: true },
     { id: 'cat-acabamento', nome: 'Acabamento', descricao: 'Revestimentos, pintura, forro e limpeza final.', ativo: true },
   ],
+  developments: [
+    { id: 'development-casa-joao', nome: 'Casa Joao Silva', cnpj: '', razaoSocial: '', nomeFantasia: '', ativo: true },
+    { id: 'development-sobrado-lote-12', nome: 'Sobrado Lote 12', cnpj: '', razaoSocial: '', nomeFantasia: '', ativo: true },
+    { id: 'development-obra-maria', nome: 'Obra Maria Santos', cnpj: '', razaoSocial: '', nomeFantasia: '', ativo: true },
+  ],
   neighborhoods: [],
   contractors: [],
   contractorAssignments: [],
@@ -386,6 +399,7 @@ const remoteInitialData = {
   ...initialData,
   works: [],
   serviceCategories: [],
+  developments: [],
   neighborhoods: [],
   contractors: [],
   ...emptyProjectCollections,
@@ -402,6 +416,7 @@ const quickRoutes = [
 const sidebarRoutes = [
   ...quickRoutes,
   { id: 'companies', label: 'Empresas', Icon: Landmark },
+  { id: 'developments', label: 'Empreendimentos', Icon: Building2 },
   { id: 'users', label: 'Usuarios', Icon: UsersRound },
   { id: 'serviceCategories', label: 'Categorias', Icon: FolderKanban },
   { id: 'contractors', label: 'Empreiteiros', Icon: HardHat },
@@ -823,6 +838,52 @@ function SelectField({ label, name, value, options, disabled = false }) {
           <option value={option.value} key={option.value}>{option.label}</option>
         ))}
       </select>
+    </label>
+  );
+}
+
+function DevelopmentField({
+  value = '',
+  developments = [],
+  disabled = false,
+  onAdd,
+}) {
+  const activeDevelopments = developments
+    .filter((development) => development.ativo !== false || development.id === value)
+    .sort((a, b) => a.nome.localeCompare(b.nome));
+  const [selectedId, setSelectedId] = useState(value || '');
+
+  useEffect(() => {
+    setSelectedId(value || '');
+  }, [value]);
+
+  return (
+    <label className="field development-field">
+      <span>Empreendimento</span>
+      <div className="select-with-action">
+        <select
+          name="developmentId"
+          value={selectedId}
+          onChange={(event) => setSelectedId(event.target.value)}
+          disabled={disabled}
+          required
+        >
+          <option value="">Selecione o empreendimento</option>
+          {activeDevelopments.map((development) => (
+            <option value={development.id} key={development.id}>{development.nome}</option>
+          ))}
+        </select>
+        <button
+          type="button"
+          className="inline-add-button icon-only-action"
+          aria-label="Adicionar empreendimento"
+          title="Adicionar empreendimento"
+          onClick={onAdd}
+          disabled={disabled}
+        >
+          <Plus size={19} aria-hidden="true" />
+        </button>
+      </div>
     </label>
   );
 }
@@ -1520,6 +1581,7 @@ function Dashboard({ data, setScreen, onOpenAllWorks }) {
         {[
           ['Nova obra', Plus, 'newWork'],
           ['Empresas', Landmark, 'companies'],
+          ['Empreendimentos', Building2, 'developments'],
           ['Usuarios', UsersRound, 'users'],
           ['Empreiteiros', HardHat, 'contractors'],
           ['Relatorios', BarChart3, 'reports'],
@@ -1677,7 +1739,7 @@ function Works({ selectedCity, selectedNeighborhood, works, openWork, setScreen 
   );
 }
 
-function NewWork({ createWork, setScreen, selectedCity, onProjectAnalyzed, works = [], neighborhoods = [], onAddNeighborhood }) {
+function NewWork({ createWork, setScreen, selectedCity, onProjectAnalyzed, works = [], developments = [], neighborhoods = [], onAddNeighborhood }) {
   const [cityId, setCityId] = useState(selectedCity?.id || cityCatalog[0].id);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
@@ -1756,7 +1818,7 @@ function NewWork({ createWork, setScreen, selectedCity, onProjectAnalyzed, works
         </div>
       </section>
       <section ref={manualFormRef} className="form-grid">
-        <Field label="Nome da obra" name="nome" required />
+        <DevelopmentField developments={developments} onAdd={() => setScreen('developments')} />
         <Field label="Cliente" name="cliente" required />
         <label className="field">
           <span>Cidade</span>
@@ -1855,7 +1917,7 @@ function AiAnalysisLoader({ fileName }) {
   );
 }
 
-function ExtractedData({ createWork, setScreen, draft, works = [], neighborhoods = [], onAddNeighborhood }) {
+function ExtractedData({ createWork, setScreen, draft, works = [], developments = [], neighborhoods = [], onAddNeighborhood }) {
   const initialCityId = draft?.cidadeId || cityCatalog[0].id;
   const [cityId, setCityId] = useState(initialCityId);
 
@@ -1886,7 +1948,11 @@ function ExtractedData({ createWork, setScreen, draft, works = [], neighborhoods
         {(draft.avisos || []).map((warning) => <p key={warning}>{warning}</p>)}
       </section>
       <section className="form-grid">
-        <Field label="Nome da obra" name="nome" value={draft.nome} required />
+        <DevelopmentField
+          value={developments.find((development) => normalizeSearch(development.nome) === normalizeSearch(draft.nome))?.id || ''}
+          developments={developments}
+          onAdd={() => setScreen('developments')}
+        />
         <Field label="Cliente" name="cliente" value={draft.cliente} required />
         <label className="field">
           <span>Cidade</span>
@@ -6314,7 +6380,7 @@ function resolveLocation(values, customNeighborhoods = []) {
   return { city, neighborhood };
 }
 
-function WorkProfile({ activeWork, saving, error, message, canEdit, canDelete, neighborhoods: customNeighborhoods = [], onAddNeighborhood, onSave, onDelete, setScreen }) {
+function WorkProfile({ activeWork, developments = [], saving, error, message, canEdit, canDelete, neighborhoods: customNeighborhoods = [], onAddNeighborhood, onSave, onDelete, setScreen }) {
   const initialCityId = activeWork?.cidadeId || cityCatalog.find((city) => normalizeSearch(city.nome) === normalizeSearch(activeWork?.cidade))?.id || cityCatalog[0].id;
   const [cityId, setCityId] = useState(initialCityId);
 
@@ -6379,7 +6445,12 @@ function WorkProfile({ activeWork, saving, error, message, canEdit, canDelete, n
       </section>
 
       <section className="form-grid profile-edit-form">
-        <Field label="Nome da obra" name="nome" value={activeWork.nome || ''} required disabled={!canEdit || saving} />
+        <DevelopmentField
+          value={activeWork.developmentId || ''}
+          developments={developments}
+          disabled={!canEdit || saving}
+          onAdd={() => setScreen('developments')}
+        />
         <Field label="Cliente" name="cliente" value={activeWork.cliente || ''} required disabled={!canEdit || saving} />
         <label className="field">
           <span>Cidade</span>
@@ -7023,6 +7094,7 @@ function App() {
       setData((current) => ({
         ...current,
         serviceCategories: initialData.serviceCategories,
+        developments: initialData.developments,
         neighborhoods: initialData.neighborhoods,
         contractors: initialData.contractors,
       }));
@@ -7030,14 +7102,16 @@ function App() {
     }
 
     try {
-      const [serviceCategories, neighborhoods, contractors] = await Promise.all([
+      const [serviceCategories, developments, neighborhoods, contractors] = await Promise.all([
         fetchServiceCategories({ includeInactive: true }),
+        fetchDevelopments({ includeInactive: true }),
         fetchNeighborhoods({ includeInactive: true }),
         fetchContractors({ includeInactive: true }),
       ]);
       setData((current) => ({
         ...current,
         serviceCategories,
+        developments,
         neighborhoods,
         contractors,
       }));
@@ -7056,6 +7130,7 @@ function App() {
         setData((current) => ({
           ...remoteInitialData,
           serviceCategories: current.serviceCategories,
+          developments: current.developments,
           neighborhoods: current.neighborhoods,
           contractors: current.contractors,
         }));
@@ -7076,6 +7151,7 @@ function App() {
       setData((current) => ({
         ...remoteInitialData,
         serviceCategories: current.serviceCategories,
+        developments: current.developments,
         neighborhoods: current.neighborhoods,
         contractors: current.contractors,
         works,
@@ -7441,10 +7517,16 @@ function App() {
   async function createWork(values) {
     setDataError('');
     const { city, neighborhood } = resolveLocation(values, data.neighborhoods || []);
+    const development = (data.developments || []).find((item) => item.id === values.developmentId && item.ativo !== false);
+    if (!development) {
+      setDataError('Selecione um empreendimento ativo antes de salvar a obra.');
+      return;
+    }
     const scheduleSourceProjectId = String(values.scheduleSourceProjectId || DEFAULT_SCHEDULE_SOURCE);
     let nextWork = {
       id: makeId('obra'),
-      nome: values.nome || 'Nova obra',
+      developmentId: development.id,
+      nome: development.nome,
       cliente: values.cliente || 'Cliente sem nome',
       endereco: values.endereco || 'Endereco nao informado',
       cidadeId: city.id,
@@ -7514,8 +7596,15 @@ function App() {
     setWorkProfileMessage('');
 
     const { city, neighborhood } = resolveLocation(values, data.neighborhoods || []);
+    const development = (data.developments || []).find((item) => item.id === values.developmentId && item.ativo !== false);
+    if (!development) {
+      setWorkProfileError('Selecione um empreendimento ativo.');
+      setWorkProfileSaving(false);
+      return;
+    }
     const patch = {
-      nome: values.nome || activeWork.nome,
+      developmentId: development.id,
+      nome: development.nome,
       cliente: values.cliente || activeWork.cliente,
       endereco: values.endereco || activeWork.endereco,
       cidadeId: city.id,
@@ -9185,6 +9274,65 @@ function App() {
     }
   }
 
+  async function saveDevelopment(values) {
+    const nome = String(values.nome || '').trim();
+    const cnpj = String(values.cnpj || '').replace(/\D/g, '');
+    if (!nome) {
+      setCatalogError('Informe o nome do empreendimento.');
+      return null;
+    }
+    if (!isValidCnpj(cnpj)) {
+      setCatalogError('Informe um CNPJ valido.');
+      return null;
+    }
+
+    setCatalogSaving(true);
+    setCatalogError('');
+    setCatalogMessage('');
+
+    try {
+      let saved = {
+        ...values,
+        nome,
+        cnpj,
+        razaoSocial: String(values.razaoSocial || '').trim(),
+        nomeFantasia: String(values.nomeFantasia || '').trim(),
+        telefone: String(values.telefone || '').trim(),
+        email: String(values.email || '').trim().toLowerCase(),
+        cep: String(values.cep || '').replace(/\D/g, ''),
+        logradouro: String(values.logradouro || '').trim(),
+        numero: String(values.numero || '').trim(),
+        complemento: String(values.complemento || '').trim(),
+        bairro: String(values.bairro || '').trim(),
+        municipio: String(values.municipio || '').trim(),
+        uf: String(values.uf || '').trim().toUpperCase(),
+        ativo: values.ativo !== false,
+      };
+
+      if (supabaseConfigured && session) {
+        saved = values.id
+          ? await updateDevelopment(values.id, saved)
+          : await insertDevelopment(saved);
+      } else {
+        saved = { ...saved, id: values.id || makeId('empreendimento') };
+      }
+
+      setData((current) => ({
+        ...current,
+        developments: (current.developments || []).some((item) => item.id === saved.id)
+          ? current.developments.map((item) => (item.id === saved.id ? saved : item))
+          : [...(current.developments || []), saved].sort((a, b) => a.nome.localeCompare(b.nome)),
+      }));
+      setCatalogMessage('Empreendimento salvo.');
+      return saved;
+    } catch (error) {
+      setCatalogError(error.message || 'Nao foi possivel salvar o empreendimento.');
+      return null;
+    } finally {
+      setCatalogSaving(false);
+    }
+  }
+
   async function saveServiceCategory(values) {
     const nome = String(values.nome || '').trim();
     if (!nome) {
@@ -9802,9 +9950,9 @@ function App() {
       case 'allWorks':
         return <Works selectedCity={null} selectedNeighborhood={null} works={data.works} openWork={selectWork} setScreen={setScreen} />;
       case 'newWork':
-        return <NewWork createWork={createWork} setScreen={setScreen} selectedCity={selectedCity} works={data.works} neighborhoods={data.neighborhoods || []} onAddNeighborhood={saveNeighborhood} onProjectAnalyzed={setAiProjectDraft} />;
+        return <NewWork createWork={createWork} setScreen={setScreen} selectedCity={selectedCity} works={data.works} developments={data.developments || []} neighborhoods={data.neighborhoods || []} onAddNeighborhood={saveNeighborhood} onProjectAnalyzed={setAiProjectDraft} />;
       case 'extractedData':
-        return <ExtractedData createWork={createWork} setScreen={setScreen} draft={aiProjectDraft} works={data.works} neighborhoods={data.neighborhoods || []} onAddNeighborhood={saveNeighborhood} />;
+        return <ExtractedData createWork={createWork} setScreen={setScreen} draft={aiProjectDraft} works={data.works} developments={data.developments || []} neighborhoods={data.neighborhoods || []} onAddNeighborhood={saveNeighborhood} />;
       case 'workPanel':
         return <WorkPanel obra={activeWork} data={cityData} setScreen={setScreen} />;
       case 'stages':
@@ -9911,6 +10059,19 @@ function App() {
             onRefresh={() => loadObrasAccounts({ signLogos: true })}
             onSave={saveObrasAccount}
             setScreen={setScreen}
+          />
+        );
+      case 'developments':
+        return (
+          <Developments
+            developments={data.developments || []}
+            works={data.works}
+            saving={catalogSaving}
+            error={catalogError}
+            message={catalogMessage}
+            onSave={saveDevelopment}
+            setScreen={setScreen}
+            breadcrumbs={breadcrumbs}
           />
         );
       case 'users':
@@ -10040,6 +10201,7 @@ function App() {
         return (
           <WorkProfile
             activeWork={activeWork}
+            developments={data.developments || []}
             saving={workProfileSaving}
             error={workProfileError}
             message={workProfileMessage}
