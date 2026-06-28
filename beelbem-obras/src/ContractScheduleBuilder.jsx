@@ -1,5 +1,16 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CalendarDays, ChevronLeft, Plus, Save, Sparkles, Trash2 } from 'lucide-react';
+import {
+  CalendarDays,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardCheck,
+  Plus,
+  Save,
+  Sparkles,
+  Trash2,
+} from 'lucide-react';
+import './contract-schedule-builder.css';
 
 const currencyFormatter = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -204,6 +215,9 @@ export default function ContractScheduleBuilder({
   const [stages, setStages] = useState(draftFromSchedule);
   const [removedItemIds, setRemovedItemIds] = useState([]);
   const [columnWidths, setColumnWidths] = useState(DEFAULT_COLUMN_WIDTHS);
+  const [collapsedStageIds, setCollapsedStageIds] = useState(
+    () => new Set(draftFromSchedule.map((stage) => stage.id)),
+  );
   const [formError, setFormError] = useState('');
   const [message, setMessage] = useState('');
   const assignedContractorIds = useMemo(
@@ -224,6 +238,7 @@ export default function ContractScheduleBuilder({
   useEffect(() => {
     setStages(draftFromSchedule);
     setRemovedItemIds([]);
+    setCollapsedStageIds(new Set(draftFromSchedule.map((stage) => stage.id)));
     setFormError('');
     setMessage('');
   }, [draftFromSchedule]);
@@ -263,7 +278,13 @@ export default function ContractScheduleBuilder({
   }
 
   function addStage() {
-    setStages((current) => [...current, createStage()]);
+    const stage = createStage();
+    setStages((current) => [...current, stage]);
+    setCollapsedStageIds((current) => {
+      const next = new Set(current);
+      next.delete(stage.id);
+      return next;
+    });
   }
 
   function removeStage(stageId) {
@@ -297,6 +318,23 @@ export default function ContractScheduleBuilder({
           }
         : stage
     )));
+    setCollapsedStageIds((current) => {
+      const next = new Set(current);
+      next.delete(stageId);
+      return next;
+    });
+  }
+
+  function toggleStage(stageId) {
+    setCollapsedStageIds((current) => {
+      const next = new Set(current);
+      if (next.has(stageId)) {
+        next.delete(stageId);
+      } else {
+        next.add(stageId);
+      }
+      return next;
+    });
   }
 
   function removeSubitem(stageId, subitemId) {
@@ -481,7 +519,7 @@ export default function ContractScheduleBuilder({
                 <tr>
                   {columnHeader('Subitem', 0)}
                   {columnHeader('Inicio', 1)}
-                  {columnHeader('Dias trabalhados', 2)}
+                  {columnHeader('Dias', 2)}
                   {columnHeader('Fim calculado', 3)}
                   {columnHeader('Empreiteiro', 4)}
                   {columnHeader('Valor da empreita', 5)}
@@ -489,33 +527,54 @@ export default function ContractScheduleBuilder({
                 </tr>
               </thead>
               <tbody>
-                {stages.map((stage) => (
-                  <React.Fragment key={stage.id}>
-                    <tr className="contract-work-stage-row contract-schedule-stage-row">
-                      <td colSpan="7">
-                        <div>
-                          <input
-                            type="text"
-                            value={stage.nome}
-                            onChange={(event) => updateStage(stage.id, { nome: event.target.value })}
-                            placeholder="Nome do item"
-                          />
-                          <button type="button" aria-label="Adicionar subitem" title="Adicionar subitem" onClick={() => addSubitem(stage.id)}>
-                            <Plus size={17} aria-hidden="true" />
-                          </button>
-                          <button
-                            className="danger"
-                            type="button"
-                            aria-label="Remover item"
-                            title="Remover item"
-                            onClick={() => removeStage(stage.id)}
-                          >
-                            <Trash2 size={17} aria-hidden="true" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                    {sortSubitemsByStartDate(stage.subitems).map((subitem) => (
+                {stages.map((stage) => {
+                  const collapsed = collapsedStageIds.has(stage.id);
+                  return (
+                    <React.Fragment key={stage.id}>
+                      <tr className="contract-work-stage-row contract-schedule-stage-row">
+                        <td colSpan="7">
+                          <div>
+                            <button
+                              className="contract-schedule-toggle"
+                              type="button"
+                              aria-label={`${collapsed ? 'Expandir' : 'Recolher'} item ${stage.nome || 'sem nome'}`}
+                              title={collapsed ? 'Expandir item' : 'Recolher item'}
+                              onClick={() => toggleStage(stage.id)}
+                            >
+                              {collapsed
+                                ? <ChevronRight size={17} aria-hidden="true" />
+                                : <ChevronDown size={17} aria-hidden="true" />}
+                            </button>
+                            <input
+                              type="text"
+                              value={stage.nome}
+                              onChange={(event) => updateStage(stage.id, { nome: event.target.value })}
+                              placeholder="Nome do item"
+                            />
+                            <button
+                              type="button"
+                              aria-label="Abrir checklist"
+                              title="Abrir checklist"
+                              onClick={() => setScreen('checklist')}
+                            >
+                              <ClipboardCheck size={17} aria-hidden="true" />
+                            </button>
+                            <button type="button" aria-label="Adicionar subitem" title="Adicionar subitem" onClick={() => addSubitem(stage.id)}>
+                              <Plus size={17} aria-hidden="true" />
+                            </button>
+                            <button
+                              className="danger"
+                              type="button"
+                              aria-label="Remover item"
+                              title="Remover item"
+                              onClick={() => removeStage(stage.id)}
+                            >
+                              <Trash2 size={17} aria-hidden="true" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      {!collapsed && sortSubitemsByStartDate(stage.subitems).map((subitem) => (
                       <tr key={subitem.id}>
                         <td>
                           <input
@@ -534,6 +593,7 @@ export default function ContractScheduleBuilder({
                         </td>
                         <td>
                           <input
+                            className="contract-schedule-days"
                             type="number"
                             min="1"
                             step="1"
@@ -543,7 +603,7 @@ export default function ContractScheduleBuilder({
                           />
                         </td>
                         <td>
-                          <input type="date" value={subitem.fimPrevisto} readOnly />
+                          <input className="contract-schedule-end" type="date" value={subitem.fimPrevisto} readOnly />
                         </td>
                         <td>
                           <select
@@ -559,6 +619,7 @@ export default function ContractScheduleBuilder({
                         </td>
                         <td>
                           <input
+                            className="contract-schedule-value"
                             type="text"
                             inputMode="decimal"
                             value={subitem.valorEmpreita}
@@ -578,9 +639,10 @@ export default function ContractScheduleBuilder({
                           </button>
                         </td>
                       </tr>
-                    ))}
-                  </React.Fragment>
-                ))}
+                      ))}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </section>

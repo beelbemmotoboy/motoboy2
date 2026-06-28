@@ -1,0 +1,28 @@
+.contract-schedule-builder .contract-schedule-stage-row td > div {
+  grid-template-columns: auto minmax(220px, 1fr) auto auto auto;
+}
+
+.contract-schedule-builder .contract-schedule-toggle {
+  color: #1d4ed8;
+  background: #dbeafe;
+}
+
+.contract-schedule-builder .contract-schedule-table th:nth-child(3),
+.contract-schedule-builder .contract-schedule-table th:nth-child(4) {
+  text-align: center;
+}
+
+.contract-schedule-builder .contract-schedule-days,
+.contract-schedule-builder .contract-schedule-end {
+  text-align: center;
+}
+
+.contract-schedule-builder .contract-schedule-value {
+  text-align: right;
+}
+
+@media (max-width: 720px) {
+  .contract-schedule-builder .contract-schedule-stage-row td > div {
+    grid-template-columns: auto minmax(180px, 1fr) auto auto auto;
+  }
+}
